@@ -31,20 +31,25 @@ final class GhosttyApp {
         runtime.action_cb = { _, _, _ in false }
 
         // read_clipboard_cb: (userdata, clipboard_type, state) -> bool
-        // Read from pasteboard and complete the request via state pointer.
+        // userdata here is the surface's userdata (SurfaceView), not the app's.
         runtime.read_clipboard_cb = { ud, clipboard, state in
+            guard let ud else { return false }
+            let view = Unmanaged<SurfaceView>.fromOpaque(ud).takeUnretainedValue()
+            guard let surface = view.surface else { return false }
             let content = NSPasteboard.general.string(forType: .string) ?? ""
             content.withCString { ptr in
-                // state is an opaque completion token; pass it back with the content
-                ghostty_surface_complete_clipboard_request(state, ptr, nil, false)
+                ghostty_surface_complete_clipboard_request(surface, ptr, state, false)
             }
             return true
         }
 
         // confirm_read_clipboard_cb: (userdata, content, state, request_type)
-        // Auto-confirm clipboard reads.
+        // userdata here is the surface's userdata (SurfaceView), not the app's.
         runtime.confirm_read_clipboard_cb = { ud, content, state, request in
-            ghostty_surface_complete_clipboard_request(state, content, nil, true)
+            guard let ud else { return }
+            let view = Unmanaged<SurfaceView>.fromOpaque(ud).takeUnretainedValue()
+            guard let surface = view.surface else { return }
+            ghostty_surface_complete_clipboard_request(surface, content, state, true)
         }
 
         // write_clipboard_cb: (userdata, clipboard_type, contents, count, confirm)
