@@ -1,20 +1,19 @@
-import AppKit
 import SwiftUI
 
 struct TerminalContainerView: View {
+    let windowState: WindowState
+
     var body: some View {
-        TerminalRepresentable()
-            .ignoresSafeArea()
+        HStack(spacing: 0) {
+            if windowState.showSidebar {
+                SidebarView(windowState: windowState)
+                Divider()
+            }
+            TerminalContentView(
+                surfaceView: windowState.activeTab?.surfaceView,
+                activeTabID: windowState.activeTabID
+            )
+        }
+        .ignoresSafeArea()
     }
-}
-
-struct TerminalRepresentable: NSViewRepresentable {
-    func makeNSView(context: Context) -> SurfaceView {
-        let view = SurfaceView(frame: .zero)
-        guard let app = GhosttyApp.shared.app else { return view }
-        view.initializeSurface(app: app, workingDirectory: NSHomeDirectory())
-        return view
-    }
-
-    func updateNSView(_ view: SurfaceView, context: Context) {}
 }

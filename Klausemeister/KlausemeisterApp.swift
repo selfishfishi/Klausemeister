@@ -9,9 +9,11 @@ import SwiftUI
 
 @main
 struct KlausemeisterApp: App {
+    @State private var windowState = WindowState()
+
     var body: some Scene {
         WindowGroup {
-            TerminalContainerView()
+            TerminalContainerView(windowState: windowState)
         }
         .defaultSize(width: 800, height: 600)
     }
