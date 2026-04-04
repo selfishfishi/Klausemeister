@@ -21,6 +21,7 @@ final class WindowState {
         guard let app = GhosttyApp.shared.app else { return }
         let surfaceView = SurfaceView(frame: .zero)
         surfaceView.initializeSurface(app: app, workingDirectory: NSHomeDirectory())
+        guard surfaceView.surface != nil else { return }
         let tab = TabSession(surfaceView: surfaceView)
         tabs.append(tab)
         switchTab(id: tab.id)
@@ -79,14 +80,17 @@ final class WindowState {
     // MARK: - Focus Transfer
 
     private func requestFocus(for surfaceView: SurfaceView, attempt: Int = 0) {
-        guard let window = surfaceView.window else {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if let window = surfaceView.window, window.makeFirstResponder(surfaceView) {
+                return
+            }
+            // View not in hierarchy or makeFirstResponder failed — retry up to 500ms
             if attempt < 50 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { [weak self] in
-                    self?.requestFocus(for: surfaceView, attempt: attempt + 1)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                    self.requestFocus(for: surfaceView, attempt: attempt + 1)
                 }
             }
-            return
         }
-        window.makeFirstResponder(surfaceView)
     }
 }
