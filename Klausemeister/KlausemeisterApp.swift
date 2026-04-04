@@ -11,7 +11,8 @@ import SwiftUI
 struct KlausemeisterApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            TerminalContainerView()
         }
+        .defaultSize(width: 800, height: 600)
     }
 }
