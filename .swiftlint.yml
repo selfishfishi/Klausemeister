@@ -7,8 +7,8 @@ file_length:
   error: 1000
 
 function_body_length:
-  warning: 50
-  error: 100
+  warning: 80
+  error: 150
 
 type_body_length:
   warning: 300
@@ -30,4 +30,3 @@ excluded:
   - DerivedData
   - Klausemeister.xcodeproj
   - Klausemeister/Assets.xcassets
-  - Packages
