@@ -89,6 +89,7 @@ final class GhosttyApp {
 
         return runtime
     }
+
     // swiftlint:enable identifier_name
 
     private static func writeThemeConfig(_ theme: AppTheme) -> String? {

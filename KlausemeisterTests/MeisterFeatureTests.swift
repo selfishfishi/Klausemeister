@@ -52,13 +52,13 @@ private let sampleIssueKLA15 = LinearIssue(
 
 // MARK: - Tests
 
-@Test func importIssueSuccess() async {
+@Test func `import issue success`() async {
     let store = TestStore(
         initialState: MeisterFeature.State(
             columns: [
                 .init(id: todoColumn.id, name: todoColumn.name, type: todoColumn.type),
                 .init(id: inProgressColumn.id, name: inProgressColumn.name, type: inProgressColumn.type),
-                .init(id: doneColumn.id, name: doneColumn.name, type: doneColumn.type),
+                .init(id: doneColumn.id, name: doneColumn.name, type: doneColumn.type)
             ],
             importText: "KLA-12"
         )
@@ -84,13 +84,13 @@ private let sampleIssueKLA15 = LinearIssue(
     }
 }
 
-@Test func importIssueFromURL() async {
+@Test func `import issue from URL`() async {
     let store = TestStore(
         initialState: MeisterFeature.State(
             columns: [
                 .init(id: todoColumn.id, name: todoColumn.name, type: todoColumn.type),
                 .init(id: inProgressColumn.id, name: inProgressColumn.name, type: inProgressColumn.type),
-                .init(id: doneColumn.id, name: doneColumn.name, type: doneColumn.type),
+                .init(id: doneColumn.id, name: doneColumn.name, type: doneColumn.type)
             ],
             importText: "https://linear.app/selfishfish/issue/KLA-15/linear-api-integration"
         )
@@ -116,7 +116,7 @@ private let sampleIssueKLA15 = LinearIssue(
     }
 }
 
-@Test func moveIssueOptimisticSuccess() async {
+@Test func `move issue optimistic success`() async {
     var todoWithIssue = todoColumn
     todoWithIssue.issues = [sampleIssue]
 
@@ -142,7 +142,7 @@ private let sampleIssueKLA15 = LinearIssue(
             columns: [
                 todoWithIssue,
                 .init(id: inProgressColumn.id, name: inProgressColumn.name, type: inProgressColumn.type),
-                .init(id: doneColumn.id, name: doneColumn.name, type: doneColumn.type),
+                .init(id: doneColumn.id, name: doneColumn.name, type: doneColumn.type)
             ]
         )
     ) {
@@ -164,7 +164,7 @@ private let sampleIssueKLA15 = LinearIssue(
     await store.receive(\.statusUpdateSucceeded)
 }
 
-@Test func moveIssueRollbackOnFailure() async {
+@Test func `move issue rollback on failure`() async {
     var todoWithIssue = todoColumn
     todoWithIssue.issues = [sampleIssue]
 
@@ -190,7 +190,7 @@ private let sampleIssueKLA15 = LinearIssue(
             columns: [
                 todoWithIssue,
                 .init(id: inProgressColumn.id, name: inProgressColumn.name, type: inProgressColumn.type),
-                .init(id: doneColumn.id, name: doneColumn.name, type: doneColumn.type),
+                .init(id: doneColumn.id, name: doneColumn.name, type: doneColumn.type)
             ]
         )
     ) {
@@ -217,7 +217,7 @@ private let sampleIssueKLA15 = LinearIssue(
     }
 }
 
-@Test func removeIssue() async {
+@Test func `remove issue`() async {
     var todoWithIssue = todoColumn
     todoWithIssue.issues = [sampleIssue]
 
@@ -225,7 +225,7 @@ private let sampleIssueKLA15 = LinearIssue(
         initialState: MeisterFeature.State(
             columns: [
                 todoWithIssue,
-                .init(id: inProgressColumn.id, name: inProgressColumn.name, type: inProgressColumn.type),
+                .init(id: inProgressColumn.id, name: inProgressColumn.name, type: inProgressColumn.type)
             ]
         )
     ) {

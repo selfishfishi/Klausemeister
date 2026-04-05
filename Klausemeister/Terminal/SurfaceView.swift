@@ -411,4 +411,5 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
         }
     }
 }
+
 // swiftlint:enable type_body_length

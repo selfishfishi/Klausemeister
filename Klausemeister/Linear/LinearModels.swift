@@ -23,7 +23,7 @@ enum OAuthError: Error, Equatable {
     case networkError
 }
 
-struct LinearIssue: Equatable, Sendable, Codable {
+struct LinearIssue: Equatable, Codable {
     let id: String
     let identifier: String
     let title: String
@@ -40,7 +40,7 @@ struct LinearIssue: Equatable, Sendable, Codable {
     let updatedAt: String
 }
 
-struct LinearWorkflowState: Equatable, Sendable, Identifiable {
+struct LinearWorkflowState: Equatable, Identifiable {
     let id: String
     let name: String
     let type: String

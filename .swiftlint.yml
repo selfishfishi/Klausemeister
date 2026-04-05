@@ -25,6 +25,12 @@ opt_in_rules:
   - modifier_order
   - overridden_super_call
 
+identifier_name:
+  excluded:
+    - db  # GRDB database connection parameter (project-wide convention)
+    - id  # Identifiable protocol requirement
+    - t   # GRDB table definition parameter in migrations
+
 excluded:
   - .build
   - DerivedData
