@@ -3,6 +3,7 @@ import SwiftUI
 struct SwimlaneRowView: View {
     let worktree: Worktree
     let onDelete: () -> Void
+    var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
     var onDropToInbox: ((_ issueId: String) -> Void)?
     var onDropToProcessing: ((_ issueId: String) -> Void)?
@@ -58,6 +59,7 @@ struct SwimlaneRowView: View {
 
             SwimlaneProcessingZoneView(
                 issue: worktree.processing,
+                onMarkComplete: onMarkComplete,
                 onReturnToMeister: onReturnToMeister,
                 onDrop: onDropToProcessing
             )

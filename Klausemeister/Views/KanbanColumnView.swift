@@ -5,6 +5,7 @@ struct KanbanColumnView: View {
     let workflowStates: [LinearWorkflowState]
     let worktrees: [Worktree]
     let repositories: [Repository]
+    var assignedWorktreeNames: [String: String] = [:]
     let onMoveToStatus: (_ issueId: String, _ statusId: String) -> Void
     let onAssignToWorktree: (_ issue: LinearIssue, _ worktreeId: String) -> Void
     let onRemove: (_ issueId: String) -> Void
@@ -33,6 +34,7 @@ struct KanbanColumnView: View {
                             workflowStates: workflowStates,
                             worktrees: worktrees,
                             repositories: repositories,
+                            worktreeName: assignedWorktreeNames[issue.id],
                             onMoveToStatus: onMoveToStatus,
                             onAssignToWorktree: onAssignToWorktree,
                             onRemove: onRemove

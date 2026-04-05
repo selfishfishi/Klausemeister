@@ -74,6 +74,7 @@ struct WorktreeFeature {
         case worktreeDeleteFailed(worktree: Worktree)
         case worktreeSelected(String?)
         case issueAssignedToWorktree(worktreeId: String, issue: LinearIssue)
+        case markAsCompleteTapped(worktreeId: String)
         case issueReturnedToMeister(issueId: String, worktreeId: String)
         case issueMovedToProcessing(queueItemId: String, issueId: String, worktreeId: String)
         case issueMovedToOutbox(queueItemId: String, issueId: String, worktreeId: String)
@@ -362,6 +363,18 @@ struct WorktreeFeature {
                         }
                     }
                 )
+
+            case let .markAsCompleteTapped(worktreeId):
+                guard let worktree = state.worktrees[id: worktreeId],
+                      let processing = worktree.processing else { return .none }
+                let issueId = processing.id
+                return .run { send in
+                    if let queueItemId = try await worktreeClient.findQueueItemId(issueId, worktreeId) {
+                        await send(.issueMovedToOutbox(
+                            queueItemId: queueItemId, issueId: issueId, worktreeId: worktreeId
+                        ))
+                    }
+                }
 
             case let .issueMovedToProcessing(queueItemId, issueId, worktreeId):
                 var movedIssue: LinearIssue?
@@ -688,5 +701,17 @@ extension WorktreeFeature.State {
             worktrees[wtIndex].processing = nil
         }
         worktrees[wtIndex].outbox.removeAll { $0.id == issueId }
+    }
+
+    var assignedWorktreeNames: [String: String] {
+        Dictionary(
+            worktrees.flatMap { worktree in
+                let allIssueIds = worktree.inbox.map(\.id)
+                    + (worktree.processing.map { [$0.id] } ?? [])
+                    + worktree.outbox.map(\.id)
+                return allIssueIds.map { ($0, worktree.name) }
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 }

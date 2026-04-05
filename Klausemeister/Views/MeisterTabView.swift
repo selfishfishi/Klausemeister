@@ -10,7 +10,8 @@ struct MeisterTabView: View {
             MeisterView(
                 store: meisterStore,
                 worktrees: Array(worktreeStore.worktrees),
-                repositories: Array(worktreeStore.repositories)
+                repositories: Array(worktreeStore.repositories),
+                assignedWorktreeNames: worktreeStore.assignedWorktreeNames
             )
             .frame(minHeight: 200)
             WorktreeSwimlaneView(store: worktreeStore)
