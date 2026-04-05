@@ -5,18 +5,46 @@ struct TerminalContainerView: View {
     let store: StoreOf<AppFeature>
     let surfaceStore: SurfaceStore
 
+    @Environment(\.themeColors) private var themeColors
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
     var body: some View {
-        HStack(spacing: 0) {
-            if store.showSidebar {
-                SidebarView(store: store)
-                Divider()
-            }
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            SidebarView(store: store)
+                .navigationTitle("Tabs")
+                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
+        } detail: {
             TerminalContentView(
                 surfaceView: store.activeTabID.flatMap { surfaceStore.surface(for: $0) },
                 activeTabID: store.activeTabID
             )
+            .ignoresSafeArea()
         }
-        .ignoresSafeArea()
+        .navigationSplitViewStyle(.balanced)
+        .onChange(of: store.showSidebar) { _, show in
+            withAnimation {
+                columnVisibility = show ? .all : .detailOnly
+            }
+        }
+        .onChange(of: columnVisibility) { _, newVisibility in
+            let shouldShow = (newVisibility != .detailOnly)
+            if shouldShow != store.showSidebar {
+                store.send(.sidebarTogglePressed)
+            }
+        }
+        .toolbar(id: "main") {
+            ToolbarItem(id: "newTab", placement: .primaryAction) {
+                Button {
+                    store.send(.newTabButtonTapped)
+                } label: {
+                    Label("New Tab", systemImage: "plus")
+                }
+                .keyboardShortcut("t", modifiers: .command)
+            }
+        }
+        .toolbarRole(.automatic)
+        .scrollEdgeEffectStyle(.soft, for: .top)
+        .tint(themeColors.accentColor)
         .task { store.send(.onAppear) }
     }
 }

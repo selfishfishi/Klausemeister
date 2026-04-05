@@ -3,17 +3,9 @@ import SwiftUI
 
 struct SidebarView: View {
     let store: StoreOf<AppFeature>
+    @Environment(\.themeColors) private var themeColors
 
     var body: some View {
-        VStack(spacing: 0) {
-            tabList
-            Divider()
-            newTabButton
-        }
-        .frame(width: 220)
-    }
-
-    private var tabList: some View {
         List(selection: Binding(
             get: { store.activeTabID },
             set: { id in
@@ -30,18 +22,20 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
-    }
-
-    private var newTabButton: some View {
-        Button {
-            store.send(.newTabButtonTapped)
-        } label: {
-            Label("New Tab", systemImage: "plus")
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                store.send(.newTabButtonTapped)
+            } label: {
+                Label("New Tab", systemImage: "plus")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(.glass)
+            .tint(themeColors.accentColor)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
         }
-        .buttonStyle(.plain)
     }
 }
 
