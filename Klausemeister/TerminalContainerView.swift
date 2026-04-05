@@ -11,7 +11,6 @@ struct TerminalContainerView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(store: store)
-                .navigationTitle("Tabs")
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
             TerminalContentView(
@@ -32,18 +31,8 @@ struct TerminalContainerView: View {
                 store.send(.sidebarTogglePressed)
             }
         }
-        .toolbar(id: "main") {
-            ToolbarItem(id: "newTab", placement: .primaryAction) {
-                Button {
-                    store.send(.newTabButtonTapped)
-                } label: {
-                    Label("New Tab", systemImage: "plus")
-                }
-                .keyboardShortcut("t", modifiers: .command)
-            }
-        }
-        .toolbarRole(.automatic)
-        .scrollEdgeEffectStyle(.soft, for: .top)
+        .navigationTitle("")
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .tint(themeColors.accentColor)
         .task { store.send(.onAppear) }
     }

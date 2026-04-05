@@ -38,6 +38,11 @@ struct KlausemeisterApp: App {
         }
         .commands {
             CommandGroup(after: .newItem) {
+                Button("New Tab") {
+                    store.send(.newTabButtonTapped)
+                }
+                .keyboardShortcut("t", modifiers: .command)
+
                 Button("Close Tab") {
                     if let id = store.activeTabID {
                         store.send(.closeTabButtonTapped(id))
