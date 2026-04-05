@@ -18,7 +18,7 @@ struct TerminalContentView: NSViewRepresentable {
 
     func updateNSView(_ container: NSView, context: Context) {
         guard activeTabID != context.coordinator.currentTabID
-              || surfaceView !== context.coordinator.currentSurface else { return }
+            || surfaceView !== context.coordinator.currentSurface else { return }
         context.coordinator.currentTabID = activeTabID
         context.coordinator.currentSurface = surfaceView
 
@@ -41,7 +41,7 @@ struct TerminalContentView: NSViewRepresentable {
             surfaceView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             surfaceView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             surfaceView.topAnchor.constraint(equalTo: container.topAnchor),
-            surfaceView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            surfaceView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
         ])
     }
 

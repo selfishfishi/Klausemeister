@@ -2,7 +2,7 @@ import ComposableArchitecture
 import Testing
 @testable import Klausemeister
 
-@Test func loginFlowSuccess() async {
+@Test func `login flow success`() async {
     let testToken = TokenResponse(
         accessToken: "lin_oauth_test",
         refreshToken: "refresh_test",
@@ -29,7 +29,7 @@ import Testing
     }
 }
 
-@Test func loginFlowAuthFailure() async {
+@Test func `login flow auth failure`() async {
     let store = TestStore(initialState: LinearAuthFeature.State()) {
         LinearAuthFeature()
     } withDependencies: {
@@ -44,7 +44,7 @@ import Testing
     }
 }
 
-@Test func loginFlowMeFailure() async {
+@Test func `login flow me failure`() async {
     let testToken = TokenResponse(
         accessToken: "lin_oauth_test",
         refreshToken: "refresh_test",
@@ -70,9 +70,9 @@ import Testing
     }
 }
 
-@Test func existingTokenOnAppear() async {
+@Test func `existing token on appear`() async {
     let testUser = LinearUser(id: "user-1", name: "Ali", email: "ali@test.com")
-    let tokenData = "existing_token".data(using: .utf8)!
+    let tokenData = Data("existing_token".utf8)
 
     let store = TestStore(initialState: LinearAuthFeature.State()) {
         LinearAuthFeature()
@@ -93,7 +93,7 @@ import Testing
     }
 }
 
-@Test func logoutFlow() async {
+@Test func `logout flow`() async {
     let testUser = LinearUser(id: "user-1", name: "Ali", email: "ali@test.com")
 
     let store = TestStore(

@@ -2,7 +2,7 @@ import Dependencies
 import Foundation
 import Security
 
-struct KeychainClient: Sendable {
+struct KeychainClient {
     var save: @Sendable (_ service: String, _ account: String, _ data: Data) async throws -> Void
     var load: @Sendable (_ service: String, _ account: String) async throws -> Data?
     var delete: @Sendable (_ service: String, _ account: String) async throws -> Void
@@ -14,7 +14,7 @@ extension KeychainClient: DependencyKey {
             let deleteQuery: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service,
-                kSecAttrAccount as String: account,
+                kSecAttrAccount as String: account
             ]
             SecItemDelete(deleteQuery as CFDictionary)
 
@@ -22,7 +22,7 @@ extension KeychainClient: DependencyKey {
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service,
                 kSecAttrAccount as String: account,
-                kSecValueData as String: data,
+                kSecValueData as String: data
             ]
             let status = SecItemAdd(addQuery as CFDictionary, nil)
             guard status == errSecSuccess else {
@@ -35,7 +35,7 @@ extension KeychainClient: DependencyKey {
                 kSecAttrService as String: service,
                 kSecAttrAccount as String: account,
                 kSecReturnData as String: true,
-                kSecMatchLimit as String: kSecMatchLimitOne,
+                kSecMatchLimit as String: kSecMatchLimitOne
             ]
             var result: AnyObject?
             let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -49,7 +49,7 @@ extension KeychainClient: DependencyKey {
             let query: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service,
-                kSecAttrAccount as String: account,
+                kSecAttrAccount as String: account
             ]
             let status = SecItemDelete(query as CFDictionary)
             guard status == errSecSuccess || status == errSecItemNotFound else {

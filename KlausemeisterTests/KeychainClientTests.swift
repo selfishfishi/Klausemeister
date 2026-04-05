@@ -1,12 +1,12 @@
-import Testing
 import Foundation
+import Testing
 @testable import Klausemeister
 
-@Test func keychainSaveAndLoad() async throws {
+@Test func `keychain save and load`() async throws {
     let client = KeychainClient.liveValue
     let service = "test.klausemeister"
     let account = "test_token"
-    let data = "test-access-token".data(using: .utf8)!
+    let data = Data("test-access-token".utf8)
 
     // Clean up from any prior run
     try? await client.delete(service, account)

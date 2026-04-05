@@ -69,7 +69,7 @@ extension AppTheme {
 
 private func darkPalette(bg1: String) -> [String] {
     [
-        bg1,       // 0  black
+        bg1, // 0  black
         "#E67E80", // 1  red
         "#A7C080", // 2  green
         "#DBBC7F", // 3  yellow
@@ -84,13 +84,13 @@ private func darkPalette(bg1: String) -> [String] {
         "#7FBBB3", // 12 bright blue
         "#D699B6", // 13 bright magenta
         "#83C092", // 14 bright cyan
-        "#9DA9A0", // 15 bright white
+        "#9DA9A0" // 15 bright white
     ]
 }
 
 private func lightPalette(bg1: String) -> [String] {
     [
-        bg1,       // 0  black
+        bg1, // 0  black
         "#F85552", // 1  red
         "#8DA101", // 2  green
         "#DFA000", // 3  yellow
@@ -105,15 +105,17 @@ private func lightPalette(bg1: String) -> [String] {
         "#3A94C5", // 12 bright blue
         "#DF69BA", // 13 bright magenta
         "#35A77C", // 14 bright cyan
-        "#829181", // 15 bright white
+        "#829181" // 15 bright white
     ]
 }
 
 extension Color {
     init(hex: UInt32) {
+        // swiftlint:disable identifier_name
         let r = Double((hex >> 16) & 0xFF) / 255.0
         let g = Double((hex >> 8) & 0xFF) / 255.0
         let b = Double(hex & 0xFF) / 255.0
+        // swiftlint:enable identifier_name
         self.init(red: r, green: g, blue: b)
     }
 

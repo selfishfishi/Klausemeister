@@ -1,13 +1,13 @@
 import Foundation
 
-struct TokenResponse: Equatable, Sendable {
+struct TokenResponse: Equatable {
     let accessToken: String
     let refreshToken: String
     let expiresIn: Int
     let scope: String
 }
 
-struct LinearUser: Equatable, Sendable {
+struct LinearUser: Equatable {
     let id: String
     let name: String
     let email: String

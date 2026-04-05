@@ -2,11 +2,11 @@ import AppKit
 import GhosttyKit
 import QuartzCore
 
+// swiftlint:disable type_body_length
 /// NSView that hosts a ghostty terminal surface with proper keyboard handling.
 /// Follows the Calyx/Ghostty pattern: CAMetalLayer backing, raw keycode input,
 /// interpretKeyEvents for IME, and explicit first responder management.
 final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
-
     private(set) var surface: ghostty_surface_t?
     private var focused = false
     private var markedText = NSMutableAttributedString()
@@ -17,20 +17,23 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
     // MARK: - Initialization
 
     override init(frame: NSRect) {
+        // swiftlint:disable:next identifier_name
         let ml = CAMetalLayer()
         ml.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
         ml.pixelFormat = .bgra8Unorm
         ml.framebufferOnly = true
         ml.isOpaque = true
         ml.displaySyncEnabled = true
-        self.metalLayer = ml
+        metalLayer = ml
         super.init(frame: frame)
         wantsLayer = true
         layer = ml
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
+    required init?(coder _: NSCoder) {
+        fatalError()
+    }
 
     func initializeSurface(app: ghostty_app_t, workingDirectory: String? = nil) {
         var config = ghostty_surface_config_new()
@@ -42,13 +45,14 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
         config.backend = GHOSTTY_SURFACE_IO_BACKEND_EXEC
         config.scale_factor = Double(metalLayer.contentsScale)
 
+        // swiftlint:disable:next identifier_name
         if let wd = workingDirectory {
             wd.withCString { ptr in
                 config.working_directory = ptr
                 self.surface = ghostty_surface_new(app, &config)
             }
         } else {
-            self.surface = ghostty_surface_new(app, &config)
+            surface = ghostty_surface_new(app, &config)
         }
 
         guard surface != nil else { return }
@@ -68,7 +72,9 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
 
     // MARK: - View Lifecycle
 
-    override var acceptsFirstResponder: Bool { true }
+    override var acceptsFirstResponder: Bool {
+        true
+    }
 
     override func becomeFirstResponder() -> Bool {
         let result = super.becomeFirstResponder()
@@ -82,6 +88,7 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
         return result
     }
 
+    // swiftlint:disable:next unneeded_override
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
     }
@@ -130,7 +137,8 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
         // Build translation event with adjusted modifiers
         let translationEvent: NSEvent
         if translationFlags == event.modifierFlags.intersection(
-            [.shift, .control, .option, .command, .capsLock, .numericPad]) {
+            [.shift, .control, .option, .command, .capsLock, .numericPad]
+        ) {
             translationEvent = event
         } else {
             var adjustedFlags = event.modifierFlags
@@ -167,7 +175,7 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
         interpretKeyEvents([translationEvent])
 
         // Sync preedit state
-        if markedText.length == 0 && hadMarkedText {
+        if markedText.length == 0, hadMarkedText {
             var key = ghostty_input_key_s()
             key.action = action
             key.composing = true
@@ -201,11 +209,11 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
         let mods = KeyMapping.translateModifiers(event.modifierFlags)
         let keyMod: UInt32
         switch event.keyCode {
-        case 0x39:        keyMod = GHOSTTY_MODS_CAPS.rawValue      // CapsLock
-        case 0x38, 0x3C:  keyMod = GHOSTTY_MODS_SHIFT.rawValue     // Shift L/R
-        case 0x3B, 0x3E:  keyMod = GHOSTTY_MODS_CTRL.rawValue      // Control L/R
-        case 0x3A, 0x3D:  keyMod = GHOSTTY_MODS_ALT.rawValue       // Option L/R
-        case 0x37, 0x36:  keyMod = GHOSTTY_MODS_SUPER.rawValue     // Command L/R
+        case 0x39: keyMod = GHOSTTY_MODS_CAPS.rawValue // CapsLock
+        case 0x38, 0x3C: keyMod = GHOSTTY_MODS_SHIFT.rawValue // Shift L/R
+        case 0x3B, 0x3E: keyMod = GHOSTTY_MODS_CTRL.rawValue // Control L/R
+        case 0x3A, 0x3D: keyMod = GHOSTTY_MODS_ALT.rawValue // Option L/R
+        case 0x37, 0x36: keyMod = GHOSTTY_MODS_SUPER.rawValue // Command L/R
         default: return
         }
 
@@ -316,8 +324,9 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
 
     // MARK: - NSTextInputClient
 
-    func insertText(_ string: Any, replacementRange: NSRange) {
+    func insertText(_ string: Any, replacementRange _: NSRange) {
         let str: String
+        // swiftlint:disable identifier_name
         if let s = string as? String {
             str = s
         } else if let s = string as? NSAttributedString {
@@ -325,6 +334,7 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
         } else {
             return
         }
+        // swiftlint:enable identifier_name
         markedText = NSMutableAttributedString()
         if keyTextAccumulator != nil {
             keyTextAccumulator?.append(str)
@@ -338,19 +348,24 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
         }
     }
 
-    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+    func setMarkedText(_ string: Any, selectedRange _: NSRange, replacementRange _: NSRange) {
+        // swiftlint:disable identifier_name
         if let s = string as? NSAttributedString {
             markedText = NSMutableAttributedString(attributedString: s)
         } else if let s = string as? String {
             markedText = NSMutableAttributedString(string: s)
         }
+        // swiftlint:enable identifier_name
     }
 
     func unmarkText() {
         markedText = NSMutableAttributedString()
     }
 
-    func selectedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }
+    func selectedRange() -> NSRange {
+        NSRange(location: NSNotFound, length: 0)
+    }
+
     func markedRange() -> NSRange {
         if markedText.length > 0 {
             return NSRange(location: 0, length: markedText.length)
@@ -358,29 +373,35 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
         return NSRange(location: NSNotFound, length: 0)
     }
 
-    func hasMarkedText() -> Bool { markedText.length > 0 }
+    func hasMarkedText() -> Bool {
+        markedText.length > 0
+    }
 
-    func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
+    func attributedSubstring(forProposedRange _: NSRange, actualRange _: NSRangePointer?) -> NSAttributedString? {
         nil
     }
 
-    func validAttributedString(for proposedString: NSAttributedString, range: NSRange) -> NSAttributedString? {
+    func validAttributedString(for proposedString: NSAttributedString, range _: NSRange) -> NSAttributedString? {
         proposedString
     }
 
-    func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+    func firstRect(forCharacterRange _: NSRange, actualRange _: NSRangePointer?) -> NSRect {
         guard let window else { return .zero }
         let viewRect = NSRect(x: 0, y: bounds.height - 20, width: 200, height: 20)
         let windowRect = convert(viewRect, to: nil)
         return window.convertToScreen(windowRect)
     }
 
-    func characterIndex(for point: NSPoint) -> Int { 0 }
+    func characterIndex(for _: NSPoint) -> Int {
+        0
+    }
 
-    func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] {
+        []
+    }
 
-    // Silence NSBeep for unhandled key commands
-    override func doCommand(by selector: Selector) {}
+    /// Silence NSBeep for unhandled key commands
+    override func doCommand(by _: Selector) {}
 
     // MARK: - Cleanup
 
@@ -390,3 +411,4 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
         }
     }
 }
+// swiftlint:enable type_body_length

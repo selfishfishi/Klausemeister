@@ -1,7 +1,7 @@
 import Dependencies
 import Foundation
 
-struct SurfaceManager: Sendable {
+struct SurfaceManager {
     var createSurface: @Sendable @MainActor (UUID) -> Bool
     var destroySurface: @Sendable @MainActor (UUID) -> Void
     var focus: @Sendable @MainActor (UUID) async -> Bool

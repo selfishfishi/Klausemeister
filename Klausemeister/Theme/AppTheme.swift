@@ -4,7 +4,9 @@ enum AppTheme: String, CaseIterable, Codable, Identifiable {
     case darkHard, darkMedium, darkSoft
     case lightHard, lightMedium, lightSoft
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var displayName: String {
         switch self {
@@ -35,13 +37,6 @@ struct ThemeColors {
     let selectionFg: String
 }
 
-struct ThemeColorsKey: EnvironmentKey {
-    static let defaultValue: ThemeColors = AppTheme.darkMedium.colors
-}
-
 extension EnvironmentValues {
-    var themeColors: ThemeColors {
-        get { self[ThemeColorsKey.self] }
-        set { self[ThemeColorsKey.self] = newValue }
-    }
+    @Entry var themeColors: ThemeColors = AppTheme.darkMedium.colors
 }

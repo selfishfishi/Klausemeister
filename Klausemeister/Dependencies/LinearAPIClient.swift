@@ -1,7 +1,8 @@
 import Dependencies
 import Foundation
 
-struct LinearAPIClient: Sendable {
+struct LinearAPIClient {
+    // swiftlint:disable:next identifier_name
     var me: @Sendable () async throws -> LinearUser
 }
 
@@ -41,14 +42,18 @@ extension LinearAPIClient: DependencyKey {
                 }
 
                 struct GraphQLResponse: Decodable {
+                    // swiftlint:disable:next nesting
                     struct Data: Decodable {
+                        // swiftlint:disable:next nesting
                         struct Viewer: Decodable {
                             let id: String
                             let name: String
                             let email: String
                         }
+
                         let viewer: Viewer
                     }
+
                     let data: Data
                 }
                 let graphQLResponse = try JSONDecoder().decode(GraphQLResponse.self, from: data)
