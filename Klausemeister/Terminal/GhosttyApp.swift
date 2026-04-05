@@ -1,7 +1,6 @@
 import AppKit
 import GhosttyKit
 
-/// Manages the ghostty application lifecycle. One instance per app.
 @MainActor
 final class GhosttyApp {
     static let shared = GhosttyApp()
@@ -11,12 +10,40 @@ final class GhosttyApp {
 
     private init() {
         ghostty_init(0, nil)
+        setup(theme: nil)
+    }
 
+    func rebuild(theme: AppTheme) {
+        if let app { ghostty_app_free(app) }
+        if let config { ghostty_config_free(config) }
+        self.app = nil
+        self.config = nil
+        setup(theme: theme)
+    }
+
+    func tick() {
+        guard let app else { return }
+        ghostty_app_tick(app)
+    }
+
+    private func setup(theme: AppTheme?) {
         let cfg = ghostty_config_new()!
         ghostty_config_load_default_files(cfg)
+
+        if let theme, let path = Self.writeThemeConfig(theme) {
+            path.withCString { ptr in
+                ghostty_config_load_file(cfg, ptr)
+            }
+        }
+
         ghostty_config_finalize(cfg)
         self.config = cfg
 
+        var runtime = makeRuntimeConfig()
+        self.app = ghostty_app_new(&runtime, cfg)
+    }
+
+    private func makeRuntimeConfig() -> ghostty_runtime_config_s {
         var runtime = ghostty_runtime_config_s()
         runtime.userdata = Unmanaged.passUnretained(self).toOpaque()
         runtime.supports_selection_clipboard = false
@@ -30,8 +57,6 @@ final class GhosttyApp {
         }
         runtime.action_cb = { _, _, _ in false }
 
-        // read_clipboard_cb: (userdata, clipboard_type, state) -> bool
-        // userdata here is the surface's userdata (SurfaceView), not the app's.
         runtime.read_clipboard_cb = { ud, clipboard, state in
             guard let ud else { return false }
             let view = Unmanaged<SurfaceView>.fromOpaque(ud).takeUnretainedValue()
@@ -43,8 +68,6 @@ final class GhosttyApp {
             return true
         }
 
-        // confirm_read_clipboard_cb: (userdata, content, state, request_type)
-        // userdata here is the surface's userdata (SurfaceView), not the app's.
         runtime.confirm_read_clipboard_cb = { ud, content, state, request in
             guard let ud else { return }
             let view = Unmanaged<SurfaceView>.fromOpaque(ud).takeUnretainedValue()
@@ -52,7 +75,6 @@ final class GhosttyApp {
             ghostty_surface_complete_clipboard_request(surface, content, state, true)
         }
 
-        // write_clipboard_cb: (userdata, clipboard_type, contents, count, confirm)
         runtime.write_clipboard_cb = { ud, clipboard, contents, contentsLen, confirm in
             guard contentsLen > 0, let first = contents else { return }
             if let data = first.pointee.data {
@@ -64,11 +86,36 @@ final class GhosttyApp {
 
         runtime.close_surface_cb = { ud, processAlive in }
 
-        self.app = ghostty_app_new(&runtime, cfg)
+        return runtime
     }
 
-    func tick() {
-        guard let app else { return }
-        ghostty_app_tick(app)
+    private static func writeThemeConfig(_ theme: AppTheme) -> String? {
+        let colors = theme.colors
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!.appendingPathComponent("Klausemeister", isDirectory: true)
+
+        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+
+        let configURL = appSupport.appendingPathComponent("theme.conf")
+
+        var lines: [String] = []
+        lines.append("background = \(colors.background.dropFirst())")
+        lines.append("foreground = \(colors.foreground.dropFirst())")
+        lines.append("cursor-color = \(colors.cursorColor.dropFirst())")
+        lines.append("selection-background = \(colors.selectionBg.dropFirst())")
+        lines.append("selection-foreground = \(colors.selectionFg.dropFirst())")
+        for (i, hex) in colors.palette.enumerated() {
+            lines.append("palette = \(i)=\(hex.dropFirst())")
+        }
+
+        let content = lines.joined(separator: "\n") + "\n"
+        do {
+            try content.write(to: configURL, atomically: true, encoding: .utf8)
+            return configURL.path
+        } catch {
+            return nil
+        }
     }
 }
