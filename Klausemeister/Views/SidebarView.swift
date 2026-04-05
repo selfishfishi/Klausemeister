@@ -1,7 +1,8 @@
+import ComposableArchitecture
 import SwiftUI
 
 struct SidebarView: View {
-    let windowState: WindowState
+    let store: StoreOf<AppFeature>
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,16 +15,16 @@ struct SidebarView: View {
 
     private var tabList: some View {
         List(selection: Binding(
-            get: { windowState.activeTabID },
+            get: { store.activeTabID },
             set: { id in
-                if let id { windowState.switchTab(id: id) }
+                if let id { store.send(.tabSelected(id)) }
             }
         )) {
-            ForEach(windowState.tabs) { tab in
+            ForEach(store.tabs) { tab in
                 SidebarTabRow(
                     title: tab.title,
-                    isActive: tab.id == windowState.activeTabID,
-                    onClose: { windowState.closeTab(id: tab.id) }
+                    isActive: tab.id == store.activeTabID,
+                    onClose: { store.send(.closeTabButtonTapped(tab.id)) }
                 )
                 .tag(tab.id)
             }
@@ -33,7 +34,7 @@ struct SidebarView: View {
 
     private var newTabButton: some View {
         Button {
-            windowState.createTab()
+            store.send(.newTabButtonTapped)
         } label: {
             Label("New Tab", systemImage: "plus")
                 .frame(maxWidth: .infinity, alignment: .leading)

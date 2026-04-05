@@ -31,7 +31,7 @@ struct AppFeature {
     @Dependency(\.surfaceManager) var surfaceManager
     @Dependency(\.uuid) var uuid
 
-    var body: some ReducerOf<Self> {
+    var body: some Reducer<State, Action> {
         Reduce { state, action in
             switch action {
             case .onAppear:

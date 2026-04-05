@@ -1,24 +1,39 @@
+import ComposableArchitecture
 import SwiftUI
 
 @main
 struct KlausemeisterApp: App {
-    @State private var windowState = WindowState()
+    let surfaceStore: SurfaceStore
+    let store: StoreOf<AppFeature>
+
+    init() {
+        let surfaceStore = SurfaceStore()
+        self.surfaceStore = surfaceStore
+        self.store = Store(initialState: AppFeature.State()) {
+            AppFeature()
+        } withDependencies: {
+            $0.surfaceManager = .live(
+                surfaceStore: surfaceStore,
+                ghosttyApp: $0.ghosttyApp
+            )
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
-            TerminalContainerView(windowState: windowState)
+            TerminalContainerView(store: store, surfaceStore: surfaceStore)
         }
         .defaultSize(width: 900, height: 600)
         .commands {
             CommandGroup(after: .newItem) {
                 Button("New Tab") {
-                    windowState.createTab()
+                    store.send(.newTabButtonTapped)
                 }
                 .keyboardShortcut("t", modifiers: .command)
 
                 Button("Close Tab") {
-                    if let id = windowState.activeTabID {
-                        windowState.closeTab(id: id)
+                    if let id = store.activeTabID {
+                        store.send(.closeTabButtonTapped(id))
                     }
                 }
                 .keyboardShortcut("w", modifiers: .command)
@@ -26,19 +41,19 @@ struct KlausemeisterApp: App {
                 Divider()
 
                 Button("Show Previous Tab") {
-                    windowState.selectPreviousTab()
+                    store.send(.previousTabShortcutPressed)
                 }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
 
                 Button("Show Next Tab") {
-                    windowState.selectNextTab()
+                    store.send(.nextTabShortcutPressed)
                 }
                 .keyboardShortcut("]", modifiers: [.command, .shift])
 
                 Divider()
 
                 Button("Toggle Sidebar") {
-                    windowState.showSidebar.toggle()
+                    store.send(.sidebarTogglePressed)
                 }
                 .keyboardShortcut("\\", modifiers: .command)
             }
@@ -46,7 +61,7 @@ struct KlausemeisterApp: App {
             CommandMenu("Tabs") {
                 ForEach(1...9, id: \.self) { i in
                     Button("Tab \(i)") {
-                        windowState.selectTab(at: i)
+                        store.send(.tabShortcutPressed(position: i))
                     }
                     .keyboardShortcut(KeyEquivalent(Character(String(i))), modifiers: .command)
                 }
