@@ -37,4 +37,18 @@ final class SurfaceStore {
               let surface = view.surface else { return }
         ghostty_surface_set_focus(surface, false)
     }
+
+    func destroyAll() {
+        surfaces.removeAll()
+    }
+
+    func recreateAll(ids: [UUID], app: ghostty_app_t) {
+        for id in ids {
+            let view = SurfaceView(frame: .zero)
+            view.initializeSurface(app: app, workingDirectory: NSHomeDirectory())
+            if view.surface != nil {
+                surfaces[id] = view
+            }
+        }
+    }
 }

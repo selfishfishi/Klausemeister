@@ -6,6 +6,7 @@ struct SurfaceManager: Sendable {
     var destroySurface: @Sendable @MainActor (UUID) -> Void
     var focus: @Sendable @MainActor (UUID) async -> Bool
     var unfocus: @Sendable @MainActor (UUID) -> Void
+    var recreateAllSurfaces: @Sendable @MainActor ([UUID]) -> Void
 }
 
 extension SurfaceManager {
@@ -23,6 +24,11 @@ extension SurfaceManager {
             },
             unfocus: { id in
                 surfaceStore.unfocus(id)
+            },
+            recreateAllSurfaces: { ids in
+                surfaceStore.destroyAll()
+                guard let app = ghosttyApp.app() else { return }
+                surfaceStore.recreateAll(ids: ids, app: app)
             }
         )
     }
@@ -33,13 +39,15 @@ extension SurfaceManager: DependencyKey {
         createSurface: { _ in false },
         destroySurface: { _ in },
         focus: { _ in false },
-        unfocus: { _ in }
+        unfocus: { _ in },
+        recreateAllSurfaces: { _ in }
     )
     nonisolated static let testValue = SurfaceManager(
         createSurface: { _ in true },
         destroySurface: { _ in },
         focus: { _ in true },
-        unfocus: { _ in }
+        unfocus: { _ in },
+        recreateAllSurfaces: { _ in }
     )
 }
 
