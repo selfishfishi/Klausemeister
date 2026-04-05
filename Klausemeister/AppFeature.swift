@@ -26,9 +26,11 @@ struct AppFeature {
         case sidebarTogglePressed
         case surfaceCreated(id: UUID)
         case surfaceCreationFailed(id: UUID)
+        case themeChanged(AppTheme)
     }
 
     @Dependency(\.surfaceManager) var surfaceManager
+    @Dependency(\.ghosttyApp) var ghosttyApp
     @Dependency(\.uuid) var uuid
 
     var body: some Reducer<State, Action> {
@@ -121,6 +123,19 @@ struct AppFeature {
             case .sidebarTogglePressed:
                 state.showSidebar.toggle()
                 return .none
+
+            case let .themeChanged(theme):
+                let tabIDs = state.tabs.map(\.id)
+                let activeID = state.activeTabID
+                return .run { _ in
+                    await MainActor.run {
+                        ghosttyApp.rebuild(theme)
+                        surfaceManager.recreateAllSurfaces(tabIDs)
+                    }
+                    if let activeID {
+                        _ = await surfaceManager.focus(activeID)
+                    }
+                }
             }
         }
     }
