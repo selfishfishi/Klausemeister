@@ -11,11 +11,12 @@
 		A869F53B2F817984005797B3 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = A8GHOST022F816B35005797B3 /* GhosttyTerminal */; };
 		A8CP00022F816B35005797B3 /* CasePathsCore in Frameworks */ = {isa = PBXBuildFile; productRef = A8CP00012F816B35005797B3 /* CasePathsCore */; };
 		A8DP00022F816B35005797B3 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = A8DP00012F816B35005797B3 /* Dependencies */; };
+		A8GR00022F816B35005797B3 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A8GR00012F816B35005797B3 /* GRDB */; };
 		A8ID00022F816B35005797B3 /* IdentifiedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = A8ID00012F816B35005797B3 /* IdentifiedCollections */; };
 		A8PC00022F816B35005797B3 /* PerceptionCore in Frameworks */ = {isa = PBXBuildFile; productRef = A8PC00012F816B35005797B3 /* PerceptionCore */; };
-		A8GR00022F816B35005797B3 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A8GR00012F816B35005797B3 /* GRDB */; };
 		A8TCA0022F816B35005797B3 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = A8TCA0012F816B35005797B3 /* ComposableArchitecture */; };
 		A8TE000B2F816B35005797B3 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE000C2F816B35005797B3 /* ComposableArchitecture */; };
+		A8TE000E2F816B35005797B3 /* IdentifiedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE000D2F816B35005797B3 /* IdentifiedCollections */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -67,6 +68,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A8TE000B2F816B35005797B3 /* ComposableArchitecture in Frameworks */,
+				A8TE000E2F816B35005797B3 /* IdentifiedCollections in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -143,6 +145,7 @@
 			name = KlausemeisterTests;
 			packageProductDependencies = (
 				A8TE000C2F816B35005797B3 /* ComposableArchitecture */,
+				A8TE000D2F816B35005797B3 /* IdentifiedCollections */,
 			);
 			productName = KlausemeisterTests;
 			productReference = A8TE00012F816B35005797B3 /* KlausemeisterTests.xctest */;
@@ -502,20 +505,20 @@
 				minimumVersion = 1.0.0;
 			};
 		};
-		A8TCA0002F816B35005797B3 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/pointfreeco/swift-composable-architecture.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.17.0;
-			};
-		};
 		A8GR00002F816B35005797B3 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/groue/GRDB.swift.git";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 7.0.0;
+			};
+		};
+		A8TCA0002F816B35005797B3 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-composable-architecture.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.17.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -539,6 +542,11 @@
 			package = A8GHOST002F816B35005797B3 /* XCRemoteSwiftPackageReference "libghostty-spm" */;
 			productName = GhosttyTerminal;
 		};
+		A8GR00012F816B35005797B3 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A8GR00002F816B35005797B3 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
 		A8ID00012F816B35005797B3 /* IdentifiedCollections */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = IdentifiedCollections;
@@ -557,10 +565,9 @@
 			package = A8TCA0002F816B35005797B3 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
 			productName = ComposableArchitecture;
 		};
-		A8GR00012F816B35005797B3 /* GRDB */ = {
+		A8TE000D2F816B35005797B3 /* IdentifiedCollections */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A8GR00002F816B35005797B3 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
-			productName = GRDB;
+			productName = IdentifiedCollections;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
