@@ -12,12 +12,15 @@ struct TerminalContentView: NSViewRepresentable {
             embed(surfaceView, in: container)
         }
         context.coordinator.currentTabID = activeTabID
+        context.coordinator.currentSurface = surfaceView
         return container
     }
 
     func updateNSView(_ container: NSView, context: Context) {
-        guard activeTabID != context.coordinator.currentTabID else { return }
+        guard activeTabID != context.coordinator.currentTabID
+              || surfaceView !== context.coordinator.currentSurface else { return }
         context.coordinator.currentTabID = activeTabID
+        context.coordinator.currentSurface = surfaceView
 
         for subview in container.subviews {
             subview.removeFromSuperview()
@@ -44,5 +47,6 @@ struct TerminalContentView: NSViewRepresentable {
 
     final class Coordinator {
         var currentTabID: UUID?
+        weak var currentSurface: SurfaceView?
     }
 }
