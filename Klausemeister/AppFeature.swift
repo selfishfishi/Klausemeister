@@ -51,7 +51,7 @@ struct AppFeature {
                 state.tabs.append(State.Tab(id: id))
                 state.activeTabID = id
                 return .run { [id] send in
-                    let success = surfaceManager.createSurface(id)
+                    let success = await surfaceManager.createSurface(id)
                     if success {
                         await send(.surfaceCreated(id: id))
                     } else {
@@ -78,7 +78,7 @@ struct AppFeature {
 
                 if state.tabs.isEmpty {
                     return .merge(
-                        .run { _ in surfaceManager.destroySurface(id) },
+                        .run { _ in await surfaceManager.destroySurface(id) },
                         .send(.newTabButtonTapped)
                     )
                 }
@@ -88,13 +88,13 @@ struct AppFeature {
                     let newID = state.tabs[newIndex].id
                     state.activeTabID = newID
                     return .run { [id, newID] _ in
-                        surfaceManager.destroySurface(id)
+                        await surfaceManager.destroySurface(id)
                         _ = await surfaceManager.focus(newID)
                     }
                 }
 
                 return .run { _ in
-                    surfaceManager.destroySurface(id)
+                    await surfaceManager.destroySurface(id)
                 }
 
             case let .tabSelected(id):
@@ -103,7 +103,7 @@ struct AppFeature {
                 let oldID = state.activeTabID
                 state.activeTabID = id
                 return .run { [oldID] _ in
-                    if let oldID { surfaceManager.unfocus(oldID) }
+                    if let oldID { await surfaceManager.unfocus(oldID) }
                     _ = await surfaceManager.focus(id)
                 }
 

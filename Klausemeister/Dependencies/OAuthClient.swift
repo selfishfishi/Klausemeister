@@ -42,7 +42,7 @@ extension OAuthClient: DependencyKey {
                 ]
 
                 // 4. Open in browser
-                await NSWorkspace.shared.open(components.url!)
+                NSWorkspace.shared.open(components.url!)
 
                 // 5. Wait for callback URL
                 guard let callbackURL = await callbackStream.first(where: { _ in true }) else {
