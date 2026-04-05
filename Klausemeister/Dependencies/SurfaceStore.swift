@@ -23,7 +23,7 @@ final class SurfaceStore {
 
     func focus(_ id: UUID) async -> Bool {
         guard let view = surfaces[id] else { return false }
-        for _ in 0..<50 {
+        for _ in 0 ..< 50 {
             if let window = view.window, window.makeFirstResponder(view) {
                 return true
             }

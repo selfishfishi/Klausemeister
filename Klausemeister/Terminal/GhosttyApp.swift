@@ -16,8 +16,8 @@ final class GhosttyApp {
     func rebuild(theme: AppTheme) {
         if let app { ghostty_app_free(app) }
         if let config { ghostty_config_free(config) }
-        self.app = nil
-        self.config = nil
+        app = nil
+        config = nil
         setup(theme: theme)
     }
 
@@ -37,12 +37,13 @@ final class GhosttyApp {
         }
 
         ghostty_config_finalize(cfg)
-        self.config = cfg
+        config = cfg
 
         var runtime = makeRuntimeConfig()
-        self.app = ghostty_app_new(&runtime, cfg)
+        app = ghostty_app_new(&runtime, cfg)
     }
 
+    // swiftlint:disable identifier_name
     private func makeRuntimeConfig() -> ghostty_runtime_config_s {
         var runtime = ghostty_runtime_config_s()
         runtime.userdata = Unmanaged.passUnretained(self).toOpaque()
@@ -57,7 +58,7 @@ final class GhosttyApp {
         }
         runtime.action_cb = { _, _, _ in false }
 
-        runtime.read_clipboard_cb = { ud, clipboard, state in
+        runtime.read_clipboard_cb = { ud, _, state in
             guard let ud else { return false }
             let view = Unmanaged<SurfaceView>.fromOpaque(ud).takeUnretainedValue()
             guard let surface = view.surface else { return false }
@@ -68,14 +69,14 @@ final class GhosttyApp {
             return true
         }
 
-        runtime.confirm_read_clipboard_cb = { ud, content, state, request in
+        runtime.confirm_read_clipboard_cb = { ud, content, state, _ in
             guard let ud else { return }
             let view = Unmanaged<SurfaceView>.fromOpaque(ud).takeUnretainedValue()
             guard let surface = view.surface else { return }
             ghostty_surface_complete_clipboard_request(surface, content, state, true)
         }
 
-        runtime.write_clipboard_cb = { ud, clipboard, contents, contentsLen, confirm in
+        runtime.write_clipboard_cb = { _, _, contents, contentsLen, _ in
             guard contentsLen > 0, let first = contents else { return }
             if let data = first.pointee.data {
                 let s = String(cString: data)
@@ -84,10 +85,12 @@ final class GhosttyApp {
             }
         }
 
-        runtime.close_surface_cb = { ud, processAlive in }
+        runtime.close_surface_cb = { _, _ in }
 
         return runtime
     }
+
+    // swiftlint:enable identifier_name
 
     private static func writeThemeConfig(_ theme: AppTheme) -> String? {
         let colors = theme.colors
@@ -106,6 +109,7 @@ final class GhosttyApp {
         lines.append("cursor-color = \(colors.cursorColor.dropFirst())")
         lines.append("selection-background = \(colors.selectionBg.dropFirst())")
         lines.append("selection-foreground = \(colors.selectionFg.dropFirst())")
+        // swiftlint:disable:next identifier_name
         for (i, hex) in colors.palette.enumerated() {
             lines.append("palette = \(i)=\(hex.dropFirst())")
         }

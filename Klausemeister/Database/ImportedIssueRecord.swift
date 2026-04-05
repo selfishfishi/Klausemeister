@@ -2,7 +2,7 @@
 import Foundation
 import GRDB
 
-struct ImportedIssueRecord: Codable, Sendable, Equatable, FetchableRecord, PersistableRecord {
+struct ImportedIssueRecord: Codable, Equatable, FetchableRecord, PersistableRecord {
     nonisolated static let databaseTableName = "imported_issues"
 
     var linearId: String

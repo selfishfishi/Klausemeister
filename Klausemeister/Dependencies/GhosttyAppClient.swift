@@ -1,7 +1,7 @@
 import Dependencies
 import GhosttyKit
 
-struct GhosttyAppClient: Sendable {
+struct GhosttyAppClient {
     var app: @Sendable @MainActor () -> ghostty_app_t?
     var tick: @Sendable @MainActor () -> Void
     var rebuild: @Sendable @MainActor (AppTheme) -> Void
@@ -15,7 +15,7 @@ extension GhosttyAppClient: DependencyKey {
     )
     nonisolated static let testValue = GhosttyAppClient(
         app: { nil },
-        tick: { },
+        tick: {},
         rebuild: { _ in }
     )
 }

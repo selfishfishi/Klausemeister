@@ -3,7 +3,7 @@ import CryptoKit
 import Dependencies
 import Foundation
 
-struct OAuthClient: Sendable {
+struct OAuthClient {
     var authorize: @Sendable () async throws -> TokenResponse
     var refresh: @Sendable (_ refreshToken: String) async throws -> TokenResponse
     var revoke: @Sendable (_ accessToken: String) async throws -> Void
@@ -38,7 +38,7 @@ extension OAuthClient: DependencyKey {
                     URLQueryItem(name: "scope", value: LinearConfig.scopes),
                     URLQueryItem(name: "state", value: state),
                     URLQueryItem(name: "code_challenge", value: codeChallenge),
-                    URLQueryItem(name: "code_challenge_method", value: "S256"),
+                    URLQueryItem(name: "code_challenge_method", value: "S256")
                 ]
 
                 // 4. Open in browser
@@ -52,7 +52,8 @@ extension OAuthClient: DependencyKey {
                 // 6. Validate state and extract code
                 guard let callbackComponents = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
                       let returnedState = callbackComponents.queryItems?.first(where: { $0.name == "state" })?.value,
-                      returnedState == state else {
+                      returnedState == state
+                else {
                     throw OAuthError.stateMismatch
                 }
                 guard let code = callbackComponents.queryItems?.first(where: { $0.name == "code" })?.value else {
@@ -70,13 +71,14 @@ extension OAuthClient: DependencyKey {
                 let body = [
                     "grant_type=refresh_token",
                     "client_id=\(LinearConfig.clientID)",
-                    "refresh_token=\(refreshToken)",
+                    "refresh_token=\(refreshToken)"
                 ].joined(separator: "&")
-                request.httpBody = body.data(using: .utf8)
+                request.httpBody = Data(body.utf8)
 
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let httpResponse = response as? HTTPURLResponse,
-                      httpResponse.statusCode == 200 else {
+                      httpResponse.statusCode == 200
+                else {
                     let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
                     throw OAuthError.refreshFailed(statusCode)
                 }
@@ -86,7 +88,7 @@ extension OAuthClient: DependencyKey {
                 var request = URLRequest(url: LinearConfig.revokeURL)
                 request.httpMethod = "POST"
                 request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-                request.httpBody = "access_token=\(accessToken)".data(using: .utf8)
+                request.httpBody = Data("access_token=\(accessToken)".utf8)
                 _ = try await URLSession.shared.data(for: request)
             },
             handleCallback: { url in
@@ -105,7 +107,7 @@ extension OAuthClient: DependencyKey {
 
 // MARK: - Token Exchange
 
-private nonisolated func exchangeCode(_ code: String, codeVerifier: String) async throws -> TokenResponse {
+nonisolated private func exchangeCode(_ code: String, codeVerifier: String) async throws -> TokenResponse {
     var request = URLRequest(url: LinearConfig.tokenURL)
     request.httpMethod = "POST"
     request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -115,26 +117,29 @@ private nonisolated func exchangeCode(_ code: String, codeVerifier: String) asyn
         "client_id=\(LinearConfig.clientID)",
         "redirect_uri=\(LinearConfig.redirectURI)",
         "code=\(code)",
-        "code_verifier=\(codeVerifier)",
+        "code_verifier=\(codeVerifier)"
     ].joined(separator: "&")
-    request.httpBody = body.data(using: .utf8)
+    request.httpBody = Data(body.utf8)
 
     let (data, response) = try await URLSession.shared.data(for: request)
     guard let httpResponse = response as? HTTPURLResponse,
-          httpResponse.statusCode == 200 else {
+          httpResponse.statusCode == 200
+    else {
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
         throw OAuthError.tokenExchangeFailed(statusCode)
     }
     return try decodeTokenResponse(data)
 }
 
-private nonisolated func decodeTokenResponse(_ data: Data) throws -> TokenResponse {
+nonisolated private func decodeTokenResponse(_ data: Data) throws -> TokenResponse {
+    // swiftlint:disable identifier_name
     struct RawTokenResponse: Decodable {
         let access_token: String
         let refresh_token: String
         let expires_in: Int
         let scope: String
     }
+    // swiftlint:enable identifier_name
     let raw = try JSONDecoder().decode(RawTokenResponse.self, from: data)
     return TokenResponse(
         accessToken: raw.access_token,

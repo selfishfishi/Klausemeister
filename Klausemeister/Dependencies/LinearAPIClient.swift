@@ -1,7 +1,8 @@
 import Dependencies
 import Foundation
 
-struct LinearAPIClient: Sendable {
+struct LinearAPIClient {
+    // swiftlint:disable:next identifier_name
     var me: @Sendable () async throws -> LinearUser
     var fetchIssue: @Sendable (_ identifier: String) async throws -> LinearIssue
     var fetchIssues: @Sendable (_ identifiers: [String]) async throws -> [LinearIssue]
@@ -11,7 +12,7 @@ struct LinearAPIClient: Sendable {
 
 // MARK: - Shared GraphQL helper
 
-private nonisolated func graphQLRequest(
+nonisolated private func graphQLRequest(
     token: String, query: String, variables: [String: Any]?
 ) async throws -> Data {
     var request = URLRequest(url: LinearConfig.graphqlURL)
@@ -29,7 +30,7 @@ private nonisolated func graphQLRequest(
 
 // MARK: - Token loading helper
 
-private nonisolated func loadToken(
+nonisolated private func loadToken(
     keychainClient: KeychainClient
 ) async throws -> String {
     guard let tokenData = try await keychainClient.load(
@@ -60,14 +61,18 @@ extension LinearAPIClient: DependencyKey {
                 )
 
                 struct GraphQLResponse: Decodable {
+                    // swiftlint:disable:next nesting
                     struct Data: Decodable {
+                        // swiftlint:disable:next nesting
                         struct Viewer: Decodable {
                             let id: String
                             let name: String
                             let email: String
                         }
+
                         let viewer: Viewer
                     }
+
                     let data: Data
                 }
                 let graphQLResponse = try JSONDecoder().decode(
@@ -103,6 +108,7 @@ extension LinearAPIClient: DependencyKey {
                     token: token, query: query, variables: variables
                 )
 
+                // swiftlint:disable nesting
                 struct GraphQLResponse: Decodable {
                     struct Data: Decodable {
                         struct Issues: Decodable {
@@ -121,6 +127,7 @@ extension LinearAPIClient: DependencyKey {
                                     let type: String
                                     let position: Double
                                 }
+
                                 let state: State
                                 struct Project: Decodable { let name: String }
                                 let project: Project?
@@ -130,14 +137,19 @@ extension LinearAPIClient: DependencyKey {
                                     struct LabelNode: Decodable { let name: String }
                                     let nodes: [LabelNode]
                                 }
+
                                 let labels: Labels
                             }
+
                             let nodes: [Node]
                         }
+
                         let issues: Issues
                     }
+
                     let data: Data
                 }
+                // swiftlint:enable nesting
 
                 let graphQLResponse = try JSONDecoder().decode(
                     GraphQLResponse.self, from: data
@@ -187,6 +199,7 @@ extension LinearAPIClient: DependencyKey {
                     token: token, query: query, variables: variables
                 )
 
+                // swiftlint:disable nesting
                 struct GraphQLResponse: Decodable {
                     struct Data: Decodable {
                         struct Issues: Decodable {
@@ -202,6 +215,7 @@ extension LinearAPIClient: DependencyKey {
                                 struct State: Decodable {
                                     let id: String; let name: String; let type: String; let position: Double
                                 }
+
                                 let state: State
                                 struct Project: Decodable { let name: String }
                                 let project: Project?
@@ -211,14 +225,19 @@ extension LinearAPIClient: DependencyKey {
                                     struct LabelNode: Decodable { let name: String }
                                     let nodes: [LabelNode]
                                 }
+
                                 let labels: Labels
                             }
+
                             let nodes: [Node]
                         }
+
                         let issues: Issues
                     }
+
                     let data: Data
                 }
+                // swiftlint:enable nesting
 
                 let graphQLResponse = try JSONDecoder().decode(
                     GraphQLResponse.self, from: data
@@ -253,7 +272,7 @@ extension LinearAPIClient: DependencyKey {
                 """
                 let variables: [String: Any] = [
                     "id": issueId,
-                    "input": ["stateId": statusId],
+                    "input": ["stateId": statusId]
                 ]
                 _ = try await graphQLRequest(
                     token: token, query: query, variables: variables
@@ -278,6 +297,7 @@ extension LinearAPIClient: DependencyKey {
                     token: token, query: query, variables: nil
                 )
 
+                // swiftlint:disable nesting
                 struct GraphQLResponse: Decodable {
                     struct Data: Decodable {
                         struct Organization: Decodable {
@@ -290,18 +310,25 @@ extension LinearAPIClient: DependencyKey {
                                             let type: String
                                             let position: Double
                                         }
+
                                         let nodes: [StateNode]
                                     }
+
                                     let states: States
                                 }
+
                                 let nodes: [TeamNode]
                             }
+
                             let teams: Teams
                         }
+
                         let organization: Organization
                     }
+
                     let data: Data
                 }
+                // swiftlint:enable nesting
 
                 let graphQLResponse = try JSONDecoder().decode(
                     GraphQLResponse.self, from: data

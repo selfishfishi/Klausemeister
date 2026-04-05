@@ -3,7 +3,7 @@ import Dependencies
 import Foundation
 import GRDB
 
-struct DatabaseClient: Sendable {
+struct DatabaseClient {
     var fetchImportedIssues: @Sendable () async throws -> [ImportedIssueRecord]
     var saveImportedIssue: @Sendable (ImportedIssueRecord) async throws -> Void
     var deleteImportedIssue: @Sendable (_ linearId: String) async throws -> Void

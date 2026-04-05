@@ -1,0 +1,10 @@
+--indent 4
+--maxwidth 150
+--allman false
+--commas inline
+--importgrouping testable-last
+--wraparguments before-first
+--wrapparameters before-first
+--wrapcollections before-first
+--swiftversion 6.2
+--exclude .build,Klausemeister.xcodeproj

@@ -1,0 +1,38 @@
+line_length:
+  warning: 150
+  error: 250
+
+file_length:
+  warning: 500
+  error: 1000
+
+function_body_length:
+  warning: 80
+  error: 150
+
+type_body_length:
+  warning: 300
+  error: 500
+
+disabled_rules:
+  - trailing_whitespace
+  - opening_brace
+  - blanket_disable_command # allowed during initial linting adoption
+  - multiple_closures_with_trailing_closure
+
+opt_in_rules:
+  - closure_spacing
+  - modifier_order
+  - overridden_super_call
+
+identifier_name:
+  excluded:
+    - db  # GRDB database connection parameter (project-wide convention)
+    - id  # Identifiable protocol requirement
+    - t   # GRDB table definition parameter in migrations
+
+excluded:
+  - .build
+  - DerivedData
+  - Klausemeister.xcodeproj
+  - Klausemeister/Assets.xcassets

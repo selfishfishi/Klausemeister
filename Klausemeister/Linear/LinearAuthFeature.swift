@@ -6,7 +6,7 @@ struct LinearAuthFeature {
     @ObservableState
     struct State: Equatable {
         var status: AuthStatus = .unauthenticated
-        var user: LinearUser? = nil
+        var user: LinearUser?
     }
 
     enum AuthStatus: Equatable {

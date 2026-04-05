@@ -12,6 +12,7 @@ struct AppFeature {
         var meister = MeisterFeature.State()
         var linearAuth = LinearAuthFeature.State()
 
+        // swiftlint:disable:next nesting
         struct Tab: Equatable, Identifiable {
             let id: UUID
             var title: String = "Terminal"

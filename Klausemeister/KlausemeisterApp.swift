@@ -17,7 +17,7 @@ struct KlausemeisterApp: App {
         ) ?? .darkMedium
         GhosttyApp.shared.rebuild(theme: initialTheme)
 
-        self.store = Store(initialState: AppFeature.State()) {
+        store = Store(initialState: AppFeature.State()) {
             AppFeature()
         } withDependencies: {
             $0.surfaceManager = .live(
@@ -103,7 +103,8 @@ struct KlausemeisterApp: App {
             }
 
             CommandMenu("Tabs") {
-                ForEach(1...9, id: \.self) { i in
+                // swiftlint:disable:next identifier_name
+                ForEach(1 ... 9, id: \.self) { i in
                     Button("Tab \(i)") {
                         store.send(.tabShortcutPressed(position: i))
                     }

@@ -10,7 +10,7 @@ struct MeisterFeature {
         var importText: String = ""
         var isImporting: Bool = false
         var isRefreshing: Bool = false
-        var error: String? = nil
+        var error: String?
     }
 
     struct KanbanColumn: Equatable, Identifiable {
@@ -58,7 +58,7 @@ struct MeisterFeature {
                     } catch {
                         await send(.workflowStatesLoaded(.failure(error)))
                     }
-                    let records = (try? await recordsResult) ?? []
+                    let records = await (try? recordsResult) ?? []
                     await send(.issuesLoadedFromDB(records))
                 }
                 .cancellable(id: "MeisterFeature.load", cancelInFlight: true)
@@ -109,10 +109,8 @@ struct MeisterFeature {
                 for index in state.columns.indices {
                     state.columns[index].issues = []
                 }
-                for issue in issues {
-                    if state.columns[id: issue.statusId] != nil {
-                        state.columns[id: issue.statusId]?.issues.append(issue)
-                    }
+                for issue in issues where state.columns[id: issue.statusId] != nil {
+                    state.columns[id: issue.statusId]?.issues.append(issue)
                 }
                 let now = date.now
                 let records = issues.map { ImportedIssueRecord(from: $0, importedAt: now) }
@@ -130,12 +128,12 @@ struct MeisterFeature {
                     grouping: state.columns.flatMap(\.issues),
                     by: \.statusId
                 )
-                state.columns = IdentifiedArrayOf(uniqueElements: states.map { ws in
+                state.columns = IdentifiedArrayOf(uniqueElements: states.map { workflowState in
                     KanbanColumn(
-                        id: ws.id,
-                        name: ws.name,
-                        type: ws.type,
-                        issues: existingIssues[ws.id] ?? []
+                        id: workflowState.id,
+                        name: workflowState.name,
+                        type: workflowState.type,
+                        issues: existingIssues[workflowState.id] ?? []
                     )
                 })
                 return .none
@@ -180,7 +178,7 @@ struct MeisterFeature {
                         issueId, targetColumn.name, toColumnId, targetColumn.type
                     )
                     await send(.statusUpdateSucceeded(issueId: issueId))
-                } catch: { error, send in
+                } catch: { _, send in
                     await send(.statusUpdateFailed(
                         issueId: issueId,
                         restoreToColumnId: fromColumnId,
@@ -227,10 +225,12 @@ struct MeisterFeature {
     nonisolated static func extractIdentifier(from text: String) -> String {
         if let url = URL(string: text),
            let host = url.host,
-           host.contains("linear.app") {
+           host.contains("linear.app")
+        {
             let components = url.pathComponents
             if let issueIndex = components.firstIndex(of: "issue"),
-               issueIndex + 1 < components.count {
+               issueIndex + 1 < components.count
+            {
                 return components[issueIndex + 1]
             }
         }
@@ -270,12 +270,12 @@ extension LinearIssue {
 
 extension LinearIssue {
     init(from record: ImportedIssueRecord) {
-        let decodedLabels: [String]
-        if let data = record.labels.data(using: .utf8),
-           let parsed = try? JSONDecoder().decode([String].self, from: data) {
-            decodedLabels = parsed
+        let decodedLabels: [String] = if let data = record.labels.data(using: .utf8),
+                                         let parsed = try? JSONDecoder().decode([String].self, from: data)
+        {
+            parsed
         } else {
-            decodedLabels = []
+            []
         }
         self.init(
             id: record.linearId,
@@ -298,12 +298,12 @@ extension LinearIssue {
 
 extension ImportedIssueRecord {
     init(from issue: LinearIssue, importedAt: Date = Date()) {
-        let labelsJSON: String
-        if let data = try? JSONEncoder().encode(issue.labels),
-           let str = String(data: data, encoding: .utf8) {
-            labelsJSON = str
+        let labelsJSON: String = if let data = try? JSONEncoder().encode(issue.labels),
+                                    let str = String(data: data, encoding: .utf8)
+        {
+            str
         } else {
-            labelsJSON = "[]"
+            "[]"
         }
         self.init(
             linearId: issue.id,
