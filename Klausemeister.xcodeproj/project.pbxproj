@@ -99,6 +99,7 @@
 				A869EEDC2F816B35005797B3 /* Sources */,
 				A869EEDD2F816B35005797B3 /* Frameworks */,
 				A869EEDE2F816B35005797B3 /* Resources */,
+				A8AAAA012F816B35005797B3 /* SwiftLint */,
 			);
 			buildRules = (
 			);
@@ -221,6 +222,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A8AAAA012F816B35005797B3 /* SwiftLint */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)",
+			);
+			name = SwiftLint;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if which swiftlint > /dev/null; then\n    swiftlint lint\nelse\n    echo \"warning: SwiftLint not installed, run: brew install swiftlint\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXTargetDependency section */
 		A8TE00062F816B35005797B3 /* PBXTargetDependency */ = {
