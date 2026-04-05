@@ -24,5 +24,27 @@ enum DatabaseMigrations {
                 t.column("sortOrder", .integer).notNull().defaults(to: 0)
             }
         }
+
+        migrator.registerMigration("v2-worktrees") { db in
+            try db.create(table: "worktrees") { t in
+                t.column("worktreeId", .text).primaryKey()
+                t.column("name", .text).notNull()
+                t.column("sortOrder", .integer).notNull().defaults(to: 0)
+                t.column("gitWorktreePath", .text).notNull()
+                t.column("createdAt", .text).notNull()
+            }
+
+            try db.create(table: "worktree_queue_items") { t in
+                t.column("id", .text).primaryKey()
+                t.column("worktreeId", .text).notNull()
+                    .references("worktrees", column: "worktreeId", onDelete: .cascade)
+                t.column("issueLinearId", .text).notNull()
+                    .references("imported_issues", column: "linearId", onDelete: .cascade)
+                t.column("queuePosition", .text).notNull().defaults(to: "inbox")
+                t.column("sortOrder", .integer).notNull().defaults(to: 0)
+                t.column("assignedAt", .text).notNull()
+                t.column("completedAt", .text)
+            }
+        }
     }
 }
