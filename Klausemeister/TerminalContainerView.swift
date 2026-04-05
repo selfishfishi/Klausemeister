@@ -1,20 +1,43 @@
-import AppKit
+import ComposableArchitecture
 import SwiftUI
 
 struct TerminalContainerView: View {
+    let store: StoreOf<AppFeature>
+    let surfaceStore: SurfaceStore
+
+    @Environment(\.themeColors) private var themeColors
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
     var body: some View {
-        TerminalRepresentable()
-            .ignoresSafeArea()
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            SidebarView(store: store)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
+        } detail: {
+            TerminalContentView(
+                surfaceView: store.activeTabID.flatMap { surfaceStore.surface(for: $0) },
+                activeTabID: store.activeTabID
+            )
+            .ignoresSafeArea(edges: [.bottom, .horizontal])
+            .background {
+                Color(hexString: themeColors.background)
+                    .ignoresSafeArea()
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onChange(of: store.showSidebar) { _, show in
+            withAnimation {
+                columnVisibility = show ? .all : .detailOnly
+            }
+        }
+        .onChange(of: columnVisibility) { _, newVisibility in
+            let shouldShow = (newVisibility != .detailOnly)
+            if shouldShow != store.showSidebar {
+                store.send(.sidebarTogglePressed)
+            }
+        }
+        .navigationTitle("")
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        .tint(themeColors.accentColor)
+        .task { store.send(.onAppear) }
     }
-}
-
-struct TerminalRepresentable: NSViewRepresentable {
-    func makeNSView(context: Context) -> SurfaceView {
-        let view = SurfaceView(frame: .zero)
-        guard let app = GhosttyApp.shared.app else { return view }
-        view.initializeSurface(app: app, workingDirectory: NSHomeDirectory())
-        return view
-    }
-
-    func updateNSView(_ view: SurfaceView, context: Context) {}
 }

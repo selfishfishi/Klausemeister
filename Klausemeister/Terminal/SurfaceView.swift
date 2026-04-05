@@ -84,9 +84,6 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window != nil {
-            window?.makeFirstResponder(self)
-        }
     }
 
     private func setFocus(_ focused: Bool) {
