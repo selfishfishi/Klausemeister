@@ -113,9 +113,15 @@ struct AppFeature {
             case .meisterTapped:
                 state.showMeister = true
                 state.activeTabID = nil
+                state.worktree.selectedWorktreeId = nil
                 return .none
 
             case .meister:
+                return .none
+
+            case .worktree(.worktreeSelected(.some)):
+                state.showMeister = false
+                state.activeTabID = nil
                 return .none
 
             case .worktree:
@@ -125,6 +131,7 @@ struct AppFeature {
                 guard state.tabs[id: id] != nil,
                       id != state.activeTabID else { return .none }
                 state.showMeister = false
+                state.worktree.selectedWorktreeId = nil
                 let oldID = state.activeTabID
                 state.activeTabID = id
                 return .run { [oldID] _ in

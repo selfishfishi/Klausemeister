@@ -18,6 +18,8 @@ struct TerminalContainerView: View {
                     meisterStore: store.scope(state: \.meister, action: \.meister),
                     worktreeStore: store.scope(state: \.worktree, action: \.worktree)
                 )
+            } else if store.worktree.selectedWorktreeId != nil {
+                WorktreeDetailView(store: store.scope(state: \.worktree, action: \.worktree))
             } else {
                 TerminalContentView(
                     surfaceView: store.activeTabID.flatMap { surfaceStore.surface(for: $0) },

@@ -32,6 +32,34 @@ struct SidebarView: View {
                     : nil
             )
 
+            Section {
+                ForEach(store.scope(state: \.worktree, action: \.worktree).worktrees) { worktree in
+                    SidebarWorktreeRow(
+                        worktree: worktree,
+                        isSelected: store.worktree.selectedWorktreeId == worktree.id,
+                        onSelect: {
+                            store.send(.worktree(.worktreeSelected(worktree.id)))
+                        },
+                        onDelete: {
+                            store.send(.worktree(.confirmDeleteTapped(worktreeId: worktree.id)))
+                        }
+                    )
+                }
+            } header: {
+                HStack {
+                    Text("Worktrees")
+                    Spacer()
+                    Button {
+                        store.send(.worktree(.createWorktreeTapped))
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
             Section("Terminals") {
                 ForEach(store.tabs) { tab in
                     SidebarTabRow(
@@ -57,6 +85,62 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
+        }
+    }
+}
+
+struct SidebarWorktreeRow: View {
+    let worktree: Worktree
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onDelete: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button {
+            onSelect()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.triangle.branch")
+                    .foregroundStyle(.secondary)
+                Text(worktree.name)
+                    .lineLimit(1)
+                Spacer()
+                if worktree.totalIssueCount > 0 {
+                    Text("\(worktree.totalIssueCount)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(.fill.quaternary, in: Capsule())
+                }
+                if isHovering {
+                    Button {
+                        onDelete()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 4)
+        .listRowBackground(
+            isSelected
+                ? RoundedRectangle(cornerRadius: 6).fill(.selection)
+                : nil
+        )
+        .onHover { hovering in isHovering = hovering }
+        .contextMenu {
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 }

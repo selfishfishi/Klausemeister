@@ -9,6 +9,8 @@ struct Worktree: Equatable, Identifiable {
     var gitWorktreePath: String
     var inbox: [LinearIssue] = []
     var outbox: [LinearIssue] = []
+
+    var totalIssueCount: Int { inbox.count + outbox.count }
 }
 
 @Reducer
@@ -18,6 +20,17 @@ struct WorktreeFeature {
         var worktrees: IdentifiedArrayOf<Worktree> = []
         var isCreatingWorktree: Bool = false
         var newWorktreeName: String = ""
+        var selectedWorktreeId: String?
+        @Presents var alert: AlertState<Action.Alert>?
+
+        var nextDefaultName: String {
+            let existing = Set(worktrees.map(\.name))
+            for index in 1...99 {
+                let candidate = "W\(index)"
+                if !existing.contains(candidate) { return candidate }
+            }
+            return "W\(worktrees.count + 1)"
+        }
     }
 
     enum Action: BindableAction, Equatable {
@@ -30,13 +43,21 @@ struct WorktreeFeature {
         )
         case createWorktreeTapped
         case worktreeCreated(TaskResult<WorktreeRecord>)
+        case confirmDeleteTapped(worktreeId: String)
         case deleteWorktreeTapped(worktreeId: String)
         case worktreeDeleted(worktreeId: String)
         case worktreeDeleteFailed(worktree: Worktree)
+        case worktreeSelected(String?)
         case issueAssignedToWorktree(issueId: String, worktreeId: String)
         case issueReturnedToMeister(queueItemId: String, issueId: String, worktreeId: String)
         case issueMovedToOutbox(queueItemId: String, issueId: String, worktreeId: String)
         case queueReordered(worktreeId: String, queuePosition: String, itemIds: [String])
+        case alert(PresentationAction<Alert>)
+
+        @CasePathable
+        enum Alert: Equatable {
+            case confirmDelete(worktreeId: String)
+        }
     }
 
     @Dependency(\.worktreeClient) var worktreeClient
@@ -93,12 +114,12 @@ struct WorktreeFeature {
 
             case .createWorktreeTapped:
                 let name = state.newWorktreeName.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !name.isEmpty else { return .none }
+                let worktreeName = name.isEmpty ? state.nextDefaultName : name
                 state.isCreatingWorktree = true
                 state.newWorktreeName = ""
                 return .run { send in
                     await send(.worktreeCreated(
-                        TaskResult { try await worktreeClient.createWorktree(name, "") }
+                        TaskResult { try await worktreeClient.createWorktree(worktreeName, "") }
                     ))
                 }
 
@@ -116,8 +137,36 @@ struct WorktreeFeature {
                 state.isCreatingWorktree = false
                 return .none
 
+            case let .confirmDeleteTapped(worktreeId):
+                guard let worktree = state.worktrees[id: worktreeId] else { return .none }
+                if worktree.inbox.isEmpty {
+                    return .send(.deleteWorktreeTapped(worktreeId: worktreeId))
+                }
+                state.alert = AlertState {
+                    TextState("Delete \(worktree.name)?")
+                } actions: {
+                    ButtonState(role: .destructive, action: .confirmDelete(worktreeId: worktreeId)) {
+                        TextState("Delete")
+                    }
+                    ButtonState(role: .cancel) {
+                        TextState("Cancel")
+                    }
+                } message: {
+                    TextState("\(worktree.inbox.count) issue(s) in inbox will be returned to Meister.")
+                }
+                return .none
+
+            case let .alert(.presented(.confirmDelete(worktreeId))):
+                return .send(.deleteWorktreeTapped(worktreeId: worktreeId))
+
+            case .alert:
+                return .none
+
             case let .deleteWorktreeTapped(worktreeId):
                 guard let worktree = state.worktrees[id: worktreeId] else { return .none }
+                if state.selectedWorktreeId == worktreeId {
+                    state.selectedWorktreeId = nil
+                }
                 state.worktrees.remove(id: worktreeId)
                 return .run { send in
                     try await worktreeClient.deleteWorktree(worktreeId)
@@ -131,6 +180,10 @@ struct WorktreeFeature {
 
             case let .worktreeDeleteFailed(worktree):
                 state.worktrees.append(worktree)
+                return .none
+
+            case let .worktreeSelected(worktreeId):
+                state.selectedWorktreeId = worktreeId
                 return .none
 
             case let .issueAssignedToWorktree(issueId, worktreeId):
@@ -165,5 +218,6 @@ struct WorktreeFeature {
                 }
             }
         }
+        .ifLet(\.$alert, action: \.alert)
     }
 }
