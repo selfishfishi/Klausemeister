@@ -55,7 +55,27 @@ final class GhosttyApp {
                 app.tick()
             }
         }
-        runtime.action_cb = { _, _, _ in false }
+        runtime.action_cb = { _, target, action in
+            guard target.tag == GHOSTTY_TARGET_SURFACE else { return false }
+            let surfaceHandle = target.target.surface
+            guard let ud = ghostty_surface_userdata(surfaceHandle) else { return false }
+            let view = Unmanaged<SurfaceView>.fromOpaque(ud).takeUnretainedValue()
+
+            switch action.tag {
+            case GHOSTTY_ACTION_MOUSE_SHAPE:
+                let shape = action.action.mouse_shape
+                DispatchQueue.main.async { view.applyCursorShape(shape) }
+                return true
+
+            case GHOSTTY_ACTION_MOUSE_VISIBILITY:
+                let visibility = action.action.mouse_visibility
+                DispatchQueue.main.async { view.applyCursorVisibility(visibility) }
+                return true
+
+            default:
+                return false
+            }
+        }
 
         runtime.read_clipboard_cb = { ud, clipboard, state in
             guard let ud else { return false }

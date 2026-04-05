@@ -11,6 +11,8 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
     private var focused = false
     private var markedText = NSMutableAttributedString()
     private var keyTextAccumulator: [String]?
+    private var currentCursor: NSCursor = .iBeam
+    private var isCursorVisible = true
 
     let metalLayer: CAMetalLayer
 
@@ -84,12 +86,55 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if window == nil, !isCursorVisible {
+            NSCursor.unhide()
+            isCursorVisible = true
+        }
     }
 
     private func setFocus(_ focused: Bool) {
         self.focused = focused
         guard let surface else { return }
         ghostty_surface_set_focus(surface, focused)
+    }
+
+    // MARK: - Cursor Management
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [
+                .activeAlways,
+                .cursorUpdate,
+                .mouseMoved,
+                .mouseEnteredAndExited,
+                .inVisibleRect,
+            ],
+            owner: self,
+            userInfo: nil
+        ))
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        currentCursor.set()
+    }
+
+    func applyCursorShape(_ shape: ghostty_action_mouse_shape_e) {
+        currentCursor = MouseCursorMapping.nsCursor(for: shape)
+        currentCursor.set()
+    }
+
+    func applyCursorVisibility(_ visibility: ghostty_action_mouse_visibility_e) {
+        let visible = (visibility == GHOSTTY_MOUSE_VISIBLE)
+        guard visible != isCursorVisible else { return }
+        isCursorVisible = visible
+        if visible {
+            NSCursor.unhide()
+        } else {
+            NSCursor.hide()
+        }
     }
 
     // MARK: - Layout
@@ -286,7 +331,6 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
 
     override func scrollWheel(with event: NSEvent) {
         guard let surface else { return }
-        // ghostty_surface_mouse_scroll(surface, dx, dy, scroll_mods)
         ghostty_surface_mouse_scroll(
             surface,
             event.scrollingDeltaX,
@@ -302,16 +346,24 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
     ) {
         guard let surface else { return }
         let mods = KeyMapping.translateModifiers(event.modifierFlags)
-        // ghostty_surface_mouse_button(surface, state, button, mods)
         ghostty_surface_mouse_button(surface, state, button, mods)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        sendMousePos(event: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard let surface else { return }
+        let mods = KeyMapping.translateModifiers(event.modifierFlags)
+        ghostty_surface_mouse_pos(surface, -1, -1, mods)
     }
 
     private func sendMousePos(event: NSEvent) {
         guard let surface else { return }
-        let pos = convertToLayer(convert(event.locationInWindow, from: nil))
+        let pos = convert(event.locationInWindow, from: nil)
         let mods = KeyMapping.translateModifiers(event.modifierFlags)
-        // ghostty_surface_mouse_pos(surface, x, y, mods)
-        ghostty_surface_mouse_pos(surface, pos.x, pos.y, mods)
+        ghostty_surface_mouse_pos(surface, pos.x, bounds.height - pos.y, mods)
     }
 
     // MARK: - NSTextInputClient
@@ -385,6 +437,9 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
     // MARK: - Cleanup
 
     deinit {
+        if !isCursorVisible {
+            NSCursor.unhide()
+        }
         if let surface {
             ghostty_surface_free(surface)
         }
