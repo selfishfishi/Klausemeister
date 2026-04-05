@@ -11,6 +11,7 @@ struct DatabaseClient {
     var updateIssueStatus: @Sendable (_ linearId: String, _ status: String, _ statusId: String, _ statusType: String) async throws -> Void
     var updateIssueFromLinear: @Sendable (ImportedIssueRecord) async throws -> Void
     var batchSaveImportedIssues: @Sendable ([ImportedIssueRecord]) async throws -> Void
+    var fetchImportedIssuesExcludingWorktreeQueues: @Sendable () async throws -> [ImportedIssueRecord]
 }
 
 extension DatabaseClient: DependencyKey {
@@ -65,6 +66,18 @@ extension DatabaseClient: DependencyKey {
                         try record.save(db)
                     }
                 }
+            },
+            fetchImportedIssuesExcludingWorktreeQueues: {
+                try await dbQueue.read { db in
+                    try ImportedIssueRecord.fetchAll(db, sql: """
+                        SELECT ii.*
+                        FROM imported_issues ii
+                        WHERE ii.linearId NOT IN (
+                            SELECT issueLinearId FROM worktree_queue_items
+                        )
+                        ORDER BY ii.sortOrder ASC
+                    """)
+                }
             }
         )
     }()
@@ -76,7 +89,8 @@ extension DatabaseClient: DependencyKey {
         deleteImportedIssue: unimplemented("DatabaseClient.deleteImportedIssue"),
         updateIssueStatus: unimplemented("DatabaseClient.updateIssueStatus"),
         updateIssueFromLinear: unimplemented("DatabaseClient.updateIssueFromLinear"),
-        batchSaveImportedIssues: unimplemented("DatabaseClient.batchSaveImportedIssues")
+        batchSaveImportedIssues: unimplemented("DatabaseClient.batchSaveImportedIssues"),
+        fetchImportedIssuesExcludingWorktreeQueues: unimplemented("DatabaseClient.fetchImportedIssuesExcludingWorktreeQueues")
     )
 }
 

@@ -35,6 +35,13 @@ struct MeisterFeature {
         case statusUpdateSucceeded(issueId: String)
         case statusUpdateFailed(issueId: String, restoreToColumnId: String, originalIssue: LinearIssue)
         case removeIssueTapped(issueId: String)
+        case assignIssueToWorktree(issue: LinearIssue, worktreeId: String)
+        case issueReturnedFromWorktree(issue: LinearIssue)
+        case delegate(Delegate)
+
+        enum Delegate: Equatable {
+            case issueAssignedToWorktree(issue: LinearIssue, worktreeId: String)
+        }
     }
 
     @Dependency(\.linearAPIClient) var linearAPIClient
@@ -51,7 +58,7 @@ struct MeisterFeature {
             case .onAppear:
                 return .run { send in
                     async let statesResult: [LinearWorkflowState] = linearAPIClient.fetchWorkflowStates()
-                    async let recordsResult: [ImportedIssueRecord] = databaseClient.fetchImportedIssues()
+                    async let recordsResult: [ImportedIssueRecord] = databaseClient.fetchImportedIssuesExcludingWorktreeQueues()
                     do {
                         let states = try await statesResult
                         await send(.workflowStatesLoaded(.success(states)))
@@ -216,6 +223,24 @@ struct MeisterFeature {
                 return .run { _ in
                     try await databaseClient.deleteImportedIssue(issueId)
                 }
+
+            case let .assignIssueToWorktree(issue, worktreeId):
+                state.removeIssueFromAllColumns(issue.id)
+                return .send(.delegate(.issueAssignedToWorktree(issue: issue, worktreeId: worktreeId)))
+
+            case let .issueReturnedFromWorktree(issue):
+                guard !state.columns.isEmpty else { return .none }
+                let alreadyPresent = state.columns.contains { $0.issues.contains { $0.id == issue.id } }
+                guard !alreadyPresent else { return .none }
+                if state.columns[id: issue.statusId] != nil {
+                    state.columns[id: issue.statusId]?.issues.append(issue)
+                } else if let firstColumn = state.columns.first {
+                    state.columns[id: firstColumn.id]?.issues.append(issue)
+                }
+                return .none
+
+            case .delegate:
+                return .none
             }
         }
     }
