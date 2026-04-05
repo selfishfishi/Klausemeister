@@ -17,7 +17,7 @@ struct TerminalContainerView: View {
                 surfaceView: store.activeTabID.flatMap { surfaceStore.surface(for: $0) },
                 activeTabID: store.activeTabID
             )
-            .ignoresSafeArea()
+            .ignoresSafeArea(edges: [.bottom, .horizontal])
         }
         .navigationSplitViewStyle(.balanced)
         .onChange(of: store.showSidebar) { _, show in
