@@ -26,15 +26,13 @@ struct SidebarView: View {
             Button {
                 store.send(.newTabButtonTapped)
             } label: {
-                Label("New Tab", systemImage: "plus")
+                Image(systemName: "plus")
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 16)
                     .padding(.vertical, 8)
             }
-            .buttonStyle(.glass)
-            .tint(themeColors.accentColor)
-            .padding(.horizontal, 8)
-            .padding(.bottom, 8)
+            .buttonStyle(.plain)
         }
     }
 }
