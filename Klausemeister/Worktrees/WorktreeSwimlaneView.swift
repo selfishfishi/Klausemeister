@@ -60,15 +60,7 @@ struct WorktreeSwimlaneView: View {
                 }
                 let ungrouped = store.worktrees.filter { $0.repoId == nil }
                 ForEach(ungrouped) { worktree in
-                    SwimlaneRowView(
-                        worktree: worktree,
-                        onDelete: {
-                            store.send(.confirmDeleteTapped(worktreeId: worktree.id))
-                        },
-                        onReturnToMeister: { issueId in
-                            store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktree.id))
-                        }
-                    )
+                    swimlaneRow(worktree: worktree)
                 }
             }
             .padding(12)
@@ -108,18 +100,31 @@ struct WorktreeSwimlaneView: View {
                     .padding(12)
             } else {
                 ForEach(repoWorktrees) { worktree in
-                    SwimlaneRowView(
-                        worktree: worktree,
-                        onDelete: {
-                            store.send(.confirmDeleteTapped(worktreeId: worktree.id))
-                        },
-                        onReturnToMeister: { issueId in
-                            store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktree.id))
-                        }
-                    )
+                    swimlaneRow(worktree: worktree)
                 }
             }
         }
+    }
+
+    private func swimlaneRow(worktree: Worktree) -> some View {
+        SwimlaneRowView(
+            worktree: worktree,
+            onDelete: {
+                store.send(.confirmDeleteTapped(worktreeId: worktree.id))
+            },
+            onReturnToMeister: { issueId in
+                store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktree.id))
+            },
+            onDropToInbox: { issueId in
+                store.send(.issueDroppedOnInbox(issueId: issueId, worktreeId: worktree.id))
+            },
+            onDropToProcessing: { issueId in
+                store.send(.issueDroppedOnProcessing(issueId: issueId, worktreeId: worktree.id))
+            },
+            onDropToOutbox: { issueId in
+                store.send(.issueDroppedOnOutbox(issueId: issueId, worktreeId: worktree.id))
+            }
+        )
     }
 
     private func openRepoFolderPicker() {

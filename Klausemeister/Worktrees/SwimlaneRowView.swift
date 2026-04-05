@@ -4,6 +4,9 @@ struct SwimlaneRowView: View {
     let worktree: Worktree
     let onDelete: () -> Void
     var onReturnToMeister: ((_ issueId: String) -> Void)?
+    var onDropToInbox: ((_ issueId: String) -> Void)?
+    var onDropToProcessing: ((_ issueId: String) -> Void)?
+    var onDropToOutbox: ((_ issueId: String) -> Void)?
 
     @Environment(\.themeColors) private var themeColors
     @Environment(\.swimlaneAnimating) private var isAnimating
@@ -47,14 +50,16 @@ struct SwimlaneRowView: View {
             SwimlaneQueueView(
                 role: .inbox,
                 issues: worktree.inbox,
-                onReturnToMeister: onReturnToMeister
+                onReturnToMeister: onReturnToMeister,
+                onDrop: onDropToInbox
             )
 
             SwimlaneConnectorShape(isActive: worktree.isActive)
 
             SwimlaneProcessingZoneView(
                 issue: worktree.processing,
-                onReturnToMeister: onReturnToMeister
+                onReturnToMeister: onReturnToMeister,
+                onDrop: onDropToProcessing
             )
 
             SwimlaneConnectorShape(isActive: worktree.isActive)
@@ -62,7 +67,8 @@ struct SwimlaneRowView: View {
             SwimlaneQueueView(
                 role: .outbox,
                 issues: worktree.outbox,
-                onReturnToMeister: onReturnToMeister
+                onReturnToMeister: onReturnToMeister,
+                onDrop: onDropToOutbox
             )
         }
         .background(.fill.quinary)

@@ -122,6 +122,9 @@ struct AppFeature {
                     issue: issue
                 )))
 
+            case let .meister(.delegate(.issueReturnedFromWorktreeByDrop(issueId))):
+                return .send(.worktree(.issueRemovedByKanbanDrop(issueId: issueId)))
+
             case .meister:
                 return .none
 
@@ -132,6 +135,9 @@ struct AppFeature {
 
             case let .worktree(.delegate(.issueReturnedToMeister(issue))):
                 return .send(.meister(.issueReturnedFromWorktree(issue: issue)))
+
+            case let .worktree(.delegate(.issueRemovedFromKanban(issueId))):
+                return .send(.meister(.removeIssueFromColumns(issueId: issueId)))
 
             case .worktree:
                 return .none

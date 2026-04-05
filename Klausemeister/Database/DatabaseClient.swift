@@ -12,6 +12,7 @@ struct DatabaseClient {
     var updateIssueFromLinear: @Sendable (ImportedIssueRecord) async throws -> Void
     var batchSaveImportedIssues: @Sendable ([ImportedIssueRecord]) async throws -> Void
     var fetchImportedIssuesExcludingWorktreeQueues: @Sendable () async throws -> [ImportedIssueRecord]
+    var fetchImportedIssue: @Sendable (_ linearId: String) async throws -> ImportedIssueRecord?
 }
 
 extension DatabaseClient: DependencyKey {
@@ -78,6 +79,11 @@ extension DatabaseClient: DependencyKey {
                         ORDER BY ii.sortOrder ASC
                     """)
                 }
+            },
+            fetchImportedIssue: { linearId in
+                try await dbQueue.read { db in
+                    try ImportedIssueRecord.fetchOne(db, key: linearId)
+                }
             }
         )
     }()
@@ -90,7 +96,8 @@ extension DatabaseClient: DependencyKey {
         updateIssueStatus: unimplemented("DatabaseClient.updateIssueStatus"),
         updateIssueFromLinear: unimplemented("DatabaseClient.updateIssueFromLinear"),
         batchSaveImportedIssues: unimplemented("DatabaseClient.batchSaveImportedIssues"),
-        fetchImportedIssuesExcludingWorktreeQueues: unimplemented("DatabaseClient.fetchImportedIssuesExcludingWorktreeQueues")
+        fetchImportedIssuesExcludingWorktreeQueues: unimplemented("DatabaseClient.fetchImportedIssuesExcludingWorktreeQueues"),
+        fetchImportedIssue: unimplemented("DatabaseClient.fetchImportedIssue")
     )
 }
 
