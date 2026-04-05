@@ -10,4 +10,5 @@ struct WorktreeRecord: Codable, Equatable, FetchableRecord, PersistableRecord {
     var sortOrder: Int
     var gitWorktreePath: String
     var createdAt: String
+    var repoId: String?
 }

@@ -3,11 +3,20 @@ import ComposableArchitecture
 import Foundation
 import OSLog
 
+struct Repository: Equatable, Identifiable {
+    let id: String
+    var name: String
+    var path: String
+    var sortOrder: Int
+}
+
 struct Worktree: Equatable, Identifiable {
     let id: String
     var name: String
     var sortOrder: Int
     var gitWorktreePath: String
+    var repoId: String?
+    var repoName: String?
     var inbox: [LinearIssue] = []
     var processing: LinearIssue?
     var outbox: [LinearIssue] = []
@@ -27,10 +36,12 @@ struct WorktreeFeature {
     private static let log = Logger(subsystem: "com.klausemeister", category: "WorktreeFeature")
     @ObservableState
     struct State: Equatable {
+        var repositories: IdentifiedArrayOf<Repository> = []
         var worktrees: IdentifiedArrayOf<Worktree> = []
         var isCreatingWorktree: Bool = false
         var newWorktreeName: String = ""
         var selectedWorktreeId: String?
+        var selectedRepoId: String?
         var error: String?
         @Presents var alert: AlertState<Action.Alert>?
 
@@ -48,6 +59,7 @@ struct WorktreeFeature {
         case binding(BindingAction<State>)
         case onAppear
         case worktreesLoaded(
+            repositories: [RepositoryRecord],
             worktrees: [WorktreeRecord],
             queueItems: [WorktreeQueueItemRecord],
             issues: [ImportedIssueRecord]
@@ -69,12 +81,17 @@ struct WorktreeFeature {
         case moveToProcessingFailed(issueId: String, worktreeId: String, issue: LinearIssue)
         case moveToOutboxFailed(issueId: String, worktreeId: String, issue: LinearIssue, fromProcessing: Bool)
         case returnToMeisterFailed(issueId: String, worktreeId: String, issue: LinearIssue)
+        case addRepoFolderSelected(URL)
+        case repoAdded(TaskResult<RepositoryRecord>)
+        case confirmDeleteRepoTapped(repoId: String)
+        case deleteRepoConfirmed(repoId: String)
         case alert(PresentationAction<Alert>)
         case delegate(Delegate)
 
         @CasePathable
         enum Alert: Equatable {
             case confirmDelete(worktreeId: String)
+            case confirmDeleteRepo(repoId: String)
         }
 
         enum Delegate: Equatable {
@@ -84,6 +101,7 @@ struct WorktreeFeature {
 
     @Dependency(\.worktreeClient) var worktreeClient
     @Dependency(\.databaseClient) var databaseClient
+    @Dependency(\.gitClient) var gitClient
 
     var body: some Reducer<State, Action> {
         BindingReducer()
@@ -95,6 +113,7 @@ struct WorktreeFeature {
             case .onAppear:
                 state.error = nil
                 return .run { send in
+                    let repos = try await worktreeClient.fetchRepositories()
                     let worktrees = try await worktreeClient.fetchWorktrees()
                     var allQueueItems: [WorktreeQueueItemRecord] = []
                     for worktree in worktrees {
@@ -103,6 +122,7 @@ struct WorktreeFeature {
                     }
                     let issues = try await databaseClient.fetchImportedIssues()
                     await send(.worktreesLoaded(
+                        repositories: repos,
                         worktrees: worktrees,
                         queueItems: allQueueItems,
                         issues: issues
@@ -112,11 +132,19 @@ struct WorktreeFeature {
                 }
                 .cancellable(id: "WorktreeFeature.load", cancelInFlight: true)
 
-            case let .worktreesLoaded(worktreeRecords, queueItems, issueRecords):
+            case let .worktreesLoaded(repoRecords, worktreeRecords, queueItems, issueRecords):
+                state.repositories = IdentifiedArrayOf(uniqueElements: repoRecords.map { record in
+                    Repository(id: record.repoId, name: record.name, path: record.path, sortOrder: record.sortOrder)
+                })
+                if state.selectedRepoId == nil {
+                    state.selectedRepoId = state.repositories.first?.id
+                }
+
                 let issuesByLinearId = Dictionary(
                     uniqueKeysWithValues: issueRecords.map { ($0.linearId, LinearIssue(from: $0)) }
                 )
                 let queueItemsByWorktree = Dictionary(grouping: queueItems, by: \.worktreeId)
+                let repoNames = Dictionary(uniqueKeysWithValues: repoRecords.map { ($0.repoId, $0.name) })
 
                 let orphanedItems = queueItems.filter { issuesByLinearId[$0.issueLinearId] == nil }
                 if !orphanedItems.isEmpty {
@@ -132,6 +160,8 @@ struct WorktreeFeature {
                         name: record.name,
                         sortOrder: record.sortOrder,
                         gitWorktreePath: record.gitWorktreePath,
+                        repoId: record.repoId,
+                        repoName: record.repoId.flatMap { repoNames[$0] },
                         inbox: items
                             .filter { $0.queuePosition == "inbox" }
                             .sorted { $0.sortOrder < $1.sortOrder }
@@ -148,23 +178,57 @@ struct WorktreeFeature {
                 return .none
 
             case .createWorktreeTapped:
+                guard let repoId = state.selectedRepoId,
+                      let repo = state.repositories[id: repoId]
+                else {
+                    state.alert = AlertState {
+                        TextState("No Repository Selected")
+                    } actions: {
+                        ButtonState(role: .cancel) { TextState("OK") }
+                    } message: {
+                        TextState("Add a repository before creating worktrees.")
+                    }
+                    return .none
+                }
                 let name = state.newWorktreeName.trimmingCharacters(in: .whitespacesAndNewlines)
                 let worktreeName = name.isEmpty ? state.nextDefaultName : name
                 state.isCreatingWorktree = true
                 state.newWorktreeName = ""
-                return .run { send in
-                    await send(.worktreeCreated(
-                        TaskResult { try await worktreeClient.createWorktree(worktreeName, "") }
-                    ))
+                let repoPath = repo.path
+                return .run { [repoId] send in
+                    let basePath = UserDefaults.standard.string(
+                        forKey: WorktreeConfig.userDefaultsBasePathKey
+                    ) ?? WorktreeConfig.defaultBasePath
+                    let worktreePath = WorktreeConfig.worktreePath(
+                        basePath: basePath, repoRoot: repoPath, name: worktreeName
+                    )
+                    let branch = WorktreeConfig.branchName(fromIdentifier: worktreeName)
+                    do {
+                        try await gitClient.addWorktree(repoPath, worktreePath, branch)
+                        do {
+                            let record = try await worktreeClient.createWorktree(
+                                worktreeName, worktreePath, repoId
+                            )
+                            await send(.worktreeCreated(.success(record)))
+                        } catch {
+                            try? await gitClient.removeWorktree(repoPath, worktreePath)
+                            await send(.worktreeCreated(.failure(error)))
+                        }
+                    } catch {
+                        await send(.worktreeCreated(.failure(error)))
+                    }
                 }
 
             case let .worktreeCreated(.success(record)):
                 state.isCreatingWorktree = false
+                let repoName = record.repoId.flatMap { id in state.repositories[id: id]?.name }
                 state.worktrees.append(Worktree(
                     id: record.worktreeId,
                     name: record.name,
                     sortOrder: record.sortOrder,
-                    gitWorktreePath: record.gitWorktreePath
+                    gitWorktreePath: record.gitWorktreePath,
+                    repoId: record.repoId,
+                    repoName: repoName
                 ))
                 return .none
 
@@ -207,9 +271,14 @@ struct WorktreeFeature {
                 if state.selectedWorktreeId == worktreeId {
                     state.selectedWorktreeId = nil
                 }
+                let worktreePath = worktree.gitWorktreePath
+                let repoPath = worktree.repoId.flatMap { state.repositories[id: $0]?.path }
                 state.worktrees.remove(id: worktreeId)
                 return .run { send in
                     try await worktreeClient.deleteWorktree(worktreeId)
+                    if let repoPath, !worktreePath.isEmpty {
+                        try? await gitClient.removeWorktree(repoPath, worktreePath)
+                    }
                     await send(.worktreeDeleted(worktreeId: worktreeId))
                 } catch: { _, send in
                     await send(.worktreeDeleteFailed(worktree: worktree))
@@ -357,6 +426,85 @@ struct WorktreeFeature {
                 }
                 state.error = "Failed to return issue to Meister."
                 return .none
+
+            case let .addRepoFolderSelected(url):
+                return .run { send in
+                    await send(.repoAdded(TaskResult {
+                        let repoRoot = try await gitClient.repositoryRoot(url.path)
+                        let name = URL(fileURLWithPath: repoRoot).lastPathComponent
+                        return try await worktreeClient.addRepository(name, repoRoot)
+                    }))
+                }
+
+            case let .repoAdded(.success(record)):
+                let repo = Repository(
+                    id: record.repoId,
+                    name: record.name,
+                    path: record.path,
+                    sortOrder: record.sortOrder
+                )
+                state.repositories.append(repo)
+                if state.selectedRepoId == nil {
+                    state.selectedRepoId = repo.id
+                }
+                return .none
+
+            case .repoAdded(.failure):
+                state.alert = AlertState {
+                    TextState("Could Not Add Repository")
+                } actions: {
+                    ButtonState(role: .cancel) { TextState("OK") }
+                } message: {
+                    TextState("The selected folder is not a valid git repository.")
+                }
+                return .none
+
+            case let .confirmDeleteRepoTapped(repoId):
+                guard let repo = state.repositories[id: repoId] else { return .none }
+                let worktreeCount = state.worktrees.count(where: { $0.repoId == repoId })
+                if worktreeCount == 0 {
+                    return .send(.deleteRepoConfirmed(repoId: repoId))
+                }
+                state.alert = AlertState {
+                    TextState("Remove \(repo.name)?")
+                } actions: {
+                    ButtonState(role: .destructive, action: .confirmDeleteRepo(repoId: repoId)) {
+                        TextState("Remove")
+                    }
+                    ButtonState(role: .cancel) { TextState("Cancel") }
+                } message: {
+                    TextState("\(worktreeCount) worktree(s) will also be removed.")
+                }
+                return .none
+
+            case let .alert(.presented(.confirmDeleteRepo(repoId))):
+                return .send(.deleteRepoConfirmed(repoId: repoId))
+
+            case let .deleteRepoConfirmed(repoId):
+                guard let repo = state.repositories[id: repoId] else { return .none }
+                let worktreePaths = state.worktrees
+                    .filter { $0.repoId == repoId }
+                    .map(\.gitWorktreePath)
+                let worktreeIds = state.worktrees.filter { $0.repoId == repoId }.map(\.id)
+                for id in worktreeIds {
+                    state.worktrees.remove(id: id)
+                }
+                state.repositories.remove(id: repoId)
+                if state.selectedRepoId == repoId {
+                    state.selectedRepoId = state.repositories.first?.id
+                }
+                if let selectedWt = state.selectedWorktreeId, worktreeIds.contains(selectedWt) {
+                    state.selectedWorktreeId = nil
+                }
+                let repoPath = repo.path
+                return .run { _ in
+                    for path in worktreePaths where !path.isEmpty {
+                        try? await gitClient.removeWorktree(repoPath, path)
+                    }
+                    try await worktreeClient.removeRepository(repoId)
+                } catch: { _, send in
+                    await send(.onAppear)
+                }
 
             case .delegate:
                 return .none

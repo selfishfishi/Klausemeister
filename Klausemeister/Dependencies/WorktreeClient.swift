@@ -4,10 +4,16 @@ import Foundation
 import GRDB
 
 struct WorktreeClient {
+    // MARK: - Repository CRUD
+
+    var fetchRepositories: @Sendable () async throws -> [RepositoryRecord]
+    var addRepository: @Sendable (_ name: String, _ path: String) async throws -> RepositoryRecord
+    var removeRepository: @Sendable (_ repoId: String) async throws -> Void
+
     // MARK: - Worktree CRUD
 
     var fetchWorktrees: @Sendable () async throws -> [WorktreeRecord]
-    var createWorktree: @Sendable (_ name: String, _ gitWorktreePath: String) async throws -> WorktreeRecord
+    var createWorktree: @Sendable (_ name: String, _ gitWorktreePath: String, _ repoId: String) async throws -> WorktreeRecord
     var deleteWorktree: @Sendable (_ worktreeId: String) async throws -> Void
     var updateWorktreeOrder: @Sendable (_ orderedIds: [String]) async throws -> Void
 
@@ -29,13 +35,44 @@ extension WorktreeClient: DependencyKey {
         let dbQueue = databaseClient.getDbQueue()
 
         return WorktreeClient(
+            fetchRepositories: {
+                try await dbQueue.read { db in
+                    try RepositoryRecord.order(Column("sortOrder").asc).fetchAll(db)
+                }
+            },
+
+            addRepository: { name, path in
+                try await dbQueue.write { db in
+                    let maxSort = try Int.fetchOne(db, sql: "SELECT MAX(sortOrder) FROM repositories") ?? -1
+                    let record = RepositoryRecord(
+                        repoId: UUID().uuidString,
+                        name: name,
+                        path: path,
+                        createdAt: ISO8601DateFormatter().string(from: Date()),
+                        sortOrder: maxSort + 1
+                    )
+                    try record.save(db)
+                    return record
+                }
+            },
+
+            removeRepository: { repoId in
+                try await dbQueue.write { db in
+                    try db.execute(
+                        sql: "DELETE FROM worktrees WHERE repoId = ?",
+                        arguments: [repoId]
+                    )
+                    _ = try RepositoryRecord.deleteOne(db, key: ["repoId": repoId])
+                }
+            },
+
             fetchWorktrees: {
                 try await dbQueue.read { db in
                     try WorktreeRecord.order(Column("sortOrder").asc).fetchAll(db)
                 }
             },
 
-            createWorktree: { name, gitWorktreePath in
+            createWorktree: { name, gitWorktreePath, repoId in
                 try await dbQueue.write { db in
                     let maxSort = try Int.fetchOne(db, sql: "SELECT MAX(sortOrder) FROM worktrees") ?? -1
                     let record = WorktreeRecord(
@@ -43,7 +80,8 @@ extension WorktreeClient: DependencyKey {
                         name: name,
                         sortOrder: maxSort + 1,
                         gitWorktreePath: gitWorktreePath,
-                        createdAt: ISO8601DateFormatter().string(from: Date())
+                        createdAt: ISO8601DateFormatter().string(from: Date()),
+                        repoId: repoId
                     )
                     try record.save(db)
                     return record
@@ -144,6 +182,9 @@ extension WorktreeClient: DependencyKey {
     }()
 
     nonisolated static let testValue = WorktreeClient(
+        fetchRepositories: unimplemented("WorktreeClient.fetchRepositories"),
+        addRepository: unimplemented("WorktreeClient.addRepository"),
+        removeRepository: unimplemented("WorktreeClient.removeRepository"),
         fetchWorktrees: unimplemented("WorktreeClient.fetchWorktrees"),
         createWorktree: unimplemented("WorktreeClient.createWorktree"),
         deleteWorktree: unimplemented("WorktreeClient.deleteWorktree"),

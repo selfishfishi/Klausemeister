@@ -46,5 +46,19 @@ enum DatabaseMigrations {
                 t.column("completedAt", .text)
             }
         }
+
+        migrator.registerMigration("v3-repositories") { db in
+            try db.create(table: "repositories") { t in
+                t.column("repoId", .text).primaryKey()
+                t.column("name", .text).notNull()
+                t.column("path", .text).notNull()
+                t.column("createdAt", .text).notNull()
+                t.column("sortOrder", .integer).notNull().defaults(to: 0)
+            }
+
+            try db.alter(table: "worktrees") { t in
+                t.add(column: "repoId", .text)
+            }
+        }
     }
 }

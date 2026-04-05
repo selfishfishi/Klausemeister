@@ -1,3 +1,4 @@
+import AppKit
 import ComposableArchitecture
 import SwiftUI
 
@@ -10,6 +11,7 @@ struct WorktreeSwimlaneView: View {
             swimlanes
         }
         .task { store.send(.onAppear) }
+        .alert($store.scope(state: \.alert, action: \.alert))
     }
 
     private var header: some View {
@@ -17,6 +19,15 @@ struct WorktreeSwimlaneView: View {
             Text("Worktrees")
                 .font(.headline)
             Spacer()
+            if !store.repositories.isEmpty {
+                Picker("Repository", selection: $store.selectedRepoId) {
+                    ForEach(store.repositories) { repo in
+                        Text(repo.name).tag(Optional(repo.id))
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 150)
+            }
             TextField("New worktree...", text: $store.newWorktreeName)
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 200)
@@ -25,6 +36,14 @@ struct WorktreeSwimlaneView: View {
                 ProgressView()
                     .controlSize(.small)
             }
+            Button {
+                openRepoFolderPicker()
+            } label: {
+                Image(systemName: "folder.badge.plus")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Add Repository")
         }
         .padding(12)
     }
@@ -32,7 +51,11 @@ struct WorktreeSwimlaneView: View {
     private var swimlanes: some View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 12) {
-                ForEach(store.worktrees) { worktree in
+                ForEach(store.repositories) { repo in
+                    repoSection(repo: repo)
+                }
+                let ungrouped = store.worktrees.filter { $0.repoId == nil }
+                ForEach(ungrouped) { worktree in
                     SwimlaneRowView(
                         worktree: worktree,
                         onDelete: {
@@ -42,6 +65,62 @@ struct WorktreeSwimlaneView: View {
                 }
             }
             .padding(12)
+        }
+    }
+
+    private func repoSection(repo: Repository) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                Image(systemName: "folder")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Text(repo.name)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Menu {
+                    Button(role: .destructive) {
+                        store.send(.confirmDeleteRepoTapped(repoId: repo.id))
+                    } label: {
+                        Label("Remove Repository", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 4)
+
+            let repoWorktrees = store.worktrees.filter { $0.repoId == repo.id }
+            if repoWorktrees.isEmpty {
+                Text("No worktrees yet")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .padding(12)
+            } else {
+                ForEach(repoWorktrees) { worktree in
+                    SwimlaneRowView(
+                        worktree: worktree,
+                        onDelete: {
+                            store.send(.confirmDeleteTapped(worktreeId: worktree.id))
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    private func openRepoFolderPicker() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Select a git repository folder"
+        panel.prompt = "Add Repository"
+        if panel.runModal() == .OK, let url = panel.url {
+            store.send(.addRepoFolderSelected(url))
         }
     }
 }
