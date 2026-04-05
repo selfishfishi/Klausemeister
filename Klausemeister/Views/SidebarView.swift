@@ -104,8 +104,16 @@ struct SidebarWorktreeRow: View {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.branch")
                     .foregroundStyle(.secondary)
-                Text(worktree.name)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(worktree.name)
+                        .lineLimit(1)
+                    if let repoName = worktree.repoName {
+                        Text(repoName)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                }
                 Spacer()
                 if worktree.totalIssueCount > 0 {
                     Text("\(worktree.totalIssueCount)")
