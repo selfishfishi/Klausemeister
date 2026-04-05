@@ -22,5 +22,5 @@ enum LinearConfig {
 
     // MARK: - Scopes
 
-    nonisolated static let scopes = "read"
+    nonisolated static let scopes = "read,write"
 }

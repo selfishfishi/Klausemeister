@@ -7,18 +7,40 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: Binding(
-            get: { store.activeTabID },
+            get: { store.showMeister ? nil : store.activeTabID },
             set: { id in
                 if let id { store.send(.tabSelected(id)) }
             }
         )) {
-            ForEach(store.tabs) { tab in
-                SidebarTabRow(
-                    title: tab.title,
-                    isActive: tab.id == store.activeTabID,
-                    onClose: { store.send(.closeTabButtonTapped(tab.id)) }
-                )
-                .tag(tab.id)
+            // Meister item
+            Button {
+                store.send(.meisterTapped)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "squares.leading.rectangle")
+                        .foregroundStyle(.secondary)
+                    Text("Meister")
+                        .lineLimit(1)
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 4)
+            .listRowBackground(
+                store.showMeister
+                    ? RoundedRectangle(cornerRadius: 6).fill(.selection)
+                    : nil
+            )
+
+            Section("Terminals") {
+                ForEach(store.tabs) { tab in
+                    SidebarTabRow(
+                        title: tab.title,
+                        isActive: tab.id == store.activeTabID,
+                        onClose: { store.send(.closeTabButtonTapped(tab.id)) }
+                    )
+                    .tag(tab.id)
+                }
             }
         }
         .listStyle(.sidebar)

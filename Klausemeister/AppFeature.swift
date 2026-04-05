@@ -8,6 +8,8 @@ struct AppFeature {
         var tabs: IdentifiedArrayOf<Tab> = []
         var activeTabID: UUID?
         var showSidebar: Bool = true
+        var showMeister: Bool = false
+        var meister = MeisterFeature.State()
         var linearAuth = LinearAuthFeature.State()
 
         // swiftlint:disable:next nesting
@@ -30,6 +32,8 @@ struct AppFeature {
         case surfaceCreationFailed(id: UUID)
         case themeChanged(AppTheme)
         case oauthCallbackReceived(URL)
+        case meisterTapped
+        case meister(MeisterFeature.Action)
         case linearAuth(LinearAuthFeature.Action)
     }
 
@@ -39,6 +43,9 @@ struct AppFeature {
     @Dependency(\.uuid) var uuid
 
     var body: some Reducer<State, Action> {
+        Scope(state: \.meister, action: \.meister) {
+            MeisterFeature()
+        }
         Scope(state: \.linearAuth, action: \.linearAuth) {
             LinearAuthFeature()
         }
@@ -98,9 +105,18 @@ struct AppFeature {
                     await surfaceManager.destroySurface(id)
                 }
 
+            case .meisterTapped:
+                state.showMeister = true
+                state.activeTabID = nil
+                return .none
+
+            case .meister:
+                return .none
+
             case let .tabSelected(id):
                 guard state.tabs[id: id] != nil,
                       id != state.activeTabID else { return .none }
+                state.showMeister = false
                 let oldID = state.activeTabID
                 state.activeTabID = id
                 return .run { [oldID] _ in
