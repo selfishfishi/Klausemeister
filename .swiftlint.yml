@@ -10,10 +10,14 @@ function_body_length:
   warning: 50
   error: 100
 
+type_body_length:
+  warning: 300
+  error: 500
+
 disabled_rules:
   - trailing_whitespace
   - opening_brace
-  - blanket_disable_command
+  - blanket_disable_command # allowed during initial linting adoption
   - multiple_closures_with_trailing_closure
 
 opt_in_rules:
@@ -23,5 +27,7 @@ opt_in_rules:
 
 excluded:
   - .build
+  - DerivedData
   - Klausemeister.xcodeproj
   - Klausemeister/Assets.xcassets
+  - Packages
