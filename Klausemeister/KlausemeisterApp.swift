@@ -3,12 +3,20 @@ import SwiftUI
 
 @main
 struct KlausemeisterApp: App {
+    @AppStorage("selectedTheme") private var selectedTheme: AppTheme = .darkMedium
+
     let surfaceStore: SurfaceStore
     let store: StoreOf<AppFeature>
 
     init() {
         let surfaceStore = SurfaceStore()
         self.surfaceStore = surfaceStore
+
+        let initialTheme = AppTheme(
+            rawValue: UserDefaults.standard.string(forKey: "selectedTheme") ?? ""
+        ) ?? .darkMedium
+        GhosttyApp.shared.rebuild(theme: initialTheme)
+
         self.store = Store(initialState: AppFeature.State()) {
             AppFeature()
         } withDependencies: {
@@ -24,13 +32,12 @@ struct KlausemeisterApp: App {
             TerminalContainerView(store: store, surfaceStore: surfaceStore)
         }
         .defaultSize(width: 900, height: 600)
+        .environment(\.themeColors, selectedTheme.colors)
+        .onChange(of: selectedTheme) { _, newTheme in
+            store.send(.themeChanged(newTheme))
+        }
         .commands {
             CommandGroup(after: .newItem) {
-                Button("New Tab") {
-                    store.send(.newTabButtonTapped)
-                }
-                .keyboardShortcut("t", modifiers: .command)
-
                 Button("Close Tab") {
                     if let id = store.activeTabID {
                         store.send(.closeTabButtonTapped(id))
@@ -56,6 +63,35 @@ struct KlausemeisterApp: App {
                     store.send(.sidebarTogglePressed)
                 }
                 .keyboardShortcut("\\", modifiers: .command)
+            }
+
+            CommandMenu("Theme") {
+                Section("Dark") {
+                    ForEach([AppTheme.darkHard, .darkMedium, .darkSoft]) { theme in
+                        Button {
+                            selectedTheme = theme
+                        } label: {
+                            if theme == selectedTheme {
+                                Label(theme.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(theme.displayName)
+                            }
+                        }
+                    }
+                }
+                Section("Light") {
+                    ForEach([AppTheme.lightHard, .lightMedium, .lightSoft]) { theme in
+                        Button {
+                            selectedTheme = theme
+                        } label: {
+                            if theme == selectedTheme {
+                                Label(theme.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(theme.displayName)
+                            }
+                        }
+                    }
+                }
             }
 
             CommandMenu("Tabs") {
