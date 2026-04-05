@@ -30,6 +30,9 @@ struct KlausemeisterApp: App {
     var body: some Scene {
         WindowGroup {
             TerminalContainerView(store: store, surfaceStore: surfaceStore)
+                .onOpenURL { url in
+                    store.send(.oauthCallbackReceived(url))
+                }
         }
         .defaultSize(width: 900, height: 600)
         .environment(\.themeColors, selectedTheme.colors)

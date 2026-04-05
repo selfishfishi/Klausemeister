@@ -27,10 +27,12 @@ struct AppFeature {
         case surfaceCreated(id: UUID)
         case surfaceCreationFailed(id: UUID)
         case themeChanged(AppTheme)
+        case oauthCallbackReceived(URL)
     }
 
     @Dependency(\.surfaceManager) var surfaceManager
     @Dependency(\.ghosttyApp) var ghosttyApp
+    @Dependency(\.oauthClient) var oauthClient
     @Dependency(\.uuid) var uuid
 
     var body: some Reducer<State, Action> {
@@ -135,6 +137,11 @@ struct AppFeature {
                     if let activeID {
                         _ = await surfaceManager.focus(activeID)
                     }
+                }
+
+            case let .oauthCallbackReceived(url):
+                return .run { [oauthClient] _ in
+                    oauthClient.handleCallback(url)
                 }
             }
         }

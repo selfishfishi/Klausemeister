@@ -9,11 +9,11 @@
 /* Begin PBXBuildFile section */
 		A869F53A2F817984005797B3 /* GhosttyKit in Frameworks */ = {isa = PBXBuildFile; productRef = A8GHOST012F816B35005797B3 /* GhosttyKit */; };
 		A869F53B2F817984005797B3 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = A8GHOST022F816B35005797B3 /* GhosttyTerminal */; };
-		A8TCA0022F816B35005797B3 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = A8TCA0012F816B35005797B3 /* ComposableArchitecture */; };
-		A8ID00022F816B35005797B3 /* IdentifiedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = A8ID00012F816B35005797B3 /* IdentifiedCollections */; };
 		A8CP00022F816B35005797B3 /* CasePathsCore in Frameworks */ = {isa = PBXBuildFile; productRef = A8CP00012F816B35005797B3 /* CasePathsCore */; };
-		A8PC00022F816B35005797B3 /* PerceptionCore in Frameworks */ = {isa = PBXBuildFile; productRef = A8PC00012F816B35005797B3 /* PerceptionCore */; };
 		A8DP00022F816B35005797B3 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = A8DP00012F816B35005797B3 /* Dependencies */; };
+		A8ID00022F816B35005797B3 /* IdentifiedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = A8ID00012F816B35005797B3 /* IdentifiedCollections */; };
+		A8PC00022F816B35005797B3 /* PerceptionCore in Frameworks */ = {isa = PBXBuildFile; productRef = A8PC00012F816B35005797B3 /* PerceptionCore */; };
+		A8TCA0022F816B35005797B3 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = A8TCA0012F816B35005797B3 /* ComposableArchitecture */; };
 		A8TE000B2F816B35005797B3 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE000C2F816B35005797B3 /* ComposableArchitecture */; };
 /* End PBXBuildFile section */
 
@@ -365,6 +365,14 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleURLTypes = (
+					{
+						CFBundleURLName = "OAuth Callback";
+						CFBundleURLSchemes = (
+							klausemeister,
+						);
+					},
+				);
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -397,6 +405,14 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleURLTypes = (
+					{
+						CFBundleURLName = "OAuth Callback";
+						CFBundleURLSchemes = (
+							klausemeister,
+						);
+					},
+				);
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -507,6 +523,14 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		A8CP00012F816B35005797B3 /* CasePathsCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CasePathsCore;
+		};
+		A8DP00012F816B35005797B3 /* Dependencies */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Dependencies;
+		};
 		A8GHOST012F816B35005797B3 /* GhosttyKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A8GHOST002F816B35005797B3 /* XCRemoteSwiftPackageReference "libghostty-spm" */;
@@ -517,6 +541,14 @@
 			package = A8GHOST002F816B35005797B3 /* XCRemoteSwiftPackageReference "libghostty-spm" */;
 			productName = GhosttyTerminal;
 		};
+		A8ID00012F816B35005797B3 /* IdentifiedCollections */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = IdentifiedCollections;
+		};
+		A8PC00012F816B35005797B3 /* PerceptionCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PerceptionCore;
+		};
 		A8TCA0012F816B35005797B3 /* ComposableArchitecture */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A8TCA0002F816B35005797B3 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
@@ -526,22 +558,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A8TCA0002F816B35005797B3 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
 			productName = ComposableArchitecture;
-		};
-		A8ID00012F816B35005797B3 /* IdentifiedCollections */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = IdentifiedCollections;
-		};
-		A8CP00012F816B35005797B3 /* CasePathsCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = CasePathsCore;
-		};
-		A8PC00012F816B35005797B3 /* PerceptionCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = PerceptionCore;
-		};
-		A8DP00012F816B35005797B3 /* Dependencies */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Dependencies;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
