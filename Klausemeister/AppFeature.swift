@@ -10,6 +10,7 @@ struct AppFeature {
         var showSidebar: Bool = true
         var showMeister: Bool = false
         var meister = MeisterFeature.State()
+        var worktree = WorktreeFeature.State()
         var linearAuth = LinearAuthFeature.State()
 
         // swiftlint:disable:next nesting
@@ -34,6 +35,7 @@ struct AppFeature {
         case oauthCallbackReceived(URL)
         case meisterTapped
         case meister(MeisterFeature.Action)
+        case worktree(WorktreeFeature.Action)
         case linearAuth(LinearAuthFeature.Action)
     }
 
@@ -45,6 +47,9 @@ struct AppFeature {
     var body: some Reducer<State, Action> {
         Scope(state: \.meister, action: \.meister) {
             MeisterFeature()
+        }
+        Scope(state: \.worktree, action: \.worktree) {
+            WorktreeFeature()
         }
         Scope(state: \.linearAuth, action: \.linearAuth) {
             LinearAuthFeature()
@@ -108,15 +113,25 @@ struct AppFeature {
             case .meisterTapped:
                 state.showMeister = true
                 state.activeTabID = nil
+                state.worktree.selectedWorktreeId = nil
                 return .none
 
             case .meister:
+                return .none
+
+            case .worktree(.worktreeSelected(.some)):
+                state.showMeister = false
+                state.activeTabID = nil
+                return .none
+
+            case .worktree:
                 return .none
 
             case let .tabSelected(id):
                 guard state.tabs[id: id] != nil,
                       id != state.activeTabID else { return .none }
                 state.showMeister = false
+                state.worktree.selectedWorktreeId = nil
                 let oldID = state.activeTabID
                 state.activeTabID = id
                 return .run { [oldID] _ in
