@@ -18,6 +18,10 @@ struct TerminalContainerView: View {
                 activeTabID: store.activeTabID
             )
             .ignoresSafeArea(edges: [.bottom, .horizontal])
+            .background {
+                Color(hexString: themeColors.background)
+                    .ignoresSafeArea()
+            }
         }
         .navigationSplitViewStyle(.balanced)
         .onChange(of: store.showSidebar) { _, show in

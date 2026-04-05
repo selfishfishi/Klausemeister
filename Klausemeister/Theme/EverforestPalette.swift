@@ -116,4 +116,9 @@ extension Color {
         let b = Double(hex & 0xFF) / 255.0
         self.init(red: r, green: g, blue: b)
     }
+
+    init(hexString: String) {
+        let hex = String(hexString.dropFirst()) // remove #
+        self.init(hex: UInt32(hex, radix: 16) ?? 0)
+    }
 }
