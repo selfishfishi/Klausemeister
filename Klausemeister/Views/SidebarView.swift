@@ -23,16 +23,18 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
-            Button {
-                store.send(.newTabButtonTapped)
-            } label: {
-                Image(systemName: "plus")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+            HStack {
+                Spacer()
+                Button {
+                    store.send(.newTabButtonTapped)
+                } label: {
+                    Image(systemName: "plus")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
         }
     }
 }
