@@ -116,6 +116,12 @@ struct AppFeature {
                 state.worktree.selectedWorktreeId = nil
                 return .none
 
+            case let .meister(.delegate(.issueAssignedToWorktree(issue, worktreeId))):
+                return .send(.worktree(.issueAssignedToWorktree(
+                    worktreeId: worktreeId,
+                    issue: issue
+                )))
+
             case .meister:
                 return .none
 
@@ -123,6 +129,9 @@ struct AppFeature {
                 state.showMeister = false
                 state.activeTabID = nil
                 return .none
+
+            case let .worktree(.delegate(.issueReturnedToMeister(issue))):
+                return .send(.meister(.issueReturnedFromWorktree(issue: issue)))
 
             case .worktree:
                 return .none

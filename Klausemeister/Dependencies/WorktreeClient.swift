@@ -15,6 +15,7 @@ struct WorktreeClient {
     var assignIssueToWorktree: @Sendable (_ issueLinearId: String, _ worktreeId: String) async throws -> Void
     var moveToOutbox: @Sendable (_ queueItemId: String) async throws -> Void
     var removeFromQueue: @Sendable (_ queueItemId: String) async throws -> Void
+    var moveToProcessing: @Sendable (_ queueItemId: String) async throws -> Void
     var reorderQueue: @Sendable (_ worktreeId: String, _ queuePosition: String, _ itemIds: [String]) async throws -> Void
 }
 
@@ -78,7 +79,7 @@ extension WorktreeClient: DependencyKey {
                     let alreadyQueued = try WorktreeQueueItemRecord
                         .filter(Column("worktreeId") == worktreeId)
                         .filter(Column("issueLinearId") == issueLinearId)
-                        .filter(Column("queuePosition") == "inbox")
+                        .filter(sql: "queuePosition IN ('inbox', 'processing', 'outbox')")
                         .fetchCount(db) > 0
                     guard !alreadyQueued else { return }
 
@@ -117,6 +118,16 @@ extension WorktreeClient: DependencyKey {
                 }
             },
 
+            moveToProcessing: { queueItemId in
+                try await dbQueue.write { db in
+                    guard var record = try WorktreeQueueItemRecord.fetchOne(db, key: queueItemId) else {
+                        throw WorktreeClientError.queueItemNotFound(queueItemId)
+                    }
+                    record.queuePosition = "processing"
+                    try record.update(db)
+                }
+            },
+
             reorderQueue: { worktreeId, queuePosition, itemIds in
                 try await dbQueue.write { db in
                     for (index, itemId) in itemIds.enumerated() {
@@ -139,6 +150,7 @@ extension WorktreeClient: DependencyKey {
         assignIssueToWorktree: unimplemented("WorktreeClient.assignIssueToWorktree"),
         moveToOutbox: unimplemented("WorktreeClient.moveToOutbox"),
         removeFromQueue: unimplemented("WorktreeClient.removeFromQueue"),
+        moveToProcessing: unimplemented("WorktreeClient.moveToProcessing"),
         reorderQueue: unimplemented("WorktreeClient.reorderQueue")
     )
 }

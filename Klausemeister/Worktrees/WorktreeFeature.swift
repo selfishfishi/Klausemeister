@@ -8,6 +8,7 @@ struct Worktree: Equatable, Identifiable {
     var sortOrder: Int
     var gitWorktreePath: String
     var inbox: [LinearIssue] = []
+    var processing: LinearIssue? = nil
     var outbox: [LinearIssue] = []
 
     var totalIssueCount: Int { inbox.count + outbox.count }
@@ -48,15 +49,21 @@ struct WorktreeFeature {
         case worktreeDeleted(worktreeId: String)
         case worktreeDeleteFailed(worktree: Worktree)
         case worktreeSelected(String?)
-        case issueAssignedToWorktree(issueId: String, worktreeId: String)
+        case issueAssignedToWorktree(worktreeId: String, issue: LinearIssue)
         case issueReturnedToMeister(queueItemId: String, issueId: String, worktreeId: String)
+        case issueMovedToProcessing(queueItemId: String, issueId: String, worktreeId: String)
         case issueMovedToOutbox(queueItemId: String, issueId: String, worktreeId: String)
         case queueReordered(worktreeId: String, queuePosition: String, itemIds: [String])
         case alert(PresentationAction<Alert>)
+        case delegate(Delegate)
 
         @CasePathable
         enum Alert: Equatable {
             case confirmDelete(worktreeId: String)
+        }
+
+        enum Delegate: Equatable {
+            case issueReturnedToMeister(issue: LinearIssue)
         }
     }
 
@@ -104,6 +111,9 @@ struct WorktreeFeature {
                             .filter { $0.queuePosition == "inbox" }
                             .sorted { $0.sortOrder < $1.sortOrder }
                             .compactMap { issuesByLinearId[$0.issueLinearId] },
+                        processing: items
+                            .first { $0.queuePosition == "processing" }
+                            .flatMap { issuesByLinearId[$0.issueLinearId] },
                         outbox: items
                             .filter { $0.queuePosition == "outbox" }
                             .sorted { $0.sortOrder < $1.sortOrder }
@@ -186,36 +196,68 @@ struct WorktreeFeature {
                 state.selectedWorktreeId = worktreeId
                 return .none
 
-            case let .issueAssignedToWorktree(issueId, worktreeId):
-                return .run { send in
-                    try await worktreeClient.assignIssueToWorktree(issueId, worktreeId)
-                    await send(.onAppear)
+            case let .issueAssignedToWorktree(worktreeId, issue):
+                if let wtIndex = state.worktrees.index(id: worktreeId) {
+                    let alreadyQueued = state.worktrees[wtIndex].inbox.contains { $0.id == issue.id }
+                        || state.worktrees[wtIndex].processing?.id == issue.id
+                        || state.worktrees[wtIndex].outbox.contains { $0.id == issue.id }
+                    if !alreadyQueued {
+                        state.worktrees[wtIndex].inbox.append(issue)
+                    }
+                }
+                return .run { _ in
+                    try await worktreeClient.assignIssueToWorktree(issue.id, worktreeId)
                 }
 
-            case let .issueMovedToOutbox(queueItemId, issueId, worktreeId):
+            case let .issueMovedToProcessing(queueItemId, issueId, worktreeId):
                 if let wtIndex = state.worktrees.index(id: worktreeId),
                    let issueIndex = state.worktrees[wtIndex].inbox.firstIndex(where: { $0.id == issueId })
                 {
                     let issue = state.worktrees[wtIndex].inbox.remove(at: issueIndex)
-                    state.worktrees[wtIndex].outbox.append(issue)
+                    state.worktrees[wtIndex].processing = issue
+                }
+                return .run { _ in
+                    try await worktreeClient.moveToProcessing(queueItemId)
+                }
+
+            case let .issueMovedToOutbox(queueItemId, issueId, worktreeId):
+                if let wtIndex = state.worktrees.index(id: worktreeId) {
+                    if let issueIndex = state.worktrees[wtIndex].inbox.firstIndex(where: { $0.id == issueId }) {
+                        let issue = state.worktrees[wtIndex].inbox.remove(at: issueIndex)
+                        state.worktrees[wtIndex].outbox.append(issue)
+                    } else if let proc = state.worktrees[wtIndex].processing, proc.id == issueId {
+                        state.worktrees[wtIndex].processing = nil
+                        state.worktrees[wtIndex].outbox.append(proc)
+                    }
                 }
                 return .run { _ in
                     try await worktreeClient.moveToOutbox(queueItemId)
                 }
 
             case let .issueReturnedToMeister(queueItemId, issueId, worktreeId):
-                if let wtIndex = state.worktrees.index(id: worktreeId) {
-                    state.worktrees[wtIndex].inbox.removeAll { $0.id == issueId }
-                    state.worktrees[wtIndex].outbox.removeAll { $0.id == issueId }
+                guard let wtIndex = state.worktrees.index(id: worktreeId) else { return .none }
+                let returnedIssue = state.worktrees[wtIndex].inbox.first { $0.id == issueId }
+                    ?? (state.worktrees[wtIndex].processing?.id == issueId
+                        ? state.worktrees[wtIndex].processing : nil)
+                    ?? state.worktrees[wtIndex].outbox.first { $0.id == issueId }
+                guard let issue = returnedIssue else { return .none }
+                state.worktrees[wtIndex].inbox.removeAll { $0.id == issueId }
+                if state.worktrees[wtIndex].processing?.id == issueId {
+                    state.worktrees[wtIndex].processing = nil
                 }
-                return .run { _ in
+                state.worktrees[wtIndex].outbox.removeAll { $0.id == issueId }
+                return .run { send in
                     try await worktreeClient.removeFromQueue(queueItemId)
+                    await send(.delegate(.issueReturnedToMeister(issue: issue)))
                 }
 
             case let .queueReordered(worktreeId, queuePosition, itemIds):
                 return .run { _ in
                     try await worktreeClient.reorderQueue(worktreeId, queuePosition, itemIds)
                 }
+
+            case .delegate:
+                return .none
             }
         }
         .ifLet(\.$alert, action: \.alert)
