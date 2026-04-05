@@ -10,8 +10,22 @@
 		A869F53A2F817984005797B3 /* GhosttyKit in Frameworks */ = {isa = PBXBuildFile; productRef = A8GHOST012F816B35005797B3 /* GhosttyKit */; };
 		A869F53B2F817984005797B3 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = A8GHOST022F816B35005797B3 /* GhosttyTerminal */; };
 		A8TCA0022F816B35005797B3 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = A8TCA0012F816B35005797B3 /* ComposableArchitecture */; };
+		A8ID00022F816B35005797B3 /* IdentifiedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = A8ID00012F816B35005797B3 /* IdentifiedCollections */; };
+		A8CP00022F816B35005797B3 /* CasePathsCore in Frameworks */ = {isa = PBXBuildFile; productRef = A8CP00012F816B35005797B3 /* CasePathsCore */; };
+		A8PC00022F816B35005797B3 /* PerceptionCore in Frameworks */ = {isa = PBXBuildFile; productRef = A8PC00012F816B35005797B3 /* PerceptionCore */; };
+		A8DP00022F816B35005797B3 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = A8DP00012F816B35005797B3 /* Dependencies */; };
 		A8TE000B2F816B35005797B3 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE000C2F816B35005797B3 /* ComposableArchitecture */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A8TE00072F816B35005797B3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A869EED82F816B35005797B3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A869EEDF2F816B35005797B3;
+			remoteInfo = Klausemeister;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		A869EEE02F816B35005797B3 /* Klausemeister.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Klausemeister.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -39,6 +53,10 @@
 				A869F53B2F817984005797B3 /* GhosttyTerminal in Frameworks */,
 				A869F53A2F817984005797B3 /* GhosttyKit in Frameworks */,
 				A8TCA0022F816B35005797B3 /* ComposableArchitecture in Frameworks */,
+				A8ID00022F816B35005797B3 /* IdentifiedCollections in Frameworks */,
+				A8CP00022F816B35005797B3 /* CasePathsCore in Frameworks */,
+				A8PC00022F816B35005797B3 /* PerceptionCore in Frameworks */,
+				A8DP00022F816B35005797B3 /* Dependencies in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -51,16 +69,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
-
-/* Begin PBXContainerItemProxy section */
-		A8TE00072F816B35005797B3 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A869EED82F816B35005797B3 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A869EEDF2F816B35005797B3;
-			remoteInfo = Klausemeister;
-		};
-/* End PBXContainerItemProxy section */
 
 /* Begin PBXGroup section */
 		A869EED72F816B35005797B3 = {
@@ -104,6 +112,10 @@
 				A8GHOST012F816B35005797B3 /* GhosttyKit */,
 				A8GHOST022F816B35005797B3 /* GhosttyTerminal */,
 				A8TCA0012F816B35005797B3 /* ComposableArchitecture */,
+				A8ID00012F816B35005797B3 /* IdentifiedCollections */,
+				A8CP00012F816B35005797B3 /* CasePathsCore */,
+				A8PC00012F816B35005797B3 /* PerceptionCore */,
+				A8DP00012F816B35005797B3 /* Dependencies */,
 			);
 			productName = Klausemeister;
 			productReference = A869EEE02F816B35005797B3 /* Klausemeister.app */;
@@ -514,6 +526,22 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A8TCA0002F816B35005797B3 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
 			productName = ComposableArchitecture;
+		};
+		A8ID00012F816B35005797B3 /* IdentifiedCollections */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = IdentifiedCollections;
+		};
+		A8CP00012F816B35005797B3 /* CasePathsCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CasePathsCore;
+		};
+		A8PC00012F816B35005797B3 /* PerceptionCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PerceptionCore;
+		};
+		A8DP00012F816B35005797B3 /* Dependencies */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Dependencies;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
