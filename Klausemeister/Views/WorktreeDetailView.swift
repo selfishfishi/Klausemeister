@@ -14,8 +14,15 @@ struct WorktreeDetailView: View {
                 HStack {
                     Image(systemName: "arrow.triangle.branch")
                         .foregroundStyle(.secondary)
-                    Text(worktree.name)
-                        .font(.title2.weight(.semibold))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(worktree.name)
+                            .font(.title2.weight(.semibold))
+                        if let branch = worktree.currentBranch {
+                            Text(branch)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     Spacer()
                     Button(role: .destructive) {
                         store.send(.confirmDeleteTapped(worktreeId: worktreeId))

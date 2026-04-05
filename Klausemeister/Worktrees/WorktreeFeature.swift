@@ -17,6 +17,7 @@ struct Worktree: Equatable, Identifiable {
     var gitWorktreePath: String
     var repoId: String?
     var repoName: String?
+    var currentBranch: String?
     var inbox: [LinearIssue] = []
     var processing: LinearIssue?
     var outbox: [LinearIssue] = []
@@ -81,6 +82,8 @@ struct WorktreeFeature {
         case moveToProcessingFailed(issueId: String, worktreeId: String, issue: LinearIssue)
         case moveToOutboxFailed(issueId: String, worktreeId: String, issue: LinearIssue, fromProcessing: Bool)
         case returnToMeisterFailed(issueId: String, worktreeId: String, issue: LinearIssue)
+        case branchSwitched(worktreeId: String, branchName: String)
+        case branchesLoaded([String: String])
         case addRepoFolderSelected(URL)
         case repoAdded(TaskResult<RepositoryRecord>)
         case confirmDeleteRepoTapped(repoId: String)
@@ -175,6 +178,25 @@ struct WorktreeFeature {
                             .compactMap { issuesByLinearId[$0.issueLinearId] }
                     )
                 })
+                let worktreePaths = state.worktrees.map { (id: $0.id, path: $0.gitWorktreePath) }
+                return .run { send in
+                    var branches: [String: String] = [:]
+                    for wt in worktreePaths where !wt.path.isEmpty {
+                        if let branch = try? await gitClient.currentBranch(wt.path) {
+                            branches[wt.id] = branch
+                        }
+                    }
+                    await send(.branchesLoaded(branches))
+                }
+
+            case let .branchesLoaded(branches):
+                for (worktreeId, branch) in branches {
+                    state.worktrees[id: worktreeId]?.currentBranch = branch
+                }
+                return .none
+
+            case let .branchSwitched(worktreeId, branchName):
+                state.worktrees[id: worktreeId]?.currentBranch = branchName
                 return .none
 
             case .createWorktreeTapped:
@@ -222,13 +244,15 @@ struct WorktreeFeature {
             case let .worktreeCreated(.success(record)):
                 state.isCreatingWorktree = false
                 let repoName = record.repoId.flatMap { id in state.repositories[id: id]?.name }
+                let branch = WorktreeConfig.branchName(fromIdentifier: record.name)
                 state.worktrees.append(Worktree(
                     id: record.worktreeId,
                     name: record.name,
                     sortOrder: record.sortOrder,
                     gitWorktreePath: record.gitWorktreePath,
                     repoId: record.repoId,
-                    repoName: repoName
+                    repoName: repoName,
+                    currentBranch: branch
                 ))
                 return .none
 
@@ -310,11 +334,24 @@ struct WorktreeFeature {
                         state.worktrees[wtIndex].inbox.append(issue)
                     }
                 }
-                return .run { [issueId = issue.id] _ in
-                    try await worktreeClient.assignIssueToWorktree(issueId, worktreeId)
-                } catch: { _, send in
-                    await send(.assignFailed(worktreeId: worktreeId, issueId: issue.id))
-                }
+                let worktreePath = state.worktrees[id: worktreeId]?.gitWorktreePath
+                return .merge(
+                    .run { [issueId = issue.id] _ in
+                        try await worktreeClient.assignIssueToWorktree(issueId, worktreeId)
+                    } catch: { _, send in
+                        await send(.assignFailed(worktreeId: worktreeId, issueId: issue.id))
+                    },
+                    .run { send in
+                        guard let path = worktreePath, !path.isEmpty else { return }
+                        let branch = WorktreeConfig.branchName(fromIdentifier: issue.identifier)
+                        do {
+                            try await gitClient.switchBranch(path, branch)
+                            await send(.branchSwitched(worktreeId: worktreeId, branchName: branch))
+                        } catch {
+                            Self.log.warning("Branch switch failed for \(worktreeId): \(error.localizedDescription)")
+                        }
+                    }
+                )
 
             case let .issueMovedToProcessing(queueItemId, issueId, worktreeId):
                 var movedIssue: LinearIssue?
