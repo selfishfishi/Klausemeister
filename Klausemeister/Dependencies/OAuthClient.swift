@@ -73,7 +73,7 @@ extension OAuthClient: DependencyKey {
                     "client_id=\(LinearConfig.clientID)",
                     "refresh_token=\(refreshToken)"
                 ].joined(separator: "&")
-                request.httpBody = body.data(using: .utf8)
+                request.httpBody = Data(body.utf8)
 
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let httpResponse = response as? HTTPURLResponse,
