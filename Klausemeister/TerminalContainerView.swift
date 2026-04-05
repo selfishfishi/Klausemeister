@@ -14,7 +14,10 @@ struct TerminalContainerView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
             if store.showMeister {
-                MeisterView(store: store.scope(state: \.meister, action: \.meister))
+                MeisterTabView(
+                    meisterStore: store.scope(state: \.meister, action: \.meister),
+                    worktreeStore: store.scope(state: \.worktree, action: \.worktree)
+                )
             } else {
                 TerminalContentView(
                     surfaceView: store.activeTabID.flatMap { surfaceStore.surface(for: $0) },
