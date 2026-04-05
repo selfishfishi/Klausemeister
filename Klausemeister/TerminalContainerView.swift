@@ -13,14 +13,18 @@ struct TerminalContainerView: View {
             SidebarView(store: store)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
-            TerminalContentView(
-                surfaceView: store.activeTabID.flatMap { surfaceStore.surface(for: $0) },
-                activeTabID: store.activeTabID
-            )
-            .ignoresSafeArea(edges: [.bottom, .horizontal])
-            .background {
-                Color(hexString: themeColors.background)
-                    .ignoresSafeArea()
+            if store.showMeister {
+                MeisterView(store: store.scope(state: \.meister, action: \.meister))
+            } else {
+                TerminalContentView(
+                    surfaceView: store.activeTabID.flatMap { surfaceStore.surface(for: $0) },
+                    activeTabID: store.activeTabID
+                )
+                .ignoresSafeArea(edges: [.bottom, .horizontal])
+                .background {
+                    Color(hexString: themeColors.background)
+                        .ignoresSafeArea()
+                }
             }
         }
         .navigationSplitViewStyle(.balanced)

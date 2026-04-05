@@ -18,5 +18,5 @@ enum LinearConfig {
     nonisolated static let refreshTokenAccount = "linear_refresh_token"
 
     // MARK: - Scopes
-    nonisolated static let scopes = "read"
+    nonisolated static let scopes = "read,write"
 }

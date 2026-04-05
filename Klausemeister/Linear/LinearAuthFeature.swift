@@ -79,31 +79,22 @@ struct LinearAuthFeature {
             case .meLoaded(.failure):
                 state.status = .unauthenticated
                 state.user = nil
-                return .run { _ in
-                    try? await keychainClient.delete(
-                        LinearConfig.keychainService,
-                        LinearConfig.accessTokenAccount
-                    )
-                    try? await keychainClient.delete(
-                        LinearConfig.keychainService,
-                        LinearConfig.refreshTokenAccount
-                    )
+                return .run { [keychainClient] _ in
+                    await clearStoredTokens(keychainClient)
                 }
 
             case .logoutButtonTapped:
                 state.status = .unauthenticated
                 state.user = nil
-                return .run { _ in
-                    try? await keychainClient.delete(
-                        LinearConfig.keychainService,
-                        LinearConfig.accessTokenAccount
-                    )
-                    try? await keychainClient.delete(
-                        LinearConfig.keychainService,
-                        LinearConfig.refreshTokenAccount
-                    )
+                return .run { [keychainClient] _ in
+                    await clearStoredTokens(keychainClient)
                 }
             }
         }
     }
+}
+
+private func clearStoredTokens(_ keychainClient: KeychainClient) async {
+    try? await keychainClient.delete(LinearConfig.keychainService, LinearConfig.accessTokenAccount)
+    try? await keychainClient.delete(LinearConfig.keychainService, LinearConfig.refreshTokenAccount)
 }
