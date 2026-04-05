@@ -8,6 +8,7 @@ struct AppFeature {
         var tabs: IdentifiedArrayOf<Tab> = []
         var activeTabID: UUID?
         var showSidebar: Bool = true
+        var linearAuth = LinearAuthFeature.State()
 
         struct Tab: Equatable, Identifiable {
             let id: UUID
@@ -28,6 +29,7 @@ struct AppFeature {
         case surfaceCreationFailed(id: UUID)
         case themeChanged(AppTheme)
         case oauthCallbackReceived(URL)
+        case linearAuth(LinearAuthFeature.Action)
     }
 
     @Dependency(\.surfaceManager) var surfaceManager
@@ -36,6 +38,9 @@ struct AppFeature {
     @Dependency(\.uuid) var uuid
 
     var body: some Reducer<State, Action> {
+        Scope(state: \.linearAuth, action: \.linearAuth) {
+            LinearAuthFeature()
+        }
         Reduce { state, action in
             switch action {
             case .onAppear:
@@ -143,6 +148,9 @@ struct AppFeature {
                 return .run { [oauthClient] _ in
                     oauthClient.handleCallback(url)
                 }
+
+            case .linearAuth:
+                return .none
             }
         }
     }
