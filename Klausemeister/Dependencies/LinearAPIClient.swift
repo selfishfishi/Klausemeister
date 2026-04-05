@@ -4,6 +4,7 @@ import Foundation
 struct LinearAPIClient: Sendable {
     var me: @Sendable () async throws -> LinearUser
     var fetchIssue: @Sendable (_ identifier: String) async throws -> LinearIssue
+    var fetchIssues: @Sendable (_ identifiers: [String]) async throws -> [LinearIssue]
     var updateIssueStatus: @Sendable (_ issueId: String, _ statusId: String) async throws -> Void
     var fetchWorkflowStates: @Sendable () async throws -> [LinearWorkflowState]
 }
@@ -162,6 +163,86 @@ extension LinearAPIClient: DependencyKey {
                 )
             },
 
+            fetchIssues: { identifiers in
+                guard !identifiers.isEmpty else { return [] }
+                let token = try await loadToken(keychainClient: keychainClient)
+
+                let query = """
+                query($filter: IssueFilter!) {
+                  issues(filter: $filter, first: \(identifiers.count)) {
+                    nodes {
+                      id identifier title url description priority createdAt updatedAt
+                      state { id name type position }
+                      project { name }
+                      assignee { name }
+                      labels { nodes { name } }
+                    }
+                  }
+                }
+                """
+                let variables: [String: Any] = [
+                    "filter": ["identifier": ["in": identifiers]]
+                ]
+                let data = try await graphQLRequest(
+                    token: token, query: query, variables: variables
+                )
+
+                struct GraphQLResponse: Decodable {
+                    struct Data: Decodable {
+                        struct Issues: Decodable {
+                            struct Node: Decodable {
+                                let id: String
+                                let identifier: String
+                                let title: String
+                                let url: String
+                                let description: String?
+                                let priority: Int
+                                let createdAt: String
+                                let updatedAt: String
+                                struct State: Decodable {
+                                    let id: String; let name: String; let type: String; let position: Double
+                                }
+                                let state: State
+                                struct Project: Decodable { let name: String }
+                                let project: Project?
+                                struct Assignee: Decodable { let name: String }
+                                let assignee: Assignee?
+                                struct Labels: Decodable {
+                                    struct LabelNode: Decodable { let name: String }
+                                    let nodes: [LabelNode]
+                                }
+                                let labels: Labels
+                            }
+                            let nodes: [Node]
+                        }
+                        let issues: Issues
+                    }
+                    let data: Data
+                }
+
+                let graphQLResponse = try JSONDecoder().decode(
+                    GraphQLResponse.self, from: data
+                )
+                return graphQLResponse.data.issues.nodes.map { node in
+                    LinearIssue(
+                        id: node.id,
+                        identifier: node.identifier,
+                        title: node.title,
+                        status: node.state.name,
+                        statusId: node.state.id,
+                        statusType: node.state.type,
+                        projectName: node.project?.name,
+                        assigneeName: node.assignee?.name,
+                        priority: node.priority,
+                        labels: node.labels.nodes.map(\.name),
+                        description: node.description,
+                        url: node.url,
+                        createdAt: node.createdAt,
+                        updatedAt: node.updatedAt
+                    )
+                }
+            },
+
             updateIssueStatus: { issueId, statusId in
                 let token = try await loadToken(keychainClient: keychainClient)
 
@@ -240,6 +321,7 @@ extension LinearAPIClient: DependencyKey {
     nonisolated static let testValue = LinearAPIClient(
         me: unimplemented("LinearAPIClient.me"),
         fetchIssue: unimplemented("LinearAPIClient.fetchIssue"),
+        fetchIssues: unimplemented("LinearAPIClient.fetchIssues"),
         updateIssueStatus: unimplemented("LinearAPIClient.updateIssueStatus"),
         fetchWorkflowStates: unimplemented("LinearAPIClient.fetchWorkflowStates")
     )

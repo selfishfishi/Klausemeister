@@ -9,6 +9,7 @@ struct DatabaseClient: Sendable {
     var deleteImportedIssue: @Sendable (_ linearId: String) async throws -> Void
     var updateIssueStatus: @Sendable (_ linearId: String, _ status: String, _ statusId: String, _ statusType: String) async throws -> Void
     var updateIssueFromLinear: @Sendable (ImportedIssueRecord) async throws -> Void
+    var batchSaveImportedIssues: @Sendable ([ImportedIssueRecord]) async throws -> Void
 }
 
 extension DatabaseClient: DependencyKey {
@@ -55,6 +56,13 @@ extension DatabaseClient: DependencyKey {
             },
             updateIssueFromLinear: { record in
                 try await dbQueue.write { db in try record.save(db) }
+            },
+            batchSaveImportedIssues: { records in
+                try await dbQueue.write { db in
+                    for record in records {
+                        try record.save(db)
+                    }
+                }
             }
         )
     }()
@@ -64,7 +72,8 @@ extension DatabaseClient: DependencyKey {
         saveImportedIssue: unimplemented("DatabaseClient.saveImportedIssue"),
         deleteImportedIssue: unimplemented("DatabaseClient.deleteImportedIssue"),
         updateIssueStatus: unimplemented("DatabaseClient.updateIssueStatus"),
-        updateIssueFromLinear: unimplemented("DatabaseClient.updateIssueFromLinear")
+        updateIssueFromLinear: unimplemented("DatabaseClient.updateIssueFromLinear"),
+        batchSaveImportedIssues: unimplemented("DatabaseClient.batchSaveImportedIssues")
     )
 }
 

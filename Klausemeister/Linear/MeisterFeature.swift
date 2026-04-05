@@ -96,15 +96,11 @@ struct MeisterFeature {
 
             case .refreshAllIssues:
                 state.isRefreshing = true
-                let allIssueIds = state.columns.flatMap { $0.issues.map(\.identifier) }
+                let allIdentifiers = state.columns.flatMap { $0.issues.map(\.identifier) }
                 return .run { send in
-                    var refreshed: [LinearIssue] = []
-                    for identifier in allIssueIds {
-                        if let issue = try? await linearAPIClient.fetchIssue(identifier) {
-                            refreshed.append(issue)
-                        }
-                    }
-                    await send(.issuesRefreshed(.success(refreshed)))
+                    await send(.issuesRefreshed(
+                        TaskResult { try await linearAPIClient.fetchIssues(allIdentifiers) }
+                    ))
                 }
                 .cancellable(id: "MeisterFeature.refresh", cancelInFlight: true)
 
@@ -119,10 +115,9 @@ struct MeisterFeature {
                     }
                 }
                 let now = date.now
+                let records = issues.map { ImportedIssueRecord(from: $0, importedAt: now) }
                 return .run { _ in
-                    for issue in issues {
-                        try await databaseClient.updateIssueFromLinear(ImportedIssueRecord(from: issue, importedAt: now))
-                    }
+                    try await databaseClient.batchSaveImportedIssues(records)
                 }
 
             case .issuesRefreshed(.failure):
