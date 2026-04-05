@@ -37,10 +37,14 @@ struct MeisterFeature {
         case removeIssueTapped(issueId: String)
         case assignIssueToWorktree(issue: LinearIssue, worktreeId: String)
         case issueReturnedFromWorktree(issue: LinearIssue)
+        case removeIssueFromColumns(issueId: String)
+        case issueDroppedFromWorktree(issueId: String, onColumnId: String)
+        case issueDroppedFromWorktreeResolved(issue: LinearIssue, onColumnId: String)
         case delegate(Delegate)
 
         enum Delegate: Equatable {
             case issueAssignedToWorktree(issue: LinearIssue, worktreeId: String)
+            case issueReturnedFromWorktreeByDrop(issueId: String)
         }
     }
 
@@ -194,12 +198,15 @@ struct MeisterFeature {
                 }
 
             case let .issueDropped(issueId, onColumnId):
-                guard let fromColumn = state.columnContainingIssue(issueId) else { return .none }
-                return .send(.issueMoved(
-                    issueId: issueId,
-                    fromColumnId: fromColumn.id,
-                    toColumnId: onColumnId
-                ))
+                if let fromColumn = state.columnContainingIssue(issueId) {
+                    return .send(.issueMoved(
+                        issueId: issueId,
+                        fromColumnId: fromColumn.id,
+                        toColumnId: onColumnId
+                    ))
+                }
+                // Issue not in any column — coming from a worktree
+                return .send(.issueDroppedFromWorktree(issueId: issueId, onColumnId: onColumnId))
 
             case let .moveToStatusTapped(issueId, statusId):
                 guard let fromColumn = state.columnContainingIssue(issueId) else { return .none }
@@ -224,6 +231,10 @@ struct MeisterFeature {
                     try await databaseClient.deleteImportedIssue(issueId)
                 }
 
+            case let .removeIssueFromColumns(issueId):
+                state.removeIssueFromAllColumns(issueId)
+                return .none
+
             case let .assignIssueToWorktree(issue, worktreeId):
                 state.removeIssueFromAllColumns(issue.id)
                 return .send(.delegate(.issueAssignedToWorktree(issue: issue, worktreeId: worktreeId)))
@@ -238,6 +249,25 @@ struct MeisterFeature {
                     state.columns[id: firstColumn.id]?.issues.append(issue)
                 }
                 return .none
+
+            case let .issueDroppedFromWorktree(issueId, onColumnId):
+                return .run { send in
+                    guard let record = try await databaseClient.fetchImportedIssue(issueId) else { return }
+                    let issue = LinearIssue(from: record)
+                    await send(.issueDroppedFromWorktreeResolved(issue: issue, onColumnId: onColumnId))
+                }
+
+            case let .issueDroppedFromWorktreeResolved(issue, onColumnId):
+                let alreadyPresent = state.columns.contains { $0.issues.contains { $0.id == issue.id } }
+                guard !alreadyPresent else { return .none }
+                if state.columns[id: onColumnId] != nil {
+                    state.columns[id: onColumnId]?.issues.append(issue)
+                } else if state.columns[id: issue.statusId] != nil {
+                    state.columns[id: issue.statusId]?.issues.append(issue)
+                } else if let firstColumn = state.columns.first {
+                    state.columns[id: firstColumn.id]?.issues.append(issue)
+                }
+                return .send(.delegate(.issueReturnedFromWorktreeByDrop(issueId: issue.id)))
 
             case .delegate:
                 return .none

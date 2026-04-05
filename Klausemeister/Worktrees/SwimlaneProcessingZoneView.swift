@@ -3,8 +3,10 @@ import SwiftUI
 struct SwimlaneProcessingZoneView: View {
     let issue: LinearIssue?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
+    var onDrop: ((_ issueId: String) -> Void)?
 
     @Environment(\.themeColors) private var themeColors
+    @State private var isTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -17,6 +19,16 @@ struct SwimlaneProcessingZoneView: View {
         }
         .padding(8)
         .frame(minWidth: 160, idealWidth: 200, alignment: .topLeading)
+        .background(isTargeted ? Color.accentColor.opacity(0.08) : .clear)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .animation(.easeInOut(duration: 0.15), value: isTargeted)
+        .dropDestination(for: String.self) { items, _ in
+            guard issue == nil, let issueId = items.first, let onDrop else { return false }
+            onDrop(issueId)
+            return true
+        } isTargeted: { targeted in
+            isTargeted = targeted && issue == nil
+        }
     }
 
     private var accentBar: some View {
@@ -31,6 +43,7 @@ struct SwimlaneProcessingZoneView: View {
             HStack(spacing: 0) {
                 accentBar
                 IssueCardView(issue: issue)
+                    .draggable(issue.id)
             }
         }
         .contextMenu {

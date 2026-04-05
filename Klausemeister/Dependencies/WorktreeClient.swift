@@ -26,6 +26,12 @@ struct WorktreeClient {
     var moveToProcessing: @Sendable (_ queueItemId: String) async throws -> Void
     var findQueueItemId: @Sendable (_ issueLinearId: String, _ worktreeId: String) async throws -> String?
     var reorderQueue: @Sendable (_ worktreeId: String, _ queuePosition: String, _ itemIds: [String]) async throws -> Void
+
+    // MARK: - Convenience (issue-ID-based, for drag-and-drop)
+
+    var moveToProcessingByIssueId: @Sendable (_ issueLinearId: String, _ worktreeId: String) async throws -> Void
+    var moveToOutboxByIssueId: @Sendable (_ issueLinearId: String, _ worktreeId: String) async throws -> Void
+    var removeFromQueueByIssueId: @Sendable (_ issueLinearId: String, _ worktreeId: String) async throws -> Void
 }
 
 // MARK: - Live & Test values
@@ -189,6 +195,46 @@ extension WorktreeClient: DependencyKey {
                         )
                     }
                 }
+            },
+
+            moveToProcessingByIssueId: { issueLinearId, worktreeId in
+                try await dbQueue.write { db in
+                    guard var record = try WorktreeQueueItemRecord
+                        .filter(Column("worktreeId") == worktreeId)
+                        .filter(Column("issueLinearId") == issueLinearId)
+                        .filter(Column("queuePosition") == "inbox")
+                        .fetchOne(db)
+                    else {
+                        throw WorktreeClientError.queueItemNotFound(issueLinearId)
+                    }
+                    record.queuePosition = "processing"
+                    try record.update(db)
+                }
+            },
+
+            moveToOutboxByIssueId: { issueLinearId, worktreeId in
+                try await dbQueue.write { db in
+                    guard var record = try WorktreeQueueItemRecord
+                        .filter(Column("worktreeId") == worktreeId)
+                        .filter(Column("issueLinearId") == issueLinearId)
+                        .filter(sql: "queuePosition IN ('inbox', 'processing')")
+                        .fetchOne(db)
+                    else {
+                        throw WorktreeClientError.queueItemNotFound(issueLinearId)
+                    }
+                    record.queuePosition = "outbox"
+                    record.completedAt = ISO8601DateFormatter().string(from: Date())
+                    try record.update(db)
+                }
+            },
+
+            removeFromQueueByIssueId: { issueLinearId, worktreeId in
+                try await dbQueue.write { db in
+                    try db.execute(
+                        sql: "DELETE FROM worktree_queue_items WHERE issueLinearId = ? AND worktreeId = ?",
+                        arguments: [issueLinearId, worktreeId]
+                    )
+                }
             }
         )
     }()
@@ -207,7 +253,10 @@ extension WorktreeClient: DependencyKey {
         removeFromQueue: unimplemented("WorktreeClient.removeFromQueue"),
         moveToProcessing: unimplemented("WorktreeClient.moveToProcessing"),
         findQueueItemId: unimplemented("WorktreeClient.findQueueItemId"),
-        reorderQueue: unimplemented("WorktreeClient.reorderQueue")
+        reorderQueue: unimplemented("WorktreeClient.reorderQueue"),
+        moveToProcessingByIssueId: unimplemented("WorktreeClient.moveToProcessingByIssueId"),
+        moveToOutboxByIssueId: unimplemented("WorktreeClient.moveToOutboxByIssueId"),
+        removeFromQueueByIssueId: unimplemented("WorktreeClient.removeFromQueueByIssueId")
     )
 }
 

@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 // Klausemeister/Worktrees/WorktreeFeature.swift
 import ComposableArchitecture
 import Foundation
@@ -77,6 +78,14 @@ struct WorktreeFeature {
         case issueMovedToProcessing(queueItemId: String, issueId: String, worktreeId: String)
         case issueMovedToOutbox(queueItemId: String, issueId: String, worktreeId: String)
         case queueReordered(worktreeId: String, queuePosition: String, itemIds: [String])
+
+        // Drag-and-drop (issue-ID-based, no queueItemId needed)
+        case issueDroppedOnInbox(issueId: String, worktreeId: String)
+        case issueDroppedOnInboxResolved(worktreeId: String, issue: LinearIssue)
+        case issueDroppedOnProcessing(issueId: String, worktreeId: String)
+        case issueDroppedOnOutbox(issueId: String, worktreeId: String)
+        case issueRemovedByKanbanDrop(issueId: String)
+
         case loadFailed(String)
         case assignFailed(worktreeId: String, issueId: String)
         case moveToProcessingFailed(issueId: String, worktreeId: String, issue: LinearIssue)
@@ -99,6 +108,7 @@ struct WorktreeFeature {
 
         enum Delegate: Equatable {
             case issueReturnedToMeister(issue: LinearIssue)
+            case issueRemovedFromKanban(issueId: String)
         }
     }
 
@@ -405,11 +415,7 @@ struct WorktreeFeature {
                         ? state.worktrees[wtIndex].processing : nil)
                     ?? state.worktrees[wtIndex].outbox.first { $0.id == issueId }
                 guard let issue = returnedIssue else { return .none }
-                state.worktrees[wtIndex].inbox.removeAll { $0.id == issueId }
-                if state.worktrees[wtIndex].processing?.id == issueId {
-                    state.worktrees[wtIndex].processing = nil
-                }
-                state.worktrees[wtIndex].outbox.removeAll { $0.id == issueId }
+                state.removeIssueFromWorktree(issueId, worktreeId: worktreeId)
                 return .run { send in
                     if let queueItemId = try await worktreeClient.findQueueItemId(issueId, worktreeId) {
                         try await worktreeClient.removeFromQueue(queueItemId)
@@ -425,6 +431,125 @@ struct WorktreeFeature {
                 return .run { _ in
                     try await worktreeClient.reorderQueue(worktreeId, queuePosition, itemIds)
                 }
+
+            // MARK: - Drag-and-drop handlers
+
+            case let .issueDroppedOnInbox(issueId, worktreeId):
+                // Check if issue is already in this worktree
+                if let wt = state.worktrees[id: worktreeId] {
+                    let alreadyQueued = wt.inbox.contains { $0.id == issueId }
+                        || wt.processing?.id == issueId
+                        || wt.outbox.contains { $0.id == issueId }
+                    if alreadyQueued { return .none }
+                }
+                // Check if issue is in another worktree — find and remove it first
+                for worktree in state.worktrees where worktree.id != worktreeId {
+                    if worktree.inbox.contains(where: { $0.id == issueId })
+                        || worktree.processing?.id == issueId
+                        || worktree.outbox.contains(where: { $0.id == issueId })
+                    {
+                        // Issue is in another worktree; look up and move
+                        if let issue = worktree.inbox.first(where: { $0.id == issueId })
+                            ?? worktree.outbox.first(where: { $0.id == issueId })
+                            ?? (worktree.processing?.id == issueId ? worktree.processing : nil)
+                        {
+                            state.removeIssueFromWorktree(issueId, worktreeId: worktree.id)
+                            if let wtIndex = state.worktrees.index(id: worktreeId) {
+                                state.worktrees[wtIndex].inbox.append(issue)
+                            }
+                            let sourceId = worktree.id
+                            return .run { _ in
+                                try await worktreeClient.removeFromQueueByIssueId(issueId, sourceId)
+                                try await worktreeClient.assignIssueToWorktree(issueId, worktreeId)
+                            } catch: { _, send in
+                                // Rollback: remove from target, restore to source
+                                await send(.assignFailed(worktreeId: worktreeId, issueId: issueId))
+                            }
+                        }
+                    }
+                }
+                // Issue is from kanban — look up from DB
+                return .run { send in
+                    guard let record = try await databaseClient.fetchImportedIssue(issueId) else { return }
+                    let issue = LinearIssue(from: record)
+                    await send(.issueDroppedOnInboxResolved(worktreeId: worktreeId, issue: issue))
+                }
+
+            case let .issueDroppedOnInboxResolved(worktreeId, issue):
+                // Add to worktree inbox + remove from kanban columns (not DB)
+                if let wtIndex = state.worktrees.index(id: worktreeId) {
+                    let alreadyQueued = state.worktrees[wtIndex].inbox.contains { $0.id == issue.id }
+                        || state.worktrees[wtIndex].processing?.id == issue.id
+                        || state.worktrees[wtIndex].outbox.contains { $0.id == issue.id }
+                    if !alreadyQueued {
+                        state.worktrees[wtIndex].inbox.append(issue)
+                    }
+                }
+                return .merge(
+                    .run { [issueId = issue.id] _ in
+                        try await worktreeClient.assignIssueToWorktree(issueId, worktreeId)
+                    } catch: { _, send in
+                        await send(.assignFailed(worktreeId: worktreeId, issueId: issue.id))
+                    },
+                    .send(.delegate(.issueRemovedFromKanban(issueId: issue.id)))
+                )
+
+            case let .issueDroppedOnProcessing(issueId, worktreeId):
+                guard let wtIndex = state.worktrees.index(id: worktreeId) else { return .none }
+                guard state.worktrees[wtIndex].processing == nil else { return .none }
+                let issue: LinearIssue
+                if let inboxIndex = state.worktrees[wtIndex].inbox.firstIndex(where: { $0.id == issueId }) {
+                    issue = state.worktrees[wtIndex].inbox.remove(at: inboxIndex)
+                } else if let outboxIndex = state.worktrees[wtIndex].outbox.firstIndex(where: { $0.id == issueId }) {
+                    issue = state.worktrees[wtIndex].outbox.remove(at: outboxIndex)
+                } else {
+                    return .none
+                }
+                state.worktrees[wtIndex].processing = issue
+                return .run { _ in
+                    try await worktreeClient.moveToProcessingByIssueId(issueId, worktreeId)
+                } catch: { _, send in
+                    await send(.moveToProcessingFailed(issueId: issueId, worktreeId: worktreeId, issue: issue))
+                }
+
+            case let .issueDroppedOnOutbox(issueId, worktreeId):
+                guard let wtIndex = state.worktrees.index(id: worktreeId) else { return .none }
+                var movedIssue: LinearIssue?
+                var fromProcessing = false
+                if let issueIndex = state.worktrees[wtIndex].inbox.firstIndex(where: { $0.id == issueId }) {
+                    movedIssue = state.worktrees[wtIndex].inbox.remove(at: issueIndex)
+                } else if let proc = state.worktrees[wtIndex].processing, proc.id == issueId {
+                    state.worktrees[wtIndex].processing = nil
+                    movedIssue = proc
+                    fromProcessing = true
+                }
+                guard let issue = movedIssue else { return .none }
+                state.worktrees[wtIndex].outbox.append(issue)
+                return .run { _ in
+                    try await worktreeClient.moveToOutboxByIssueId(issueId, worktreeId)
+                } catch: { _, send in
+                    await send(.moveToOutboxFailed(
+                        issueId: issueId, worktreeId: worktreeId,
+                        issue: issue, fromProcessing: fromProcessing
+                    ))
+                }
+
+            case let .issueRemovedByKanbanDrop(issueId):
+                // Find which worktree contains this issue and remove it
+                for worktree in state.worktrees {
+                    let found = worktree.inbox.contains { $0.id == issueId }
+                        || worktree.processing?.id == issueId
+                        || worktree.outbox.contains { $0.id == issueId }
+                    guard found else { continue }
+                    state.removeIssueFromWorktree(issueId, worktreeId: worktree.id)
+                    let worktreeId = worktree.id
+                    return .run { _ in
+                        try await worktreeClient.removeFromQueueByIssueId(issueId, worktreeId)
+                    } catch: { error, _ in
+                        Self.log.warning("Failed to remove queue item for \(issueId): \(error.localizedDescription)")
+                    }
+                }
+                return .none
 
             case let .loadFailed(message):
                 state.error = message
@@ -550,5 +675,18 @@ struct WorktreeFeature {
             }
         }
         .ifLet(\.$alert, action: \.alert)
+    }
+}
+
+// MARK: - State Helpers
+
+extension WorktreeFeature.State {
+    mutating func removeIssueFromWorktree(_ issueId: String, worktreeId: String) {
+        guard let wtIndex = worktrees.index(id: worktreeId) else { return }
+        worktrees[wtIndex].inbox.removeAll { $0.id == issueId }
+        if worktrees[wtIndex].processing?.id == issueId {
+            worktrees[wtIndex].processing = nil
+        }
+        worktrees[wtIndex].outbox.removeAll { $0.id == issueId }
     }
 }
