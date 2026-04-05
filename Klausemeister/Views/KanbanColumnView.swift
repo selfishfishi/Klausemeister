@@ -3,7 +3,10 @@ import SwiftUI
 struct KanbanColumnView: View {
     let column: MeisterFeature.KanbanColumn
     let workflowStates: [LinearWorkflowState]
+    let worktrees: [Worktree]
+    let repositories: [Repository]
     let onMoveToStatus: (_ issueId: String, _ statusId: String) -> Void
+    let onAssignToWorktree: (_ issue: LinearIssue, _ worktreeId: String) -> Void
     let onRemove: (_ issueId: String) -> Void
     let onDrop: (_ issueId: String) -> Void
 
@@ -28,7 +31,10 @@ struct KanbanColumnView: View {
                         KanbanIssueCardView(
                             issue: issue,
                             workflowStates: workflowStates,
+                            worktrees: worktrees,
+                            repositories: repositories,
                             onMoveToStatus: onMoveToStatus,
+                            onAssignToWorktree: onAssignToWorktree,
                             onRemove: onRemove
                         )
                     }

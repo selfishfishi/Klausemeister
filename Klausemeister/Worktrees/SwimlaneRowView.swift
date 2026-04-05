@@ -3,6 +3,7 @@ import SwiftUI
 struct SwimlaneRowView: View {
     let worktree: Worktree
     let onDelete: () -> Void
+    var onReturnToMeister: ((_ issueId: String) -> Void)?
 
     @Environment(\.themeColors) private var themeColors
     @Environment(\.swimlaneAnimating) private var isAnimating
@@ -43,15 +44,26 @@ struct SwimlaneRowView: View {
 
             Divider()
 
-            SwimlaneQueueView(role: .inbox, issues: worktree.inbox)
+            SwimlaneQueueView(
+                role: .inbox,
+                issues: worktree.inbox,
+                onReturnToMeister: onReturnToMeister
+            )
 
             SwimlaneConnectorShape(isActive: worktree.isActive)
 
-            SwimlaneProcessingZoneView(issue: worktree.processing)
+            SwimlaneProcessingZoneView(
+                issue: worktree.processing,
+                onReturnToMeister: onReturnToMeister
+            )
 
             SwimlaneConnectorShape(isActive: worktree.isActive)
 
-            SwimlaneQueueView(role: .outbox, issues: worktree.outbox)
+            SwimlaneQueueView(
+                role: .outbox,
+                issues: worktree.outbox,
+                onReturnToMeister: onReturnToMeister
+            )
         }
         .background(.fill.quinary)
         .clipShape(RoundedRectangle(cornerRadius: 10))

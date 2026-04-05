@@ -3,6 +3,8 @@ import SwiftUI
 
 struct MeisterView: View {
     @Bindable var store: StoreOf<MeisterFeature>
+    let worktrees: [Worktree]
+    let repositories: [Repository]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,8 +44,13 @@ struct MeisterView: View {
                         KanbanColumnView(
                             column: column,
                             workflowStates: store.workflowStates,
+                            worktrees: worktrees,
+                            repositories: repositories,
                             onMoveToStatus: { issueId, statusId in
                                 store.send(.moveToStatusTapped(issueId: issueId, statusId: statusId))
+                            },
+                            onAssignToWorktree: { issue, worktreeId in
+                                store.send(.assignIssueToWorktree(issue: issue, worktreeId: worktreeId))
                             },
                             onRemove: { issueId in
                                 store.send(.removeIssueTapped(issueId: issueId))

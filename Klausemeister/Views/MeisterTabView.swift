@@ -7,8 +7,12 @@ struct MeisterTabView: View {
 
     var body: some View {
         VSplitView {
-            MeisterView(store: meisterStore)
-                .frame(minHeight: 200)
+            MeisterView(
+                store: meisterStore,
+                worktrees: Array(worktreeStore.worktrees),
+                repositories: Array(worktreeStore.repositories)
+            )
+            .frame(minHeight: 200)
             WorktreeSwimlaneView(store: worktreeStore)
                 .frame(minHeight: 150)
         }
