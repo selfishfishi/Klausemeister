@@ -50,10 +50,15 @@ struct MeisterFeature {
 
             case .onAppear:
                 return .run { send in
-                    await send(.workflowStatesLoaded(
-                        TaskResult { try await linearAPIClient.fetchWorkflowStates() }
-                    ))
-                    let records = try await databaseClient.fetchImportedIssues()
+                    async let statesResult: [LinearWorkflowState] = linearAPIClient.fetchWorkflowStates()
+                    async let recordsResult: [ImportedIssueRecord] = databaseClient.fetchImportedIssues()
+                    do {
+                        let states = try await statesResult
+                        await send(.workflowStatesLoaded(.success(states)))
+                    } catch {
+                        await send(.workflowStatesLoaded(.failure(error)))
+                    }
+                    let records = (try? await recordsResult) ?? []
                     await send(.issuesLoadedFromDB(records))
                 }
                 .cancellable(id: "MeisterFeature.load", cancelInFlight: true)
@@ -72,12 +77,8 @@ struct MeisterFeature {
 
             case let .issueImported(.success(issue)):
                 state.isImporting = false
-                // Avoid duplicates
-                let alreadyExists = state.columns.contains { column in
-                    column.issues.contains { $0.id == issue.id }
-                }
+                let alreadyExists = state.columns.contains { $0.issues.contains { $0.id == issue.id } }
                 guard !alreadyExists else { return .none }
-                // Add to correct column by statusId
                 if state.columns[id: issue.statusId] != nil {
                     state.columns[id: issue.statusId]?.issues.append(issue)
                 } else if let firstColumn = state.columns.first {
@@ -109,11 +110,9 @@ struct MeisterFeature {
 
             case let .issuesRefreshed(.success(issues)):
                 state.isRefreshing = false
-                // Clear all columns
                 for index in state.columns.indices {
                     state.columns[index].issues = []
                 }
-                // Re-distribute issues to columns
                 for issue in issues {
                     if state.columns[id: issue.statusId] != nil {
                         state.columns[id: issue.statusId]?.issues.append(issue)
@@ -170,23 +169,10 @@ struct MeisterFeature {
                 else { return .none }
 
                 let originalIssue = sourceColumn.issues[issueIndex]
-
-                // Create updated issue with new status from target column
-                let movedIssue = LinearIssue(
-                    id: originalIssue.id,
-                    identifier: originalIssue.identifier,
-                    title: originalIssue.title,
+                let movedIssue = originalIssue.withUpdatedStatus(
                     status: targetColumn.name,
                     statusId: targetColumn.id,
-                    statusType: targetColumn.type,
-                    projectName: originalIssue.projectName,
-                    assigneeName: originalIssue.assigneeName,
-                    priority: originalIssue.priority,
-                    labels: originalIssue.labels,
-                    description: originalIssue.description,
-                    url: originalIssue.url,
-                    createdAt: originalIssue.createdAt,
-                    updatedAt: originalIssue.updatedAt
+                    statusType: targetColumn.type
                 )
 
                 // Optimistic update
@@ -208,23 +194,18 @@ struct MeisterFeature {
                 }
 
             case let .issueDropped(issueId, onColumnId):
-                guard let currentColumn = state.columns.first(where: { column in
-                    column.issues.contains { $0.id == issueId }
-                }) else { return .none }
+                guard let fromColumn = state.columnContainingIssue(issueId) else { return .none }
                 return .send(.issueMoved(
                     issueId: issueId,
-                    fromColumnId: currentColumn.id,
+                    fromColumnId: fromColumn.id,
                     toColumnId: onColumnId
                 ))
 
             case let .moveToStatusTapped(issueId, statusId):
-                // Find current column for the issue
-                guard let currentColumn = state.columns.first(where: { column in
-                    column.issues.contains { $0.id == issueId }
-                }) else { return .none }
+                guard let fromColumn = state.columnContainingIssue(issueId) else { return .none }
                 return .send(.issueMoved(
                     issueId: issueId,
-                    fromColumnId: currentColumn.id,
+                    fromColumnId: fromColumn.id,
                     toColumnId: statusId
                 ))
 
@@ -232,19 +213,13 @@ struct MeisterFeature {
                 return .none
 
             case let .statusUpdateFailed(issueId, restoreToColumnId, originalIssue):
-                // Remove from all columns
-                for index in state.columns.indices {
-                    state.columns[index].issues.removeAll { $0.id == issueId }
-                }
-                // Restore to original column
+                state.removeIssueFromAllColumns(issueId)
                 state.columns[id: restoreToColumnId]?.issues.append(originalIssue)
                 state.error = String(describing: LinearAPIError.issueNotFound(issueId))
                 return .none
 
             case let .removeIssueTapped(issueId):
-                for index in state.columns.indices {
-                    state.columns[index].issues.removeAll { $0.id == issueId }
-                }
+                state.removeIssueFromAllColumns(issueId)
                 return .run { _ in
                     try await databaseClient.deleteImportedIssue(issueId)
                 }
@@ -255,7 +230,6 @@ struct MeisterFeature {
     // MARK: - Helpers
 
     nonisolated static func extractIdentifier(from text: String) -> String {
-        // Handle URLs like https://linear.app/<team>/issue/<IDENTIFIER>/<slug>
         if let url = URL(string: text),
            let host = url.host,
            host.contains("linear.app") {
@@ -269,7 +243,35 @@ struct MeisterFeature {
     }
 }
 
-// MARK: - Conversion Extensions
+// MARK: - State Helpers
+
+extension MeisterFeature.State {
+    func columnContainingIssue(_ issueId: String) -> MeisterFeature.KanbanColumn? {
+        columns.first { $0.issues.contains { $0.id == issueId } }
+    }
+
+    mutating func removeIssueFromAllColumns(_ issueId: String) {
+        for index in columns.indices {
+            columns[index].issues.removeAll { $0.id == issueId }
+        }
+    }
+}
+
+// MARK: - LinearIssue Helpers
+
+extension LinearIssue {
+    func withUpdatedStatus(status: String, statusId: String, statusType: String) -> LinearIssue {
+        LinearIssue(
+            id: id, identifier: identifier, title: title,
+            status: status, statusId: statusId, statusType: statusType,
+            projectName: projectName, assigneeName: assigneeName,
+            priority: priority, labels: labels, description: description,
+            url: url, createdAt: createdAt, updatedAt: updatedAt
+        )
+    }
+}
+
+// MARK: - Record Conversions
 
 extension LinearIssue {
     init(from record: ImportedIssueRecord) {
