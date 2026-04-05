@@ -49,14 +49,7 @@ struct MeisterView: View {
                                 store.send(.removeIssueTapped(issueId: issueId))
                             },
                             onDrop: { issueId in
-                                guard let fromColumn = store.columns.first(where: {
-                                    $0.issues.contains { $0.id == issueId }
-                                }) else { return }
-                                store.send(.issueMoved(
-                                    issueId: issueId,
-                                    fromColumnId: fromColumn.id,
-                                    toColumnId: column.id
-                                ))
+                                store.send(.issueDropped(issueId: issueId, onColumnId: column.id))
                             }
                         )
                     }

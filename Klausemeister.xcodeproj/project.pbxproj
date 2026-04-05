@@ -17,6 +17,7 @@
 		A8TCA0022F816B35005797B3 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = A8TCA0012F816B35005797B3 /* ComposableArchitecture */; };
 		A8TE000B2F816B35005797B3 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE000C2F816B35005797B3 /* ComposableArchitecture */; };
 		A8TE000E2F816B35005797B3 /* IdentifiedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE000D2F816B35005797B3 /* IdentifiedCollections */; };
+		A8TE00112F816B35005797B3 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE00102F816B35005797B3 /* Dependencies */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,6 +70,7 @@
 			files = (
 				A8TE000B2F816B35005797B3 /* ComposableArchitecture in Frameworks */,
 				A8TE000E2F816B35005797B3 /* IdentifiedCollections in Frameworks */,
+				A8TE00112F816B35005797B3 /* Dependencies in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -146,6 +148,7 @@
 			packageProductDependencies = (
 				A8TE000C2F816B35005797B3 /* ComposableArchitecture */,
 				A8TE000D2F816B35005797B3 /* IdentifiedCollections */,
+				A8TE00102F816B35005797B3 /* Dependencies */,
 			);
 			productName = KlausemeisterTests;
 			productReference = A8TE00012F816B35005797B3 /* KlausemeisterTests.xctest */;
@@ -564,6 +567,10 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A8TCA0002F816B35005797B3 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
 			productName = ComposableArchitecture;
+		};
+		A8TE00102F816B35005797B3 /* Dependencies */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Dependencies;
 		};
 		A8TE000D2F816B35005797B3 /* IdentifiedCollections */ = {
 			isa = XCSwiftPackageProductDependency;

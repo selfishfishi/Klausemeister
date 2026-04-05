@@ -1,4 +1,5 @@
 import ComposableArchitecture
+import Foundation
 import IdentifiedCollections
 import Testing
 @testable import Klausemeister
@@ -69,6 +70,7 @@ private let sampleIssueKLA15 = LinearIssue(
             return sampleIssue
         }
         $0.databaseClient.saveImportedIssue = { _ in }
+        $0.date = .constant(Date(timeIntervalSince1970: 0))
     }
 
     await store.send(.importSubmitted) {
@@ -100,6 +102,7 @@ private let sampleIssueKLA15 = LinearIssue(
             return sampleIssueKLA15
         }
         $0.databaseClient.saveImportedIssue = { _ in }
+        $0.date = .constant(Date(timeIntervalSince1970: 0))
     }
 
     await store.send(.importSubmitted) {

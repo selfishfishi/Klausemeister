@@ -29,6 +29,7 @@ struct MeisterFeature {
         case issuesRefreshed(TaskResult<[LinearIssue]>)
         case workflowStatesLoaded(TaskResult<[LinearWorkflowState]>)
         case issuesLoadedFromDB([ImportedIssueRecord])
+        case issueDropped(issueId: String, onColumnId: String)
         case issueMoved(issueId: String, fromColumnId: String, toColumnId: String)
         case moveToStatusTapped(issueId: String, statusId: String)
         case statusUpdateSucceeded(issueId: String)
@@ -38,6 +39,7 @@ struct MeisterFeature {
 
     @Dependency(\.linearAPIClient) var linearAPIClient
     @Dependency(\.databaseClient) var databaseClient
+    @Dependency(\.date) var date
 
     var body: some Reducer<State, Action> {
         BindingReducer()
@@ -54,6 +56,7 @@ struct MeisterFeature {
                     let records = try await databaseClient.fetchImportedIssues()
                     await send(.issuesLoadedFromDB(records))
                 }
+                .cancellable(id: "MeisterFeature.load", cancelInFlight: true)
 
             case .importSubmitted:
                 let text = state.importText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -80,7 +83,7 @@ struct MeisterFeature {
                 } else if let firstColumn = state.columns.first {
                     state.columns[id: firstColumn.id]?.issues.append(issue)
                 }
-                let record = ImportedIssueRecord(from: issue)
+                let record = ImportedIssueRecord(from: issue, importedAt: date.now)
                 return .run { _ in
                     try await databaseClient.saveImportedIssue(record)
                 }
@@ -102,6 +105,7 @@ struct MeisterFeature {
                     }
                     await send(.issuesRefreshed(.success(refreshed)))
                 }
+                .cancellable(id: "MeisterFeature.refresh", cancelInFlight: true)
 
             case let .issuesRefreshed(.success(issues)):
                 state.isRefreshing = false
@@ -115,9 +119,10 @@ struct MeisterFeature {
                         state.columns[id: issue.statusId]?.issues.append(issue)
                     }
                 }
+                let now = date.now
                 return .run { _ in
                     for issue in issues {
-                        try await databaseClient.updateIssueFromLinear(ImportedIssueRecord(from: issue))
+                        try await databaseClient.updateIssueFromLinear(ImportedIssueRecord(from: issue, importedAt: now))
                     }
                 }
 
@@ -202,6 +207,16 @@ struct MeisterFeature {
                     ))
                 }
 
+            case let .issueDropped(issueId, onColumnId):
+                guard let currentColumn = state.columns.first(where: { column in
+                    column.issues.contains { $0.id == issueId }
+                }) else { return .none }
+                return .send(.issueMoved(
+                    issueId: issueId,
+                    fromColumnId: currentColumn.id,
+                    toColumnId: onColumnId
+                ))
+
             case let .moveToStatusTapped(issueId, statusId):
                 // Find current column for the issue
                 guard let currentColumn = state.columns.first(where: { column in
@@ -285,7 +300,7 @@ extension LinearIssue {
 }
 
 extension ImportedIssueRecord {
-    init(from issue: LinearIssue) {
+    init(from issue: LinearIssue, importedAt: Date = Date()) {
         let labelsJSON: String
         if let data = try? JSONEncoder().encode(issue.labels),
            let str = String(data: data, encoding: .utf8) {
@@ -308,7 +323,7 @@ extension ImportedIssueRecord {
             url: issue.url,
             createdAt: issue.createdAt,
             updatedAt: issue.updatedAt,
-            importedAt: ISO8601DateFormatter().string(from: Date()),
+            importedAt: ISO8601DateFormatter().string(from: importedAt),
             sortOrder: 0
         )
     }
