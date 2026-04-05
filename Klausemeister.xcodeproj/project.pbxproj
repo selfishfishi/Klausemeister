@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		A869F53A2F817984005797B3 /* GhosttyKit in Frameworks */ = {isa = PBXBuildFile; productRef = A8GHOST012F816B35005797B3 /* GhosttyKit */; };
 		A869F53B2F817984005797B3 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = A8GHOST022F816B35005797B3 /* GhosttyTerminal */; };
+		A8TCA0022F816B35005797B3 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = A8TCA0012F816B35005797B3 /* ComposableArchitecture */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 			files = (
 				A869F53B2F817984005797B3 /* GhosttyTerminal in Frameworks */,
 				A869F53A2F817984005797B3 /* GhosttyKit in Frameworks */,
+				A8TCA0022F816B35005797B3 /* ComposableArchitecture in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -74,6 +76,7 @@
 			packageProductDependencies = (
 				A8GHOST012F816B35005797B3 /* GhosttyKit */,
 				A8GHOST022F816B35005797B3 /* GhosttyTerminal */,
+				A8TCA0012F816B35005797B3 /* ComposableArchitecture */,
 			);
 			productName = Klausemeister;
 			productReference = A869EEE02F816B35005797B3 /* Klausemeister.app */;
@@ -105,6 +108,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A8GHOST002F816B35005797B3 /* XCRemoteSwiftPackageReference "libghostty-spm" */,
+				A8TCA0002F816B35005797B3 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A869EEE12F816B35005797B3 /* Products */;
@@ -353,6 +357,14 @@
 				minimumVersion = 1.0.0;
 			};
 		};
+		A8TCA0002F816B35005797B3 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-composable-architecture.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.17.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -365,6 +377,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A8GHOST002F816B35005797B3 /* XCRemoteSwiftPackageReference "libghostty-spm" */;
 			productName = GhosttyTerminal;
+		};
+		A8TCA0012F816B35005797B3 /* ComposableArchitecture */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A8TCA0002F816B35005797B3 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
+			productName = ComposableArchitecture;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
