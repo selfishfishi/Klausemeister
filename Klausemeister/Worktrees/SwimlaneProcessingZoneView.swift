@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SwimlaneProcessingZoneView: View {
     let issue: LinearIssue?
+    var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
     var onDrop: ((_ issueId: String) -> Void)?
 
@@ -47,6 +48,11 @@ struct SwimlaneProcessingZoneView: View {
             }
         }
         .contextMenu {
+            if let onMarkComplete {
+                Button("Mark as Done") {
+                    onMarkComplete()
+                }
+            }
             if let onReturn = onReturnToMeister {
                 Button("Return to Meister") {
                     onReturn(issue.id)

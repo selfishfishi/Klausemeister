@@ -51,6 +51,22 @@ struct WorktreeDetailView: View {
 
                     Divider()
 
+                    // Processing
+                    WorktreeQueueColumn(
+                        title: "Processing",
+                        icon: "gearshape",
+                        issues: worktree.processing.map { [$0] } ?? [],
+                        emptyText: "Nothing in progress",
+                        onMarkComplete: worktree.processing != nil ? {
+                            store.send(.markAsCompleteTapped(worktreeId: worktreeId))
+                        } : nil,
+                        onReturnToMeister: { issueId in
+                            store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktreeId))
+                        }
+                    )
+
+                    Divider()
+
                     // Outbox
                     WorktreeQueueColumn(
                         title: "Outbox",
@@ -80,6 +96,7 @@ struct WorktreeQueueColumn: View {
     let icon: String
     let issues: [LinearIssue]
     let emptyText: String
+    var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
 
     var body: some View {
@@ -110,6 +127,7 @@ struct WorktreeQueueColumn: View {
                         ForEach(issues, id: \.id) { issue in
                             WorktreeIssueRow(
                                 issue: issue,
+                                onMarkComplete: issue.id == issues.first?.id ? onMarkComplete : nil,
                                 onReturnToMeister: onReturnToMeister.map { callback in
                                     { callback(issue.id) }
                                 }
@@ -127,6 +145,7 @@ struct WorktreeQueueColumn: View {
 
 struct WorktreeIssueRow: View {
     let issue: LinearIssue
+    var onMarkComplete: (() -> Void)?
     var onReturnToMeister: (() -> Void)?
 
     var body: some View {
@@ -146,10 +165,30 @@ struct WorktreeIssueRow: View {
             Text(issue.title)
                 .font(.callout)
                 .lineLimit(2)
+            if onMarkComplete != nil || onReturnToMeister != nil {
+                HStack(spacing: 8) {
+                    if let onMarkComplete {
+                        Button("Mark as Done", action: onMarkComplete)
+                            .font(.caption)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                    }
+                    if let onReturnToMeister {
+                        Button("Return to Meister", action: onReturnToMeister)
+                            .font(.caption)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                }
+                .padding(.top, 2)
+            }
         }
         .padding(8)
         .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 8))
         .contextMenu {
+            if let onMarkComplete {
+                Button("Mark as Done") { onMarkComplete() }
+            }
             if let onReturn = onReturnToMeister {
                 Button("Return to Meister") {
                     onReturn()

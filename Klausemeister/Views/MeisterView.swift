@@ -5,6 +5,7 @@ struct MeisterView: View {
     @Bindable var store: StoreOf<MeisterFeature>
     let worktrees: [Worktree]
     let repositories: [Repository]
+    var assignedWorktreeNames: [String: String] = [:]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,6 +47,7 @@ struct MeisterView: View {
                             workflowStates: store.workflowStates,
                             worktrees: worktrees,
                             repositories: repositories,
+                            assignedWorktreeNames: assignedWorktreeNames,
                             onMoveToStatus: { issueId, statusId in
                                 store.send(.moveToStatusTapped(issueId: issueId, statusId: statusId))
                             },

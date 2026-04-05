@@ -2,6 +2,7 @@ import SwiftUI
 
 struct IssueCardView: View {
     let issue: LinearIssue
+    var worktreeName: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -14,6 +15,15 @@ struct IssueCardView: View {
             if let projectName = issue.projectName {
                 Text(projectName)
                     .font(.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.fill.tertiary)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            }
+            if let worktreeName {
+                Label(worktreeName, systemImage: "arrow.triangle.branch")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(.fill.tertiary)
@@ -34,12 +44,13 @@ struct KanbanIssueCardView: View {
     let workflowStates: [LinearWorkflowState]
     let worktrees: [Worktree]
     let repositories: [Repository]
+    var worktreeName: String?
     let onMoveToStatus: (_ issueId: String, _ statusId: String) -> Void
     let onAssignToWorktree: (_ issue: LinearIssue, _ worktreeId: String) -> Void
     let onRemove: (_ issueId: String) -> Void
 
     var body: some View {
-        IssueCardView(issue: issue)
+        IssueCardView(issue: issue, worktreeName: worktreeName)
             .draggable(issue.id)
             .contextMenu {
                 Menu("Move to...") {
