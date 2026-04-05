@@ -1,6 +1,7 @@
 // Klausemeister/Worktrees/WorktreeFeature.swift
 import ComposableArchitecture
 import Foundation
+import OSLog
 
 struct Worktree: Equatable, Identifiable {
     let id: String
@@ -8,25 +9,34 @@ struct Worktree: Equatable, Identifiable {
     var sortOrder: Int
     var gitWorktreePath: String
     var inbox: [LinearIssue] = []
-    var processing: LinearIssue? = nil
+    var processing: LinearIssue?
     var outbox: [LinearIssue] = []
 
-    var totalIssueCount: Int { inbox.count + outbox.count }
+    var totalIssueCount: Int {
+        inbox.count + (processing != nil ? 1 : 0) + outbox.count
+    }
+
+    var isActive: Bool {
+        processing != nil
+    }
 }
 
 @Reducer
+// swiftlint:disable:next type_body_length
 struct WorktreeFeature {
+    private static let log = Logger(subsystem: "com.klausemeister", category: "WorktreeFeature")
     @ObservableState
     struct State: Equatable {
         var worktrees: IdentifiedArrayOf<Worktree> = []
         var isCreatingWorktree: Bool = false
         var newWorktreeName: String = ""
         var selectedWorktreeId: String?
+        var error: String?
         @Presents var alert: AlertState<Action.Alert>?
 
         var nextDefaultName: String {
             let existing = Set(worktrees.map(\.name))
-            for index in 1...99 {
+            for index in 1 ... 99 {
                 let candidate = "W\(index)"
                 if !existing.contains(candidate) { return candidate }
             }
@@ -54,6 +64,11 @@ struct WorktreeFeature {
         case issueMovedToProcessing(queueItemId: String, issueId: String, worktreeId: String)
         case issueMovedToOutbox(queueItemId: String, issueId: String, worktreeId: String)
         case queueReordered(worktreeId: String, queuePosition: String, itemIds: [String])
+        case loadFailed(String)
+        case assignFailed(worktreeId: String, issueId: String)
+        case moveToProcessingFailed(issueId: String, worktreeId: String, issue: LinearIssue)
+        case moveToOutboxFailed(issueId: String, worktreeId: String, issue: LinearIssue, fromProcessing: Bool)
+        case returnToMeisterFailed(issueId: String, worktreeId: String, issue: LinearIssue)
         case alert(PresentationAction<Alert>)
         case delegate(Delegate)
 
@@ -78,6 +93,7 @@ struct WorktreeFeature {
                 return .none
 
             case .onAppear:
+                state.error = nil
                 return .run { send in
                     let worktrees = try await worktreeClient.fetchWorktrees()
                     var allQueueItems: [WorktreeQueueItemRecord] = []
@@ -91,6 +107,8 @@ struct WorktreeFeature {
                         queueItems: allQueueItems,
                         issues: issues
                     ))
+                } catch: { error, send in
+                    await send(.loadFailed(error.localizedDescription))
                 }
                 .cancellable(id: "WorktreeFeature.load", cancelInFlight: true)
 
@@ -99,6 +117,13 @@ struct WorktreeFeature {
                     uniqueKeysWithValues: issueRecords.map { ($0.linearId, LinearIssue(from: $0)) }
                 )
                 let queueItemsByWorktree = Dictionary(grouping: queueItems, by: \.worktreeId)
+
+                let orphanedItems = queueItems.filter { issuesByLinearId[$0.issueLinearId] == nil }
+                if !orphanedItems.isEmpty {
+                    Self.log.warning(
+                        "\(orphanedItems.count) queue item(s) reference missing issues — data may be inconsistent"
+                    )
+                }
 
                 state.worktrees = IdentifiedArrayOf(uniqueElements: worktreeRecords.map { record in
                     let items = queueItemsByWorktree[record.worktreeId] ?? []
@@ -143,8 +168,13 @@ struct WorktreeFeature {
                 ))
                 return .none
 
-            case .worktreeCreated(.failure):
+            case let .worktreeCreated(.failure(error)):
                 state.isCreatingWorktree = false
+                state.alert = AlertState {
+                    TextState("Failed to create worktree")
+                } message: {
+                    TextState(error.localizedDescription)
+                }
                 return .none
 
             case let .confirmDeleteTapped(worktreeId):
@@ -190,6 +220,12 @@ struct WorktreeFeature {
 
             case let .worktreeDeleteFailed(worktree):
                 state.worktrees.append(worktree)
+                state.worktrees.sort { $0.sortOrder < $1.sortOrder }
+                state.alert = AlertState {
+                    TextState("Could not delete \(worktree.name)")
+                } message: {
+                    TextState("The worktree has been restored. Please try again.")
+                }
                 return .none
 
             case let .worktreeSelected(worktreeId):
@@ -205,33 +241,55 @@ struct WorktreeFeature {
                         state.worktrees[wtIndex].inbox.append(issue)
                     }
                 }
-                return .run { _ in
-                    try await worktreeClient.assignIssueToWorktree(issue.id, worktreeId)
+                return .run { [issueId = issue.id] _ in
+                    try await worktreeClient.assignIssueToWorktree(issueId, worktreeId)
+                } catch: { _, send in
+                    await send(.assignFailed(worktreeId: worktreeId, issueId: issue.id))
                 }
 
             case let .issueMovedToProcessing(queueItemId, issueId, worktreeId):
+                var movedIssue: LinearIssue?
                 if let wtIndex = state.worktrees.index(id: worktreeId),
                    let issueIndex = state.worktrees[wtIndex].inbox.firstIndex(where: { $0.id == issueId })
                 {
                     let issue = state.worktrees[wtIndex].inbox.remove(at: issueIndex)
                     state.worktrees[wtIndex].processing = issue
+                    movedIssue = issue
                 }
                 return .run { _ in
                     try await worktreeClient.moveToProcessing(queueItemId)
+                } catch: { _, send in
+                    if let issue = movedIssue {
+                        await send(.moveToProcessingFailed(
+                            issueId: issueId, worktreeId: worktreeId, issue: issue
+                        ))
+                    }
                 }
 
             case let .issueMovedToOutbox(queueItemId, issueId, worktreeId):
+                var movedIssue: LinearIssue?
+                var fromProcessing = false
                 if let wtIndex = state.worktrees.index(id: worktreeId) {
                     if let issueIndex = state.worktrees[wtIndex].inbox.firstIndex(where: { $0.id == issueId }) {
                         let issue = state.worktrees[wtIndex].inbox.remove(at: issueIndex)
                         state.worktrees[wtIndex].outbox.append(issue)
+                        movedIssue = issue
                     } else if let proc = state.worktrees[wtIndex].processing, proc.id == issueId {
                         state.worktrees[wtIndex].processing = nil
                         state.worktrees[wtIndex].outbox.append(proc)
+                        movedIssue = proc
+                        fromProcessing = true
                     }
                 }
                 return .run { _ in
                     try await worktreeClient.moveToOutbox(queueItemId)
+                } catch: { _, send in
+                    if let issue = movedIssue {
+                        await send(.moveToOutboxFailed(
+                            issueId: issueId, worktreeId: worktreeId,
+                            issue: issue, fromProcessing: fromProcessing
+                        ))
+                    }
                 }
 
             case let .issueReturnedToMeister(queueItemId, issueId, worktreeId):
@@ -249,12 +307,56 @@ struct WorktreeFeature {
                 return .run { send in
                     try await worktreeClient.removeFromQueue(queueItemId)
                     await send(.delegate(.issueReturnedToMeister(issue: issue)))
+                } catch: { _, send in
+                    await send(.returnToMeisterFailed(
+                        issueId: issueId, worktreeId: worktreeId, issue: issue
+                    ))
                 }
 
             case let .queueReordered(worktreeId, queuePosition, itemIds):
                 return .run { _ in
                     try await worktreeClient.reorderQueue(worktreeId, queuePosition, itemIds)
                 }
+
+            case let .loadFailed(message):
+                state.error = message
+                return .none
+
+            case let .assignFailed(worktreeId, issueId):
+                if let wtIndex = state.worktrees.index(id: worktreeId) {
+                    state.worktrees[wtIndex].inbox.removeAll { $0.id == issueId }
+                }
+                state.error = "Failed to assign issue to worktree."
+                return .none
+
+            case let .moveToProcessingFailed(issueId, worktreeId, issue):
+                if let wtIndex = state.worktrees.index(id: worktreeId) {
+                    if state.worktrees[wtIndex].processing?.id == issueId {
+                        state.worktrees[wtIndex].processing = nil
+                    }
+                    state.worktrees[wtIndex].inbox.append(issue)
+                }
+                state.error = "Failed to move issue to processing."
+                return .none
+
+            case let .moveToOutboxFailed(issueId, worktreeId, issue, fromProcessing):
+                if let wtIndex = state.worktrees.index(id: worktreeId) {
+                    state.worktrees[wtIndex].outbox.removeAll { $0.id == issueId }
+                    if fromProcessing {
+                        state.worktrees[wtIndex].processing = issue
+                    } else {
+                        state.worktrees[wtIndex].inbox.append(issue)
+                    }
+                }
+                state.error = "Failed to move issue to outbox."
+                return .none
+
+            case let .returnToMeisterFailed(issueId, worktreeId, issue):
+                if let wtIndex = state.worktrees.index(id: worktreeId) {
+                    state.worktrees[wtIndex].inbox.append(issue)
+                }
+                state.error = "Failed to return issue to Meister."
+                return .none
 
             case .delegate:
                 return .none

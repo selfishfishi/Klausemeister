@@ -1,69 +1,56 @@
 import SwiftUI
 
+private struct ContrastSet {
+    let background: String
+    let bg1: String
+    let selectionBg: String
+}
+
 extension AppTheme {
     var colors: ThemeColors {
-        switch self {
-        case .darkHard:
-            ThemeColors(
-                accentColor: Color(hex: 0xA7C080),
-                background: "#272E33",
-                foreground: "#D3C6AA",
-                palette: darkPalette(bg1: "#2E383C"),
-                cursorColor: "#A7C080",
-                selectionBg: "#4C3743",
-                selectionFg: "#D3C6AA"
-            )
-        case .darkMedium:
-            ThemeColors(
-                accentColor: Color(hex: 0xA7C080),
-                background: "#2D353B",
-                foreground: "#D3C6AA",
-                palette: darkPalette(bg1: "#343F44"),
-                cursorColor: "#A7C080",
-                selectionBg: "#543A48",
-                selectionFg: "#D3C6AA"
-            )
-        case .darkSoft:
-            ThemeColors(
-                accentColor: Color(hex: 0xA7C080),
-                background: "#333C43",
-                foreground: "#D3C6AA",
-                palette: darkPalette(bg1: "#3A464C"),
-                cursorColor: "#A7C080",
-                selectionBg: "#5C3F4F",
-                selectionFg: "#D3C6AA"
-            )
-        case .lightHard:
-            ThemeColors(
-                accentColor: Color(hex: 0x8DA101),
-                background: "#FFFBEF",
-                foreground: "#5C6A72",
-                palette: lightPalette(bg1: "#F8F5E4"),
-                cursorColor: "#8DA101",
-                selectionBg: "#F0F2D4",
-                selectionFg: "#5C6A72"
-            )
-        case .lightMedium:
-            ThemeColors(
-                accentColor: Color(hex: 0x8DA101),
-                background: "#FDF6E3",
-                foreground: "#5C6A72",
-                palette: lightPalette(bg1: "#F4F0D9"),
-                cursorColor: "#8DA101",
-                selectionBg: "#EAEDC8",
-                selectionFg: "#5C6A72"
-            )
-        case .lightSoft:
-            ThemeColors(
-                accentColor: Color(hex: 0x8DA101),
-                background: "#F3EAD3",
-                foreground: "#5C6A72",
-                palette: lightPalette(bg1: "#EAE4CA"),
-                cursorColor: "#8DA101",
-                selectionBg: "#E1E4BD",
-                selectionFg: "#5C6A72"
-            )
+        if isDark {
+            darkColors
+        } else {
+            lightColors
         }
+    }
+
+    private var darkColors: ThemeColors {
+        let contrast: ContrastSet = switch self {
+        case .darkHard: ContrastSet(background: "#272E33", bg1: "#2E383C", selectionBg: "#4C3743")
+        case .darkMedium: ContrastSet(background: "#2D353B", bg1: "#343F44", selectionBg: "#543A48")
+        case .darkSoft: ContrastSet(background: "#333C43", bg1: "#3A464C", selectionBg: "#5C3F4F")
+        default: fatalError("Not a dark theme")
+        }
+        return ThemeColors(
+            accentColor: Color(hex: 0xA7C080),
+            warningColor: Color(hex: 0xDBBC7F),
+            background: contrast.background,
+            foreground: "#D3C6AA",
+            palette: darkPalette(bg1: contrast.bg1),
+            cursorColor: "#A7C080",
+            selectionBg: contrast.selectionBg,
+            selectionFg: "#D3C6AA"
+        )
+    }
+
+    private var lightColors: ThemeColors {
+        let contrast: ContrastSet = switch self {
+        case .lightHard: ContrastSet(background: "#FFFBEF", bg1: "#F8F5E4", selectionBg: "#F0F2D4")
+        case .lightMedium: ContrastSet(background: "#FDF6E3", bg1: "#F4F0D9", selectionBg: "#EAEDC8")
+        case .lightSoft: ContrastSet(background: "#F3EAD3", bg1: "#EAE4CA", selectionBg: "#E1E4BD")
+        default: fatalError("Not a light theme")
+        }
+        return ThemeColors(
+            accentColor: Color(hex: 0x8DA101),
+            warningColor: Color(hex: 0xDFA000),
+            background: contrast.background,
+            foreground: "#5C6A72",
+            palette: lightPalette(bg1: contrast.bg1),
+            cursorColor: "#8DA101",
+            selectionBg: contrast.selectionBg,
+            selectionFg: "#5C6A72"
+        )
     }
 }
 

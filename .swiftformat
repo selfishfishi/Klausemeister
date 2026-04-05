@@ -7,4 +7,5 @@
 --wrapparameters before-first
 --wrapcollections before-first
 --swiftversion 6.2
+--modifierorder nonisolated,private,static,final,override
 --exclude .build,Klausemeister.xcodeproj
