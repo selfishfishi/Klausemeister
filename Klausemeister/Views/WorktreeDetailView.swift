@@ -43,7 +43,10 @@ struct WorktreeDetailView: View {
                         title: "Inbox",
                         icon: "tray.and.arrow.down",
                         issues: worktree.inbox,
-                        emptyText: "Drag issues here"
+                        emptyText: "Drag issues here",
+                        onReturnToMeister: { issueId in
+                            store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktreeId))
+                        }
                     )
 
                     Divider()
@@ -53,7 +56,10 @@ struct WorktreeDetailView: View {
                         title: "Outbox",
                         icon: "tray.and.arrow.up",
                         issues: worktree.outbox,
-                        emptyText: "Completed issues appear here"
+                        emptyText: "Completed issues appear here",
+                        onReturnToMeister: { issueId in
+                            store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktreeId))
+                        }
                     )
                 }
             }
@@ -74,6 +80,7 @@ struct WorktreeQueueColumn: View {
     let icon: String
     let issues: [LinearIssue]
     let emptyText: String
+    var onReturnToMeister: ((_ issueId: String) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -101,7 +108,12 @@ struct WorktreeQueueColumn: View {
                 ScrollView {
                     LazyVStack(spacing: 6) {
                         ForEach(issues, id: \.id) { issue in
-                            WorktreeIssueRow(issue: issue)
+                            WorktreeIssueRow(
+                                issue: issue,
+                                onReturnToMeister: onReturnToMeister.map { callback in
+                                    { callback(issue.id) }
+                                }
+                            )
                         }
                     }
                     .padding(.horizontal, 12)
@@ -115,6 +127,7 @@ struct WorktreeQueueColumn: View {
 
 struct WorktreeIssueRow: View {
     let issue: LinearIssue
+    var onReturnToMeister: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -136,5 +149,12 @@ struct WorktreeIssueRow: View {
         }
         .padding(8)
         .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        .contextMenu {
+            if let onReturn = onReturnToMeister {
+                Button("Return to Meister") {
+                    onReturn()
+                }
+            }
+        }
     }
 }

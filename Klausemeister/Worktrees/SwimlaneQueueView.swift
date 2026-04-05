@@ -29,6 +29,7 @@ enum SwimlaneQueueRole {
 struct SwimlaneQueueView: View {
     let role: SwimlaneQueueRole
     let issues: [LinearIssue]
+    var onReturnToMeister: ((_ issueId: String) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -39,6 +40,13 @@ struct SwimlaneQueueView: View {
                 VStack(spacing: 6) {
                     ForEach(issues, id: \.id) { issue in
                         IssueCardView(issue: issue)
+                            .contextMenu {
+                                if let onReturn = onReturnToMeister {
+                                    Button("Return to Meister") {
+                                        onReturn(issue.id)
+                                    }
+                                }
+                            }
                     }
                 }
             }

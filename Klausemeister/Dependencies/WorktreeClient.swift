@@ -24,6 +24,7 @@ struct WorktreeClient {
     var moveToOutbox: @Sendable (_ queueItemId: String) async throws -> Void
     var removeFromQueue: @Sendable (_ queueItemId: String) async throws -> Void
     var moveToProcessing: @Sendable (_ queueItemId: String) async throws -> Void
+    var findQueueItemId: @Sendable (_ issueLinearId: String, _ worktreeId: String) async throws -> String?
     var reorderQueue: @Sendable (_ worktreeId: String, _ queuePosition: String, _ itemIds: [String]) async throws -> Void
 }
 
@@ -168,6 +169,17 @@ extension WorktreeClient: DependencyKey {
                 }
             },
 
+            findQueueItemId: { issueLinearId, worktreeId in
+                try await dbQueue.read { db in
+                    try WorktreeQueueItemRecord
+                        .filter(Column("worktreeId") == worktreeId)
+                        .filter(Column("issueLinearId") == issueLinearId)
+                        .filter(sql: "queuePosition IN ('inbox', 'processing', 'outbox')")
+                        .fetchOne(db)?
+                        .id
+                }
+            },
+
             reorderQueue: { worktreeId, queuePosition, itemIds in
                 try await dbQueue.write { db in
                     for (index, itemId) in itemIds.enumerated() {
@@ -194,6 +206,7 @@ extension WorktreeClient: DependencyKey {
         moveToOutbox: unimplemented("WorktreeClient.moveToOutbox"),
         removeFromQueue: unimplemented("WorktreeClient.removeFromQueue"),
         moveToProcessing: unimplemented("WorktreeClient.moveToProcessing"),
+        findQueueItemId: unimplemented("WorktreeClient.findQueueItemId"),
         reorderQueue: unimplemented("WorktreeClient.reorderQueue")
     )
 }

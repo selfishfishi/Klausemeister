@@ -64,6 +64,9 @@ struct WorktreeSwimlaneView: View {
                         worktree: worktree,
                         onDelete: {
                             store.send(.confirmDeleteTapped(worktreeId: worktree.id))
+                        },
+                        onReturnToMeister: { issueId in
+                            store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktree.id))
                         }
                     )
                 }
@@ -109,6 +112,9 @@ struct WorktreeSwimlaneView: View {
                         worktree: worktree,
                         onDelete: {
                             store.send(.confirmDeleteTapped(worktreeId: worktree.id))
+                        },
+                        onReturnToMeister: { issueId in
+                            store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktree.id))
                         }
                     )
                 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SwimlaneProcessingZoneView: View {
     let issue: LinearIssue?
+    var onReturnToMeister: ((_ issueId: String) -> Void)?
 
     @Environment(\.themeColors) private var themeColors
 
@@ -30,6 +31,13 @@ struct SwimlaneProcessingZoneView: View {
             HStack(spacing: 0) {
                 accentBar
                 IssueCardView(issue: issue)
+            }
+        }
+        .contextMenu {
+            if let onReturn = onReturnToMeister {
+                Button("Return to Meister") {
+                    onReturn(issue.id)
+                }
             }
         }
     }

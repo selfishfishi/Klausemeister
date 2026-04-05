@@ -73,7 +73,7 @@ struct WorktreeFeature {
         case worktreeDeleteFailed(worktree: Worktree)
         case worktreeSelected(String?)
         case issueAssignedToWorktree(worktreeId: String, issue: LinearIssue)
-        case issueReturnedToMeister(queueItemId: String, issueId: String, worktreeId: String)
+        case issueReturnedToMeister(issueId: String, worktreeId: String)
         case issueMovedToProcessing(queueItemId: String, issueId: String, worktreeId: String)
         case issueMovedToOutbox(queueItemId: String, issueId: String, worktreeId: String)
         case queueReordered(worktreeId: String, queuePosition: String, itemIds: [String])
@@ -398,7 +398,7 @@ struct WorktreeFeature {
                     }
                 }
 
-            case let .issueReturnedToMeister(queueItemId, issueId, worktreeId):
+            case let .issueReturnedToMeister(issueId, worktreeId):
                 guard let wtIndex = state.worktrees.index(id: worktreeId) else { return .none }
                 let returnedIssue = state.worktrees[wtIndex].inbox.first { $0.id == issueId }
                     ?? (state.worktrees[wtIndex].processing?.id == issueId
@@ -411,7 +411,9 @@ struct WorktreeFeature {
                 }
                 state.worktrees[wtIndex].outbox.removeAll { $0.id == issueId }
                 return .run { send in
-                    try await worktreeClient.removeFromQueue(queueItemId)
+                    if let queueItemId = try await worktreeClient.findQueueItemId(issueId, worktreeId) {
+                        try await worktreeClient.removeFromQueue(queueItemId)
+                    }
                     await send(.delegate(.issueReturnedToMeister(issue: issue)))
                 } catch: { _, send in
                     await send(.returnToMeisterFailed(

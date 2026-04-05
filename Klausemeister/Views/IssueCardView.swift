@@ -32,7 +32,10 @@ struct IssueCardView: View {
 struct KanbanIssueCardView: View {
     let issue: LinearIssue
     let workflowStates: [LinearWorkflowState]
+    let worktrees: [Worktree]
+    let repositories: [Repository]
     let onMoveToStatus: (_ issueId: String, _ statusId: String) -> Void
+    let onAssignToWorktree: (_ issue: LinearIssue, _ worktreeId: String) -> Void
     let onRemove: (_ issueId: String) -> Void
 
     var body: some View {
@@ -43,6 +46,27 @@ struct KanbanIssueCardView: View {
                     ForEach(workflowStates.filter { $0.id != issue.statusId }) { state in
                         Button(state.name) {
                             onMoveToStatus(issue.id, state.id)
+                        }
+                    }
+                }
+                if !worktrees.isEmpty {
+                    Menu("Move to Worktree") {
+                        let grouped = repositories.filter { repo in
+                            worktrees.contains { $0.repoId == repo.id }
+                        }
+                        ForEach(grouped) { repo in
+                            Section(repo.name) {
+                                ForEach(worktrees.filter { $0.repoId == repo.id }) { wt in
+                                    Button(wt.name) { onAssignToWorktree(issue, wt.id) }
+                                }
+                            }
+                        }
+                        let ungrouped = worktrees.filter { $0.repoId == nil }
+                        if !ungrouped.isEmpty {
+                            if !grouped.isEmpty { Divider() }
+                            ForEach(ungrouped) { wt in
+                                Button(wt.name) { onAssignToWorktree(issue, wt.id) }
+                            }
                         }
                     }
                 }
