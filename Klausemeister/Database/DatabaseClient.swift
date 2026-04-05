@@ -4,6 +4,7 @@ import Foundation
 import GRDB
 
 struct DatabaseClient {
+    var getDbQueue: @Sendable () -> DatabaseQueue
     var fetchImportedIssues: @Sendable () async throws -> [ImportedIssueRecord]
     var saveImportedIssue: @Sendable (ImportedIssueRecord) async throws -> Void
     var deleteImportedIssue: @Sendable (_ linearId: String) async throws -> Void
@@ -31,6 +32,7 @@ extension DatabaseClient: DependencyKey {
         }()
 
         return DatabaseClient(
+            getDbQueue: { dbQueue },
             fetchImportedIssues: {
                 try await dbQueue.read { db in
                     try ImportedIssueRecord.order(Column("sortOrder").asc).fetchAll(db)
@@ -68,6 +70,7 @@ extension DatabaseClient: DependencyKey {
     }()
 
     nonisolated static let testValue = DatabaseClient(
+        getDbQueue: unimplemented("DatabaseClient.getDbQueue"),
         fetchImportedIssues: unimplemented("DatabaseClient.fetchImportedIssues"),
         saveImportedIssue: unimplemented("DatabaseClient.saveImportedIssue"),
         deleteImportedIssue: unimplemented("DatabaseClient.deleteImportedIssue"),
