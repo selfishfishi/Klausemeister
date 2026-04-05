@@ -10,16 +10,23 @@
 		A869F53A2F817984005797B3 /* GhosttyKit in Frameworks */ = {isa = PBXBuildFile; productRef = A8GHOST012F816B35005797B3 /* GhosttyKit */; };
 		A869F53B2F817984005797B3 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = A8GHOST022F816B35005797B3 /* GhosttyTerminal */; };
 		A8TCA0022F816B35005797B3 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = A8TCA0012F816B35005797B3 /* ComposableArchitecture */; };
+		A8TE000B2F816B35005797B3 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE000C2F816B35005797B3 /* ComposableArchitecture */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		A869EEE02F816B35005797B3 /* Klausemeister.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Klausemeister.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A8TE00012F816B35005797B3 /* KlausemeisterTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KlausemeisterTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A869EEE22F816B35005797B3 /* Klausemeister */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Klausemeister;
+			sourceTree = "<group>";
+		};
+		A8TE00002F816B35005797B3 /* KlausemeisterTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = KlausemeisterTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -35,13 +42,32 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A8TE00032F816B35005797B3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A8TE000B2F816B35005797B3 /* ComposableArchitecture in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		A8TE00072F816B35005797B3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A869EED82F816B35005797B3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A869EEDF2F816B35005797B3;
+			remoteInfo = Klausemeister;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXGroup section */
 		A869EED72F816B35005797B3 = {
 			isa = PBXGroup;
 			children = (
 				A869EEE22F816B35005797B3 /* Klausemeister */,
+				A8TE00002F816B35005797B3 /* KlausemeisterTests */,
 				A869EEE12F816B35005797B3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -50,6 +76,7 @@
 			isa = PBXGroup;
 			children = (
 				A869EEE02F816B35005797B3 /* Klausemeister.app */,
+				A8TE00012F816B35005797B3 /* KlausemeisterTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -82,6 +109,30 @@
 			productReference = A869EEE02F816B35005797B3 /* Klausemeister.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A8TE00052F816B35005797B3 /* KlausemeisterTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A8TE000A2F816B35005797B3 /* Build configuration list for PBXNativeTarget "KlausemeisterTests" */;
+			buildPhases = (
+				A8TE00022F816B35005797B3 /* Sources */,
+				A8TE00032F816B35005797B3 /* Frameworks */,
+				A8TE00042F816B35005797B3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A8TE00062F816B35005797B3 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A8TE00002F816B35005797B3 /* KlausemeisterTests */,
+			);
+			name = KlausemeisterTests;
+			packageProductDependencies = (
+				A8TE000C2F816B35005797B3 /* ComposableArchitecture */,
+			);
+			productName = KlausemeisterTests;
+			productReference = A8TE00012F816B35005797B3 /* KlausemeisterTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -94,6 +145,10 @@
 				TargetAttributes = {
 					A869EEDF2F816B35005797B3 = {
 						CreatedOnToolsVersion = 26.4;
+					};
+					A8TE00052F816B35005797B3 = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = A869EEDF2F816B35005797B3;
 					};
 				};
 			};
@@ -116,12 +171,20 @@
 			projectRoot = "";
 			targets = (
 				A869EEDF2F816B35005797B3 /* Klausemeister */,
+				A8TE00052F816B35005797B3 /* KlausemeisterTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		A869EEDE2F816B35005797B3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A8TE00042F816B35005797B3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -138,7 +201,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A8TE00022F816B35005797B3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A8TE00062F816B35005797B3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A869EEDF2F816B35005797B3 /* Klausemeister */;
+			targetProxy = A8TE00072F816B35005797B3 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A869EEE92F816B35005797B3 /* Debug */ = {
@@ -325,6 +403,46 @@
 			};
 			name = Release;
 		};
+		A8TE00082F816B35005797B3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9QVJUYLZ2D;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fish.selfish.klausemeister.KlausemeisterTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Klausemeister.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Klausemeister";
+			};
+			name = Debug;
+		};
+		A8TE00092F816B35005797B3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9QVJUYLZ2D;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fish.selfish.klausemeister.KlausemeisterTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Klausemeister.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Klausemeister";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -342,6 +460,15 @@
 			buildConfigurations = (
 				A869EEEC2F816B35005797B3 /* Debug */,
 				A869EEED2F816B35005797B3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A8TE000A2F816B35005797B3 /* Build configuration list for PBXNativeTarget "KlausemeisterTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A8TE00082F816B35005797B3 /* Debug */,
+				A8TE00092F816B35005797B3 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -379,6 +506,11 @@
 			productName = GhosttyTerminal;
 		};
 		A8TCA0012F816B35005797B3 /* ComposableArchitecture */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A8TCA0002F816B35005797B3 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
+			productName = ComposableArchitecture;
+		};
+		A8TE000C2F816B35005797B3 /* ComposableArchitecture */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A8TCA0002F816B35005797B3 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */;
 			productName = ComposableArchitecture;
