@@ -5,12 +5,14 @@ import GRDB
 
 struct WorktreeClient {
     // MARK: - Worktree CRUD
+
     var fetchWorktrees: @Sendable () async throws -> [WorktreeRecord]
     var createWorktree: @Sendable (_ name: String, _ gitWorktreePath: String) async throws -> WorktreeRecord
     var deleteWorktree: @Sendable (_ worktreeId: String) async throws -> Void
     var updateWorktreeOrder: @Sendable (_ orderedIds: [String]) async throws -> Void
 
     // MARK: - Queue Management
+
     var fetchQueueItems: @Sendable (_ worktreeId: String) async throws -> [WorktreeQueueItemRecord]
     var assignIssueToWorktree: @Sendable (_ issueLinearId: String, _ worktreeId: String) async throws -> Void
     var moveToOutbox: @Sendable (_ queueItemId: String) async throws -> Void

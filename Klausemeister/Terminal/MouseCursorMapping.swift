@@ -4,70 +4,69 @@ import GhosttyKit
 /// Translates ghostty mouse shape actions to NSCursor instances.
 /// Mirrors the KeyMapping pattern: caseless enum namespace with pure static functions.
 enum MouseCursorMapping {
-
     static func nsCursor(for shape: ghostty_action_mouse_shape_e) -> NSCursor {
         switch shape {
         case GHOSTTY_MOUSE_SHAPE_DEFAULT,
              GHOSTTY_MOUSE_SHAPE_HELP,
              GHOSTTY_MOUSE_SHAPE_PROGRESS,
              GHOSTTY_MOUSE_SHAPE_WAIT:
-            return .arrow
+            .arrow
         case GHOSTTY_MOUSE_SHAPE_CONTEXT_MENU:
-            return .contextualMenu
+            .contextualMenu
         case GHOSTTY_MOUSE_SHAPE_POINTER:
-            return .pointingHand
+            .pointingHand
         case GHOSTTY_MOUSE_SHAPE_CELL,
              GHOSTTY_MOUSE_SHAPE_CROSSHAIR:
-            return .crosshair
+            .crosshair
         case GHOSTTY_MOUSE_SHAPE_TEXT:
-            return .iBeam
+            .iBeam
         case GHOSTTY_MOUSE_SHAPE_VERTICAL_TEXT:
-            return .iBeamCursorForVerticalLayout
+            .iBeamCursorForVerticalLayout
         case GHOSTTY_MOUSE_SHAPE_ALIAS:
-            return .dragLink
+            .dragLink
         case GHOSTTY_MOUSE_SHAPE_COPY:
-            return .dragCopy
+            .dragCopy
         case GHOSTTY_MOUSE_SHAPE_MOVE,
              GHOSTTY_MOUSE_SHAPE_GRAB,
              GHOSTTY_MOUSE_SHAPE_ALL_SCROLL:
-            return .openHand
+            .openHand
         case GHOSTTY_MOUSE_SHAPE_GRABBING:
-            return .closedHand
+            .closedHand
         case GHOSTTY_MOUSE_SHAPE_NO_DROP,
              GHOSTTY_MOUSE_SHAPE_NOT_ALLOWED:
-            return .operationNotAllowed
+            .operationNotAllowed
         case GHOSTTY_MOUSE_SHAPE_COL_RESIZE,
              GHOSTTY_MOUSE_SHAPE_EW_RESIZE:
-            return .resizeLeftRight
+            .resizeLeftRight
         case GHOSTTY_MOUSE_SHAPE_ROW_RESIZE,
              GHOSTTY_MOUSE_SHAPE_NS_RESIZE:
-            return .resizeUpDown
+            .resizeUpDown
         case GHOSTTY_MOUSE_SHAPE_N_RESIZE:
-            return .resizeUp
+            .resizeUp
         case GHOSTTY_MOUSE_SHAPE_E_RESIZE:
-            return .resizeRight
+            .resizeRight
         case GHOSTTY_MOUSE_SHAPE_S_RESIZE:
-            return .resizeDown
+            .resizeDown
         case GHOSTTY_MOUSE_SHAPE_W_RESIZE:
-            return .resizeLeft
+            .resizeLeft
         case GHOSTTY_MOUSE_SHAPE_NE_RESIZE:
-            return privateCursor("_windowResizeNorthEastCursor") ?? .arrow
+            privateCursor("_windowResizeNorthEastCursor") ?? .arrow
         case GHOSTTY_MOUSE_SHAPE_NW_RESIZE:
-            return privateCursor("_windowResizeNorthWestCursor") ?? .arrow
+            privateCursor("_windowResizeNorthWestCursor") ?? .arrow
         case GHOSTTY_MOUSE_SHAPE_SE_RESIZE:
-            return privateCursor("_windowResizeSouthEastCursor") ?? .arrow
+            privateCursor("_windowResizeSouthEastCursor") ?? .arrow
         case GHOSTTY_MOUSE_SHAPE_SW_RESIZE:
-            return privateCursor("_windowResizeSouthWestCursor") ?? .arrow
+            privateCursor("_windowResizeSouthWestCursor") ?? .arrow
         case GHOSTTY_MOUSE_SHAPE_NESW_RESIZE:
-            return privateCursor("_windowResizeNorthEastSouthWestCursor") ?? .resizeLeftRight
+            privateCursor("_windowResizeNorthEastSouthWestCursor") ?? .resizeLeftRight
         case GHOSTTY_MOUSE_SHAPE_NWSE_RESIZE:
-            return privateCursor("_windowResizeNorthWestSouthEastCursor") ?? .resizeUpDown
+            privateCursor("_windowResizeNorthWestSouthEastCursor") ?? .resizeUpDown
         case GHOSTTY_MOUSE_SHAPE_ZOOM_IN:
-            return privateCursor("_zoomInCursor") ?? .crosshair
+            privateCursor("_zoomInCursor") ?? .crosshair
         case GHOSTTY_MOUSE_SHAPE_ZOOM_OUT:
-            return privateCursor("_zoomOutCursor") ?? .crosshair
+            privateCursor("_zoomOutCursor") ?? .crosshair
         default:
-            return .arrow
+            .arrow
         }
     }
 

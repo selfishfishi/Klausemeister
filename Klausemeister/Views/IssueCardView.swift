@@ -2,9 +2,6 @@ import SwiftUI
 
 struct IssueCardView: View {
     let issue: LinearIssue
-    let workflowStates: [LinearWorkflowState]
-    let onMoveToStatus: (_ issueId: String, _ statusId: String) -> Void
-    let onRemove: (_ issueId: String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -27,19 +24,32 @@ struct IssueCardView: View {
         .padding(10)
         .background(.fill.quaternary)
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .draggable(issue.id)
-        .contextMenu {
-            Menu("Move to...") {
-                ForEach(workflowStates.filter { $0.id != issue.statusId }) { state in
-                    Button(state.name) {
-                        onMoveToStatus(issue.id, state.id)
+    }
+}
+
+// MARK: - Kanban variant (drag + context menu)
+
+struct KanbanIssueCardView: View {
+    let issue: LinearIssue
+    let workflowStates: [LinearWorkflowState]
+    let onMoveToStatus: (_ issueId: String, _ statusId: String) -> Void
+    let onRemove: (_ issueId: String) -> Void
+
+    var body: some View {
+        IssueCardView(issue: issue)
+            .draggable(issue.id)
+            .contextMenu {
+                Menu("Move to...") {
+                    ForEach(workflowStates.filter { $0.id != issue.statusId }) { state in
+                        Button(state.name) {
+                            onMoveToStatus(issue.id, state.id)
+                        }
                     }
                 }
+                Divider()
+                Button("Remove from board", role: .destructive) {
+                    onRemove(issue.id)
+                }
             }
-            Divider()
-            Button("Remove from board", role: .destructive) {
-                onRemove(issue.id)
-            }
-        }
     }
 }

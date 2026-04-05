@@ -25,7 +25,7 @@ struct KanbanColumnView: View {
             ScrollView(.vertical) {
                 LazyVStack(spacing: 6) {
                     ForEach(column.issues, id: \.id) { issue in
-                        IssueCardView(
+                        KanbanIssueCardView(
                             issue: issue,
                             workflowStates: workflowStates,
                             onMoveToStatus: onMoveToStatus,

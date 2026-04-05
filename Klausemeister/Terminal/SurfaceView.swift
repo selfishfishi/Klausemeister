@@ -109,7 +109,9 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        for area in trackingAreas { removeTrackingArea(area) }
+        for area in trackingAreas {
+            removeTrackingArea(area)
+        }
         addTrackingArea(NSTrackingArea(
             rect: bounds,
             options: [
@@ -117,14 +119,14 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
                 .cursorUpdate,
                 .mouseMoved,
                 .mouseEnteredAndExited,
-                .inVisibleRect,
+                .inVisibleRect
             ],
             owner: self,
             userInfo: nil
         ))
     }
 
-    override func cursorUpdate(with event: NSEvent) {
+    override func cursorUpdate(with _: NSEvent) {
         currentCursor.set()
     }
 
