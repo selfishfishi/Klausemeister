@@ -30,7 +30,8 @@ extension AppTheme {
             palette: darkPalette(bg1: contrast.bg1),
             cursorColor: "#A7C080",
             selectionBg: contrast.selectionBg,
-            selectionFg: "#D3C6AA"
+            selectionFg: "#D3C6AA",
+            glowIntensity: 1.0
         )
     }
 
@@ -49,7 +50,8 @@ extension AppTheme {
             palette: lightPalette(bg1: contrast.bg1),
             cursorColor: "#8DA101",
             selectionBg: contrast.selectionBg,
-            selectionFg: "#5C6A72"
+            selectionFg: "#5C6A72",
+            glowIntensity: 0.55
         )
     }
 }

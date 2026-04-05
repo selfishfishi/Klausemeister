@@ -4,11 +4,15 @@ import SwiftUI
 
 struct WorktreeSwimlaneView: View {
     @Bindable var store: StoreOf<WorktreeFeature>
+    @State private var isPanelVisible = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             swimlanes
+                .environment(\.swimlaneAnimating, isPanelVisible)
+                .onAppear { isPanelVisible = true }
+                .onDisappear { isPanelVisible = false }
         }
         .task { store.send(.onAppear) }
         .alert($store.scope(state: \.alert, action: \.alert))

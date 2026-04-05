@@ -36,6 +36,7 @@ struct ThemeColors {
     let cursorColor: String
     let selectionBg: String
     let selectionFg: String
+    let glowIntensity: Double
 }
 
 extension EnvironmentValues {
