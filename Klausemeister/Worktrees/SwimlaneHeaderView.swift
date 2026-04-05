@@ -24,6 +24,13 @@ struct SwimlaneHeaderView: View {
                 .buttonStyle(.plain)
             }
 
+            if let branch = worktree.currentBranch {
+                Text(branch)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+
             statusPill
         }
         .padding(10)

@@ -107,7 +107,12 @@ struct SidebarWorktreeRow: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(worktree.name)
                         .lineLimit(1)
-                    if let repoName = worktree.repoName {
+                    if let branch = worktree.currentBranch {
+                        Text(branch)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    } else if let repoName = worktree.repoName {
                         Text(repoName)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
