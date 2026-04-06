@@ -33,6 +33,7 @@ struct KlausemeisterApp: App {
                 .onOpenURL { url in
                     store.send(.oauthCallbackReceived(url))
                 }
+                .preferredColorScheme(selectedTheme.isDark ? .dark : .light)
         }
         .defaultSize(width: 900, height: 600)
         .environment(\.themeColors, selectedTheme.colors)

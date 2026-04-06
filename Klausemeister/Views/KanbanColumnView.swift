@@ -11,6 +11,8 @@ struct KanbanColumnView: View {
     let onRemove: (_ issueId: String) -> Void
     let onDrop: (_ issueId: String) -> Void
 
+    @Environment(\.themeColors) private var themeColors
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -22,6 +24,9 @@ struct KanbanColumnView: View {
                 Text("\(column.issues.count)")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(.fill.quaternary, in: Capsule())
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)

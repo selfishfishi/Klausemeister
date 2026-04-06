@@ -12,11 +12,21 @@ struct TerminalContainerView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(store: store)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
+                .background {
+                    ZStack {
+                        Color(hexString: themeColors.background)
+                        themeColors.accentColor.opacity(0.04)
+                    }
+                    .ignoresSafeArea()
+                }
+                .scrollContentBackground(.hidden)
         } detail: {
             if store.showMeister {
                 MeisterTabView(
                     meisterStore: store.scope(state: \.meister, action: \.meister),
-                    worktreeStore: store.scope(state: \.worktree, action: \.worktree)
+                    worktreeStore: store.scope(state: \.worktree, action: \.worktree),
+                    authStatus: store.linearAuth.status,
+                    onConnect: { store.send(.linearAuth(.loginButtonTapped)) }
                 )
             } else if store.worktree.selectedWorktreeId != nil {
                 WorktreeDetailView(store: store.scope(state: \.worktree, action: \.worktree))

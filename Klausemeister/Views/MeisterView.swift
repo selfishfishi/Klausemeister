@@ -7,6 +7,8 @@ struct MeisterView: View {
     let repositories: [Repository]
     var assignedWorktreeNames: [String: String] = [:]
 
+    @Environment(\.themeColors) private var themeColors
+
     var body: some View {
         VStack(spacing: 0) {
             // Import bar
@@ -17,6 +19,7 @@ struct MeisterView: View {
                 if store.isImporting {
                     ProgressView()
                         .controlSize(.small)
+                        .tint(themeColors.accentColor)
                 }
             }
             .padding(12)
@@ -24,15 +27,18 @@ struct MeisterView: View {
             // Error banner
             if let error = store.error {
                 HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(themeColors.warningColor)
                     Text(error)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.secondary)
                     Spacer()
                     Button("Dismiss") {
                         store.send(.set(\.error, nil))
                     }
                     .font(.caption)
                     .buttonStyle(.plain)
+                    .foregroundStyle(themeColors.accentColor)
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
@@ -69,6 +75,7 @@ struct MeisterView: View {
             if store.isRefreshing {
                 ProgressView("Refreshing...")
                     .controlSize(.small)
+                    .tint(themeColors.accentColor)
                     .padding(4)
             }
         }
