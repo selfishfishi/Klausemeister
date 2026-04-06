@@ -13,7 +13,6 @@ struct LinearAuthFeature {
         case unauthenticated
         case authenticating
         case authenticated
-        case failed(String)
     }
 
     enum Action: Equatable {
@@ -22,6 +21,11 @@ struct LinearAuthFeature {
         case authCompleted(TaskResult<TokenResponse>)
         case meLoaded(TaskResult<LinearUser>)
         case logoutButtonTapped
+        case delegate(Delegate)
+    }
+
+    enum Delegate: Equatable {
+        case errorOccurred(message: String)
     }
 
     @Dependency(\.oauthClient) var oauthClient
@@ -68,8 +72,8 @@ struct LinearAuthFeature {
                 }
 
             case let .authCompleted(.failure(error)):
-                state.status = .failed(String(describing: error))
-                return .none
+                state.status = .unauthenticated
+                return .send(.delegate(.errorOccurred(message: String(describing: error))))
 
             case let .meLoaded(.success(user)):
                 state.status = .authenticated
@@ -89,6 +93,9 @@ struct LinearAuthFeature {
                 return .run { [keychainClient] _ in
                     await clearStoredTokens(keychainClient)
                 }
+
+            case .delegate:
+                return .none
             }
         }
     }

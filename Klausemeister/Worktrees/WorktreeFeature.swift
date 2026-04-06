@@ -42,7 +42,6 @@ struct WorktreeFeature {
         var worktrees: IdentifiedArrayOf<Worktree> = []
         var isCreatingWorktree: Bool = false
         var selectedWorktreeId: String?
-        var error: String?
         @Presents var alert: AlertState<Action.Alert>?
 
         var nextDefaultName: String {
@@ -115,6 +114,7 @@ struct WorktreeFeature {
         enum Delegate: Equatable {
             case issueReturnedToMeister(issue: LinearIssue)
             case issueRemovedFromKanban(issueId: String)
+            case errorOccurred(message: String)
         }
     }
 
@@ -135,7 +135,6 @@ struct WorktreeFeature {
                 return .none
 
             case .onAppear:
-                state.error = nil
                 return .run { send in
                     let repos = try await worktreeClient.fetchRepositories()
                     let worktrees = try await worktreeClient.fetchWorktrees()
@@ -578,15 +577,13 @@ struct WorktreeFeature {
                 return .none
 
             case let .loadFailed(message):
-                state.error = message
-                return .none
+                return .send(.delegate(.errorOccurred(message: message)))
 
             case let .assignFailed(worktreeId, issueId):
                 if let wtIndex = state.worktrees.index(id: worktreeId) {
                     state.worktrees[wtIndex].inbox.removeAll { $0.id == issueId }
                 }
-                state.error = "Failed to assign issue to worktree."
-                return .none
+                return .send(.delegate(.errorOccurred(message: "Failed to assign issue to worktree.")))
 
             case let .moveToProcessingFailed(issueId, worktreeId, issue):
                 if let wtIndex = state.worktrees.index(id: worktreeId) {
@@ -595,8 +592,7 @@ struct WorktreeFeature {
                     }
                     state.worktrees[wtIndex].inbox.append(issue)
                 }
-                state.error = "Failed to move issue to processing."
-                return .none
+                return .send(.delegate(.errorOccurred(message: "Failed to move issue to processing.")))
 
             case let .moveToOutboxFailed(issueId, worktreeId, issue, fromProcessing):
                 if let wtIndex = state.worktrees.index(id: worktreeId) {
@@ -607,15 +603,13 @@ struct WorktreeFeature {
                         state.worktrees[wtIndex].inbox.append(issue)
                     }
                 }
-                state.error = "Failed to move issue to outbox."
-                return .none
+                return .send(.delegate(.errorOccurred(message: "Failed to move issue to outbox.")))
 
             case let .returnToMeisterFailed(_, worktreeId, issue):
                 if let wtIndex = state.worktrees.index(id: worktreeId) {
                     state.worktrees[wtIndex].inbox.append(issue)
                 }
-                state.error = "Failed to return issue to Meister."
-                return .none
+                return .send(.delegate(.errorOccurred(message: "Failed to return issue to Meister.")))
 
             case let .addRepoFolderSelected(url):
                 return .run { send in

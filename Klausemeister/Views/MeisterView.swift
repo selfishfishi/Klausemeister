@@ -24,26 +24,6 @@ struct MeisterView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
 
-            // Error banner
-            if let error = store.error {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(themeColors.warningColor)
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Dismiss") {
-                        store.send(.set(\.error, nil))
-                    }
-                    .font(.caption)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(themeColors.accentColor)
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-            }
-
             // Kanban board
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 10) {
@@ -110,9 +90,6 @@ private struct SyncIndicatorButton: View {
             Image(systemName: "checkmark")
                 .foregroundStyle(themeColors.accentColor)
                 .transition(.opacity)
-        case .failed:
-            Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(themeColors.warningColor)
         }
     }
 
@@ -121,7 +98,6 @@ private struct SyncIndicatorButton: View {
         case .idle: "Sync issues with klause label"
         case .syncing: "Syncing..."
         case .succeeded: "Sync complete"
-        case let .failed(msg): "Sync failed: \(msg)"
         }
     }
 }

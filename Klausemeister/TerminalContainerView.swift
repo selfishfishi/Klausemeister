@@ -42,6 +42,9 @@ struct TerminalContainerView: View {
                 }
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            StatusBarView(store: store.scope(state: \.statusBar, action: \.statusBar))
+        }
         .navigationSplitViewStyle(.balanced)
         .onChange(of: store.showSidebar) { _, show in
             withAnimation {

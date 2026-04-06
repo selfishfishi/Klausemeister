@@ -194,7 +194,7 @@ struct SidebarLinearStatusView: View {
 
         HStack(spacing: 6) {
             switch authState.status {
-            case .unauthenticated, .failed:
+            case .unauthenticated:
                 Button {
                     store.send(.linearAuth(.loginButtonTapped))
                 } label: {

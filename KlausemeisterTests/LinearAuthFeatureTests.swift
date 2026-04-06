@@ -41,8 +41,9 @@ import Testing
         $0.status = .authenticating
     }
     await store.receive(\.authCompleted.failure) {
-        $0.status = .failed("stateMismatch")
+        $0.status = .unauthenticated
     }
+    await store.receive(\.delegate.errorOccurred)
 }
 
 @Test func `login flow me failure`() async {

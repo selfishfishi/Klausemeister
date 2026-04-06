@@ -12,6 +12,7 @@ struct AppFeature {
         var meister = MeisterFeature.State()
         var worktree = WorktreeFeature.State()
         var linearAuth = LinearAuthFeature.State()
+        var statusBar = StatusBarFeature.State()
 
         // swiftlint:disable:next nesting
         struct Tab: Equatable, Identifiable {
@@ -37,6 +38,7 @@ struct AppFeature {
         case meister(MeisterFeature.Action)
         case worktree(WorktreeFeature.Action)
         case linearAuth(LinearAuthFeature.Action)
+        case statusBar(StatusBarFeature.Action)
     }
 
     @Dependency(\.surfaceManager) var surfaceManager
@@ -53,6 +55,9 @@ struct AppFeature {
         }
         Scope(state: \.linearAuth, action: \.linearAuth) {
             LinearAuthFeature()
+        }
+        Scope(state: \.statusBar, action: \.statusBar) {
+            StatusBarFeature()
         }
         Reduce { state, action in
             switch action {
@@ -125,6 +130,24 @@ struct AppFeature {
             case let .meister(.delegate(.issueReturnedFromWorktreeByDrop(issueId))):
                 return .send(.worktree(.issueRemovedByKanbanDrop(issueId: issueId)))
 
+            case .meister(.delegate(.syncStarted)):
+                return .send(.statusBar(.syncStateChanged(true)))
+
+            case .meister(.delegate(.syncSucceeded)):
+                return .merge(
+                    .send(.statusBar(.syncStateChanged(false))),
+                    .send(.statusBar(.errorClearedForSource(.sync)))
+                )
+
+            case let .meister(.delegate(.syncFailed(message))):
+                return .merge(
+                    .send(.statusBar(.syncStateChanged(false))),
+                    .send(.statusBar(.errorReported(source: .sync, message: message)))
+                )
+
+            case let .meister(.delegate(.errorOccurred(message))):
+                return .send(.statusBar(.errorReported(source: .meister, message: message)))
+
             case .meister:
                 return .none
 
@@ -138,6 +161,9 @@ struct AppFeature {
 
             case let .worktree(.delegate(.issueRemovedFromKanban(issueId))):
                 return .send(.meister(.removeIssueFromColumns(issueId: issueId)))
+
+            case let .worktree(.delegate(.errorOccurred(message))):
+                return .send(.statusBar(.errorReported(source: .worktree, message: message)))
 
             case .worktree:
                 return .none
@@ -196,7 +222,13 @@ struct AppFeature {
                     oauthClient.handleCallback(url)
                 }
 
+            case let .linearAuth(.delegate(.errorOccurred(message))):
+                return .send(.statusBar(.errorReported(source: .linearAuth, message: message)))
+
             case .linearAuth:
+                return .none
+
+            case .statusBar:
                 return .none
             }
         }
