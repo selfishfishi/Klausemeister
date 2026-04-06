@@ -11,7 +11,7 @@ struct DatabaseClient {
     var updateIssueStatus: @Sendable (_ linearId: String, _ status: String, _ statusId: String, _ statusType: String) async throws -> Void
     var updateIssueFromLinear: @Sendable (ImportedIssueRecord) async throws -> Void
     var batchSaveImportedIssues: @Sendable ([ImportedIssueRecord]) async throws -> Void
-    var fetchImportedIssuesExcludingWorktreeQueues: @Sendable () async throws -> [ImportedIssueRecord]
+    var fetchUnqueuedImportedIssues: @Sendable () async throws -> [ImportedIssueRecord]
     var fetchImportedIssue: @Sendable (_ linearId: String) async throws -> ImportedIssueRecord?
     var fetchImportedIssueByIdentifier: @Sendable (_ identifier: String) async throws -> ImportedIssueRecord?
     var markOrphanedIssues: @Sendable (_ linearIds: [String], _ isOrphaned: Bool) async throws -> Void
@@ -70,7 +70,7 @@ extension DatabaseClient: DependencyKey {
                     }
                 }
             },
-            fetchImportedIssuesExcludingWorktreeQueues: {
+            fetchUnqueuedImportedIssues: {
                 try await dbQueue.read { db in
                     try ImportedIssueRecord.fetchAll(db, sql: """
                         SELECT ii.*
@@ -109,14 +109,15 @@ extension DatabaseClient: DependencyKey {
     }()
 
     nonisolated static let testValue = DatabaseClient(
-        getDbQueue: unimplemented("DatabaseClient.getDbQueue"),
+        // swiftlint:disable:next force_try
+        getDbQueue: unimplemented("DatabaseClient.getDbQueue", placeholder: try! DatabaseQueue()),
         fetchImportedIssues: unimplemented("DatabaseClient.fetchImportedIssues"),
         saveImportedIssue: unimplemented("DatabaseClient.saveImportedIssue"),
         deleteImportedIssue: unimplemented("DatabaseClient.deleteImportedIssue"),
         updateIssueStatus: unimplemented("DatabaseClient.updateIssueStatus"),
         updateIssueFromLinear: unimplemented("DatabaseClient.updateIssueFromLinear"),
         batchSaveImportedIssues: unimplemented("DatabaseClient.batchSaveImportedIssues"),
-        fetchImportedIssuesExcludingWorktreeQueues: unimplemented("DatabaseClient.fetchImportedIssuesExcludingWorktreeQueues"),
+        fetchUnqueuedImportedIssues: unimplemented("DatabaseClient.fetchUnqueuedImportedIssues"),
         fetchImportedIssue: unimplemented("DatabaseClient.fetchImportedIssue"),
         fetchImportedIssueByIdentifier: unimplemented("DatabaseClient.fetchImportedIssueByIdentifier"),
         markOrphanedIssues: unimplemented("DatabaseClient.markOrphanedIssues")

@@ -36,7 +36,7 @@ nonisolated private func graphQLRequest(
     return data
 }
 
-private struct GraphQLErrorEnvelope: Decodable {
+nonisolated private struct GraphQLErrorEnvelope: Decodable {
     struct GraphQLError: Decodable {
         let message: String
     }
@@ -254,7 +254,7 @@ extension LinearAPIClient: DependencyKey {
 // MARK: - Labeled Issues Response
 
 // swiftlint:disable nesting
-private struct LabeledIssuesResponse: Decodable {
+nonisolated private struct LabeledIssuesResponse: Decodable {
     struct Data: Decodable {
         struct Issues: Decodable {
             struct Node: Decodable {

@@ -4,6 +4,7 @@ import GhosttyKit
 /// Translates ghostty mouse shape actions to NSCursor instances.
 /// Mirrors the KeyMapping pattern: caseless enum namespace with pure static functions.
 enum MouseCursorMapping {
+    // swiftlint:disable:next cyclomatic_complexity
     static func nsCursor(for shape: ghostty_action_mouse_shape_e) -> NSCursor {
         switch shape {
         case GHOSTTY_MOUSE_SHAPE_DEFAULT,
