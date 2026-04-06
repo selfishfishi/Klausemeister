@@ -3,14 +3,28 @@ import SwiftUI
 struct SwimlaneHeaderView: View {
     let worktree: Worktree
     let onDelete: () -> Void
+    var isExpanded: Bool = false
+    var onToggleExpand: (() -> Void)?
 
     @Environment(\.themeColors) private var themeColors
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "arrow.triangle.branch")
-                    .foregroundStyle(.secondary)
+                if let onToggleExpand {
+                    Button(action: onToggleExpand) {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .frame(width: 12)
+                    }
+                    .buttonStyle(.plain)
+                    .help(isExpanded ? "Collapse" : "Expand")
+                } else {
+                    Image(systemName: "arrow.triangle.branch")
+                        .foregroundStyle(.secondary)
+                }
                 Text(worktree.name)
                     .font(.callout)
                     .lineLimit(1)

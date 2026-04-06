@@ -16,6 +16,26 @@ struct WorktreeSwimlaneView: View {
         }
         .task { store.send(.onAppear) }
         .alert($store.scope(state: \.alert, action: \.alert))
+        .sheet(
+            isPresented: Binding(
+                get: { store.createSheet != nil },
+                set: { newValue in
+                    if !newValue { store.send(.createSheetDismissed) }
+                }
+            )
+        ) {
+            if let sheetState = store.createSheet {
+                CreateWorktreeSheetView(
+                    repositories: Array(store.repositories),
+                    sheetState: sheetState,
+                    onRepoChanged: { store.send(.createSheetRepoChanged(repoId: $0)) },
+                    onNameChanged: { store.send(.createSheetNameChanged($0)) },
+                    onBranchChoiceChanged: { store.send(.createSheetBranchChoiceChanged($0)) },
+                    onSubmit: { store.send(.createSheetSubmitted) },
+                    onCancel: { store.send(.createSheetDismissed) }
+                )
+            }
+        }
     }
 
     private var header: some View {
@@ -27,6 +47,18 @@ struct WorktreeSwimlaneView: View {
                 ProgressView()
                     .controlSize(.small)
             }
+            Button {
+                store.send(.createSheetShown(prefilledRepoId: nil))
+            } label: {
+                Label("New Worktree", systemImage: "plus")
+                    .font(.callout)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+            }
+            .buttonStyle(.plain)
+            .glassEffect(.regular.interactive(), in: Capsule())
+            .help("New Worktree")
+            .disabled(store.repositories.isEmpty)
             Button {
                 openRepoFolderPicker()
             } label: {
@@ -68,7 +100,9 @@ struct WorktreeSwimlaneView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 AddWorktreeInlineButton { name in
-                    store.send(.createWorktreeTapped(repoId: repo.id, name: name))
+                    store.send(.createWorktreeTapped(
+                        repoId: repo.id, name: name, branchOverride: nil
+                    ))
                 }
                 Menu {
                     Button {
@@ -106,27 +140,58 @@ struct WorktreeSwimlaneView: View {
     }
 
     private func swimlaneRow(worktree: Worktree) -> some View {
-        SwimlaneRowView(
-            worktree: worktree,
-            onDelete: {
-                store.send(.confirmDeleteTapped(worktreeId: worktree.id))
-            },
-            onMarkComplete: {
-                store.send(.markAsCompleteTapped(worktreeId: worktree.id))
-            },
-            onReturnToMeister: { issueId in
-                store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktree.id))
-            },
-            onDropToInbox: { issueId in
-                store.send(.issueDroppedOnInbox(issueId: issueId, worktreeId: worktree.id))
-            },
-            onDropToProcessing: { issueId in
-                store.send(.issueDroppedOnProcessing(issueId: issueId, worktreeId: worktree.id))
-            },
-            onDropToOutbox: { issueId in
-                store.send(.issueDroppedOnOutbox(issueId: issueId, worktreeId: worktree.id))
+        let isExpanded = store.expandedWorktreeIdInMeister == worktree.id
+        return VStack(alignment: .leading, spacing: 6) {
+            SwimlaneRowView(
+                worktree: worktree,
+                onDelete: {
+                    store.send(.confirmDeleteTapped(worktreeId: worktree.id))
+                },
+                onMarkComplete: {
+                    store.send(.markAsCompleteTapped(worktreeId: worktree.id))
+                },
+                onReturnToMeister: { issueId in
+                    store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktree.id))
+                },
+                onDropToInbox: { issueId in
+                    store.send(.issueDroppedOnInbox(issueId: issueId, worktreeId: worktree.id))
+                },
+                onDropToProcessing: { issueId in
+                    store.send(.issueDroppedOnProcessing(issueId: issueId, worktreeId: worktree.id))
+                },
+                onDropToOutbox: { issueId in
+                    store.send(.issueDroppedOnOutbox(issueId: issueId, worktreeId: worktree.id))
+                },
+                isExpanded: isExpanded,
+                onToggleExpand: {
+                    store.send(.meisterExpansionToggled(worktreeId: worktree.id))
+                }
+            )
+
+            if isExpanded {
+                WorktreeDetailPaneView(
+                    worktree: worktree,
+                    onRename: { newName in
+                        store.send(.renameWorktreeTapped(
+                            worktreeId: worktree.id, newName: newName
+                        ))
+                    },
+                    onMarkComplete: {
+                        store.send(.markAsCompleteTapped(worktreeId: worktree.id))
+                    },
+                    onReturnToMeister: { issueId in
+                        store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktree.id))
+                    },
+                    onDelete: {
+                        store.send(.confirmDeleteTapped(worktreeId: worktree.id))
+                    }
+                )
+                .background(.fill.quinary)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-        )
+        }
+        .animation(.easeInOut(duration: 0.2), value: isExpanded)
     }
 
     private func openRepoFolderPicker() {
