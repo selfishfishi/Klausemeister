@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "klausemeister": {
+      "type": "http",
+      "url": "${KLAUSE_MCP_URL:-http://127.0.0.1:0}"
+    }
+  }
+}
