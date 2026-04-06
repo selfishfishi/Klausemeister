@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Klausemeister Architecture</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #1c232d;
+    --border: #30363d;
+    --fg: #c9d1d9;
+    --fg-muted: #8b949e;
+    --accent: #58a6ff;
+    --code-bg: #1c232d;
+    /* Diagram palette */
+    --ui: #58a6ff;       /* blue */
+    --ui-fill: rgba(88,166,255,0.12);
+    --tca: #bc8cff;      /* purple */
+    --tca-fill: rgba(188,140,255,0.12);
+    --deps: #56d364;     /* green */
+    --deps-fill: rgba(86,211,100,0.12);
+    --ext: #e3b341;      /* amber */
+    --ext-fill: rgba(227,179,65,0.12);
+    --stroke: #8b949e;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  main {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 48px 32px 96px;
+  }
+  h1 {
+    font-size: 2.2em;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 12px;
+    margin-top: 0;
+  }
+  h2 {
+    font-size: 1.5em;
+    margin-top: 2.4em;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  p, li { color: var(--fg); }
+  code {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.88em;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    line-height: 1.45;
+  }
+  pre code { background: none; border: none; padding: 0; font-size: 0.88em; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 16px 0;
+    font-size: 0.95em;
+  }
+  th, td {
+    padding: 10px 14px;
+    text-align: left;
+    border: 1px solid var(--border);
+  }
+  th {
+    background: var(--panel);
+    font-weight: 600;
+  }
+  tr:nth-child(even) td { background: rgba(110, 118, 129, 0.06); }
+  strong { color: #fff; }
+  .diagram {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px 12px;
+    margin: 24px 0;
+    overflow-x: auto;
+    display: flex;
+    justify-content: center;
+  }
+  .diagram svg {
+    max-width: 100%;
+    height: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .diagram .node-label { fill: #fff; font-size: 13px; font-weight: 500; }
+  .diagram .node-sub { fill: #c9d1d9; font-size: 11px; font-weight: 400; }
+  .diagram .layer-title { font-weight: 700; font-size: 13px; }
+  .diagram .edge-label { fill: #c9d1d9; font-size: 11px; }
+  .diagram .field { fill: #c9d1d9; font-size: 11px; }
+  .diagram .field-type { fill: #8b949e; }
+  .diagram .field-pk { fill: #e3b341; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Klausemeister Architecture</h1>
+
+<p>Klausemeister is a native macOS app that combines a <strong>libghostty-powered terminal</strong> with a <strong>TCA-driven project management layer</strong> (Linear issues, git worktrees, kanban board). The app is a thin Swift shell over libghostty's C API for terminal emulation, wrapped in a Composable Architecture state machine for everything else.</p>
+
+<h2>Layer Overview</h2>
+
+<div class="diagram">
+<svg viewBox="0 0 960 660" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--stroke)"/>
+    </marker>
+  </defs>
+
+  <!-- UI Layer -->
+  <rect x="20" y="20" width="920" height="110" rx="10" fill="var(--ui-fill)" stroke="var(--ui)" stroke-width="1.5"/>
+  <text x="36" y="44" fill="var(--ui)" class="layer-title">UI Layer — SwiftUI</text>
+  <g>
+    <rect x="50" y="66" width="160" height="44" rx="6" fill="var(--panel-2)" stroke="var(--ui)" stroke-width="1.5"/>
+    <text x="130" y="92" text-anchor="middle" class="node-label">TerminalContainerView</text>
+    <rect x="230" y="66" width="140" height="44" rx="6" fill="var(--panel-2)" stroke="var(--ui)" stroke-width="1.5"/>
+    <text x="300" y="92" text-anchor="middle" class="node-label">SidebarView</text>
+    <rect x="390" y="66" width="140" height="44" rx="6" fill="var(--panel-2)" stroke="var(--ui)" stroke-width="1.5"/>
+    <text x="460" y="92" text-anchor="middle" class="node-label">MeisterTabView</text>
+    <rect x="550" y="66" width="160" height="44" rx="6" fill="var(--panel-2)" stroke="var(--ui)" stroke-width="1.5"/>
+    <text x="630" y="92" text-anchor="middle" class="node-label">WorktreeDetailView</text>
+    <rect x="730" y="66" width="170" height="44" rx="6" fill="var(--panel-2)" stroke="var(--ui)" stroke-width="1.5"/>
+    <text x="815" y="92" text-anchor="middle" class="node-label">TerminalContentView</text>
+  </g>
+
+  <!-- Arrow UI -> TCA -->
+  <line x1="480" y1="130" x2="480" y2="168" stroke="var(--stroke)" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- TCA Layer -->
+  <rect x="20" y="170" width="920" height="110" rx="10" fill="var(--tca-fill)" stroke="var(--tca)" stroke-width="1.5"/>
+  <text x="36" y="194" fill="var(--tca)" class="layer-title">State Layer — TCA Reducers</text>
+  <g>
+    <rect x="80" y="216" width="180" height="44" rx="6" fill="var(--panel-2)" stroke="var(--tca)" stroke-width="1.5"/>
+    <text x="170" y="242" text-anchor="middle" class="node-label">AppFeature</text>
+    <rect x="280" y="216" width="180" height="44" rx="6" fill="var(--panel-2)" stroke="var(--tca)" stroke-width="1.5"/>
+    <text x="370" y="242" text-anchor="middle" class="node-label">MeisterFeature</text>
+    <rect x="480" y="216" width="180" height="44" rx="6" fill="var(--panel-2)" stroke="var(--tca)" stroke-width="1.5"/>
+    <text x="570" y="242" text-anchor="middle" class="node-label">WorktreeFeature</text>
+    <rect x="680" y="216" width="190" height="44" rx="6" fill="var(--panel-2)" stroke="var(--tca)" stroke-width="1.5"/>
+    <text x="775" y="242" text-anchor="middle" class="node-label">LinearAuthFeature</text>
+  </g>
+
+  <!-- Arrow TCA -> Deps -->
+  <line x1="480" y1="280" x2="480" y2="318" stroke="var(--stroke)" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Dependencies Layer -->
+  <rect x="20" y="320" width="920" height="170" rx="10" fill="var(--deps-fill)" stroke="var(--deps)" stroke-width="1.5"/>
+  <text x="36" y="344" fill="var(--deps)" class="layer-title">Dependency Clients — @Dependency</text>
+  <g>
+    <!-- Row 1 -->
+    <rect x="60" y="362" width="190" height="40" rx="6" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+    <text x="155" y="386" text-anchor="middle" class="node-label">DatabaseClient</text>
+    <rect x="270" y="362" width="190" height="40" rx="6" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+    <text x="365" y="386" text-anchor="middle" class="node-label">WorktreeClient</text>
+    <rect x="480" y="362" width="190" height="40" rx="6" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+    <text x="575" y="386" text-anchor="middle" class="node-label">LinearAPIClient</text>
+    <rect x="690" y="362" width="190" height="40" rx="6" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+    <text x="785" y="386" text-anchor="middle" class="node-label">OAuthClient</text>
+    <!-- Row 2 -->
+    <rect x="60" y="418" width="190" height="40" rx="6" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+    <text x="155" y="442" text-anchor="middle" class="node-label">KeychainClient</text>
+    <rect x="270" y="418" width="190" height="40" rx="6" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+    <text x="365" y="442" text-anchor="middle" class="node-label">GitClient</text>
+    <rect x="480" y="418" width="190" height="40" rx="6" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+    <text x="575" y="442" text-anchor="middle" class="node-label">SurfaceManager</text>
+    <rect x="690" y="418" width="190" height="40" rx="6" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+    <text x="785" y="442" text-anchor="middle" class="node-label">GhosttyAppClient</text>
+  </g>
+
+  <!-- Arrows Deps -> External (one per column) -->
+  <line x1="155" y1="458" x2="155" y2="528" stroke="var(--stroke)" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="365" y1="458" x2="365" y2="528" stroke="var(--stroke)" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="575" y1="458" x2="575" y2="528" stroke="var(--stroke)" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="785" y1="458" x2="785" y2="528" stroke="var(--stroke)" stroke-width="1.2" marker-end="url(#arr)"/>
+
+  <!-- External Layer -->
+  <rect x="20" y="530" width="920" height="110" rx="10" fill="var(--ext-fill)" stroke="var(--ext)" stroke-width="1.5"/>
+  <text x="36" y="554" fill="var(--ext)" class="layer-title">External Systems</text>
+  <g>
+    <rect x="80" y="574" width="150" height="44" rx="6" fill="var(--panel-2)" stroke="var(--ext)" stroke-width="1.5"/>
+    <text x="155" y="592" text-anchor="middle" class="node-label">GRDB / SQLite</text>
+    <text x="155" y="608" text-anchor="middle" class="node-sub">local.sqlite3</text>
+    <rect x="290" y="574" width="150" height="44" rx="6" fill="var(--panel-2)" stroke="var(--ext)" stroke-width="1.5"/>
+    <text x="365" y="592" text-anchor="middle" class="node-label">Linear GraphQL</text>
+    <text x="365" y="608" text-anchor="middle" class="node-sub">api.linear.app</text>
+    <rect x="500" y="574" width="150" height="44" rx="6" fill="var(--panel-2)" stroke="var(--ext)" stroke-width="1.5"/>
+    <text x="575" y="592" text-anchor="middle" class="node-label">git CLI</text>
+    <text x="575" y="608" text-anchor="middle" class="node-sub">/usr/bin/git</text>
+    <rect x="710" y="574" width="150" height="44" rx="6" fill="var(--panel-2)" stroke="var(--ext)" stroke-width="1.5"/>
+    <text x="785" y="592" text-anchor="middle" class="node-label">libghostty</text>
+    <text x="785" y="608" text-anchor="middle" class="node-sub">C FFI / Metal</text>
+  </g>
+</svg>
+</div>
+
+<p>Everything above the Dependencies layer is pure Swift value types. All I/O, process spawning, and C FFI happens inside dependency clients, keeping reducers deterministic and testable. Keychain access (not shown above) also flows through <code>KeychainClient</code> into macOS Keychain Services.</p>
+
+<h2>TCA Feature Hierarchy</h2>
+
+<div class="diagram">
+<svg viewBox="0 0 780 300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--stroke)"/>
+    </marker>
+  </defs>
+
+  <!-- Parent: AppFeature -->
+  <rect x="290" y="30" width="200" height="60" rx="8" fill="var(--panel-2)" stroke="var(--tca)" stroke-width="2"/>
+  <text x="390" y="55" text-anchor="middle" class="node-label">AppFeature</text>
+  <text x="390" y="74" text-anchor="middle" class="node-sub">tabs • sidebar • routing</text>
+
+  <!-- Lines with Scope labels -->
+  <path d="M 390 90 L 390 120 L 140 120 L 140 170" stroke="var(--stroke)" stroke-width="1.5" fill="none" marker-end="url(#arr2)"/>
+  <path d="M 390 90 L 390 170" stroke="var(--stroke)" stroke-width="1.5" fill="none" marker-end="url(#arr2)"/>
+  <path d="M 390 90 L 390 120 L 640 120 L 640 170" stroke="var(--stroke)" stroke-width="1.5" fill="none" marker-end="url(#arr2)"/>
+
+  <rect x="170" y="112" width="60" height="18" rx="4" fill="var(--panel)" stroke="var(--border)"/>
+  <text x="200" y="125" text-anchor="middle" class="edge-label">Scope</text>
+  <rect x="360" y="112" width="60" height="18" rx="4" fill="var(--panel)" stroke="var(--border)"/>
+  <text x="390" y="125" text-anchor="middle" class="edge-label">Scope</text>
+  <rect x="610" y="112" width="60" height="18" rx="4" fill="var(--panel)" stroke="var(--border)"/>
+  <text x="640" y="125" text-anchor="middle" class="edge-label">Scope</text>
+
+  <!-- Children -->
+  <rect x="40" y="172" width="200" height="70" rx="8" fill="var(--panel-2)" stroke="var(--tca)" stroke-width="1.5"/>
+  <text x="140" y="198" text-anchor="middle" class="node-label">MeisterFeature</text>
+  <text x="140" y="216" text-anchor="middle" class="node-sub">kanban board</text>
+  <text x="140" y="232" text-anchor="middle" class="node-sub">issue import / status</text>
+
+  <rect x="290" y="172" width="200" height="70" rx="8" fill="var(--panel-2)" stroke="var(--tca)" stroke-width="1.5"/>
+  <text x="390" y="198" text-anchor="middle" class="node-label">WorktreeFeature</text>
+  <text x="390" y="216" text-anchor="middle" class="node-sub">worktrees / queues</text>
+  <text x="390" y="232" text-anchor="middle" class="node-sub">inbox → processing → outbox</text>
+
+  <rect x="540" y="172" width="200" height="70" rx="8" fill="var(--panel-2)" stroke="var(--tca)" stroke-width="1.5"/>
+  <text x="640" y="198" text-anchor="middle" class="node-label">LinearAuthFeature</text>
+  <text x="640" y="216" text-anchor="middle" class="node-sub">PKCE OAuth flow</text>
+  <text x="640" y="232" text-anchor="middle" class="node-sub">user profile</text>
+</svg>
+</div>
+
+<p><code>AppFeature</code> is the composition root. It owns top-level UI state (tab list, sidebar visibility, active tab, Meister/worktree routing) and composes the three child reducers via <code>Scope</code>. It also forwards tab keyboard shortcuts (Cmd+1–9) and orchestrates <code>SurfaceManager</code> focus lifecycle as the user switches between terminal tabs, the kanban board, and worktree detail views.</p>
+
+<h2>Cross-Feature Coordination</h2>
+
+<p>Features never reach into each other's state directly. Cross-feature events use <strong>TCA delegate actions</strong> that the parent reducer (<code>AppFeature</code>) intercepts and re-dispatches to the sibling feature.</p>
+
+<div class="diagram">
+<svg viewBox="0 0 960 680" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#79b8ff"/>
+    </marker>
+    <marker id="arr3d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#bc8cff"/>
+    </marker>
+    <marker id="arr3g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#56d364"/>
+    </marker>
+  </defs>
+
+  <!-- Participant headers -->
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <rect x="40"  y="20" width="120" height="36" rx="6" fill="var(--panel-2)" stroke="var(--ui)"/>
+    <text x="100" y="43" text-anchor="middle" class="node-label">Kanban Card</text>
+
+    <rect x="230" y="20" width="140" height="36" rx="6" fill="var(--panel-2)" stroke="var(--tca)"/>
+    <text x="300" y="43" text-anchor="middle" class="node-label">MeisterFeature</text>
+
+    <rect x="440" y="20" width="120" height="36" rx="6" fill="var(--panel-2)" stroke="var(--tca)"/>
+    <text x="500" y="43" text-anchor="middle" class="node-label">AppFeature</text>
+
+    <rect x="630" y="20" width="140" height="36" rx="6" fill="var(--panel-2)" stroke="var(--tca)"/>
+    <text x="700" y="43" text-anchor="middle" class="node-label">WorktreeFeature</text>
+
+    <rect x="840" y="20" width="80" height="36" rx="6" fill="var(--panel-2)" stroke="var(--deps)"/>
+    <text x="880" y="43" text-anchor="middle" class="node-label">GRDB</text>
+  </g>
+
+  <!-- Lifelines -->
+  <line x1="100" y1="56" x2="100" y2="660" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="300" y1="56" x2="300" y2="660" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="500" y1="56" x2="500" y2="660" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="700" y1="56" x2="700" y2="660" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="880" y1="56" x2="880" y2="660" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,4"/>
+
+  <!-- Section: Assign -->
+  <rect x="30" y="72" width="910" height="24" rx="4" fill="rgba(88,166,255,0.12)" stroke="var(--ui)" stroke-dasharray="3,3"/>
+  <text x="485" y="89" text-anchor="middle" fill="var(--ui)" font-weight="600" font-size="12">Assigning an issue to a worktree</text>
+
+  <!-- M1: View -> Meister -->
+  <line x1="100" y1="116" x2="298" y2="116" stroke="#79b8ff" stroke-width="1.5" marker-end="url(#arr3)"/>
+  <text x="200" y="108" text-anchor="middle" class="edge-label">.assignIssueToWorktree(issue, worktreeId)</text>
+
+  <!-- M2: Meister self-loop (optimistic remove) -->
+  <path d="M 300 132 Q 360 132 360 148 Q 360 164 302 164" stroke="#79b8ff" stroke-width="1.5" fill="none" marker-end="url(#arr3)"/>
+  <text x="370" y="152" class="edge-label">state.removeIssueFromAllColumns</text>
+
+  <!-- M3: Meister -> App (delegate) -->
+  <line x1="300" y1="192" x2="498" y2="192" stroke="#bc8cff" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr3d)"/>
+  <text x="400" y="184" text-anchor="middle" class="edge-label">.delegate(.issueAssignedToWorktree)</text>
+
+  <!-- M4: App -> Worktree -->
+  <line x1="500" y1="220" x2="698" y2="220" stroke="#79b8ff" stroke-width="1.5" marker-end="url(#arr3)"/>
+  <text x="600" y="212" text-anchor="middle" class="edge-label">.issueAssignedToWorktree(worktreeId, issue)</text>
+
+  <!-- M5: Worktree self-loop -->
+  <path d="M 700 236 Q 760 236 760 252 Q 760 268 702 268" stroke="#79b8ff" stroke-width="1.5" fill="none" marker-end="url(#arr3)"/>
+  <text x="770" y="256" class="edge-label">inbox.append(issue)</text>
+
+  <!-- M6: Worktree -> GRDB -->
+  <line x1="700" y1="296" x2="878" y2="296" stroke="#56d364" stroke-width="1.5" marker-end="url(#arr3g)"/>
+  <text x="790" y="288" text-anchor="middle" class="edge-label">assignIssueToWorktree</text>
+
+  <!-- M7: Worktree -> GRDB (git) -->
+  <line x1="700" y1="324" x2="878" y2="324" stroke="#56d364" stroke-width="1.5" marker-end="url(#arr3g)"/>
+  <text x="790" y="316" text-anchor="middle" class="edge-label">gitClient.switchBranch</text>
+
+  <!-- Section: Return -->
+  <rect x="30" y="352" width="910" height="24" rx="4" fill="rgba(188,140,255,0.12)" stroke="var(--tca)" stroke-dasharray="3,3"/>
+  <text x="485" y="369" text-anchor="middle" fill="var(--tca)" font-weight="600" font-size="12">Returning an issue to Meister</text>
+
+  <!-- M8: View -> Worktree -->
+  <line x1="100" y1="400" x2="698" y2="400" stroke="#79b8ff" stroke-width="1.5" marker-end="url(#arr3)"/>
+  <text x="400" y="392" text-anchor="middle" class="edge-label">.issueReturnedToMeister(issueId, worktreeId)</text>
+
+  <!-- M9: Worktree self-loop -->
+  <path d="M 700 416 Q 760 416 760 432 Q 760 448 702 448" stroke="#79b8ff" stroke-width="1.5" fill="none" marker-end="url(#arr3)"/>
+  <text x="770" y="436" class="edge-label">remove from inbox/processing/outbox</text>
+
+  <!-- M10: Worktree -> GRDB -->
+  <line x1="700" y1="476" x2="878" y2="476" stroke="#56d364" stroke-width="1.5" marker-end="url(#arr3g)"/>
+  <text x="790" y="468" text-anchor="middle" class="edge-label">findQueueItemId + removeFromQueue</text>
+
+  <!-- M11: Worktree -> App (delegate) -->
+  <line x1="700" y1="504" x2="502" y2="504" stroke="#bc8cff" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr3d)"/>
+  <text x="600" y="496" text-anchor="middle" class="edge-label">.delegate(.issueReturnedToMeister)</text>
+
+  <!-- M12: App -> Meister -->
+  <line x1="500" y1="532" x2="302" y2="532" stroke="#79b8ff" stroke-width="1.5" marker-end="url(#arr3)"/>
+  <text x="400" y="524" text-anchor="middle" class="edge-label">.issueReturnedFromWorktree(issue)</text>
+
+  <!-- M13: Meister self-loop -->
+  <path d="M 300 548 Q 360 548 360 564 Q 360 580 302 580" stroke="#79b8ff" stroke-width="1.5" fill="none" marker-end="url(#arr3)"/>
+  <text x="370" y="568" class="edge-label">re-insert into column by statusId</text>
+
+  <!-- Legend -->
+  <g transform="translate(40, 608)">
+    <text x="0" y="12" fill="var(--fg-muted)" font-size="11">Legend:</text>
+    <line x1="60" y1="8" x2="100" y2="8" stroke="#79b8ff" stroke-width="1.5" marker-end="url(#arr3)"/>
+    <text x="106" y="12" fill="var(--fg-muted)" font-size="11">action</text>
+    <line x1="160" y1="8" x2="200" y2="8" stroke="#bc8cff" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr3d)"/>
+    <text x="206" y="12" fill="var(--fg-muted)" font-size="11">delegate</text>
+    <line x1="270" y1="8" x2="310" y2="8" stroke="#56d364" stroke-width="1.5" marker-end="url(#arr3g)"/>
+    <text x="316" y="12" fill="var(--fg-muted)" font-size="11">effect (DB / git)</text>
+  </g>
+</svg>
+</div>
+
+<p>Both directions keep state <strong>immediately consistent</strong> via optimistic mutations, then persist asynchronously. Errors roll back in failure actions.</p>
+
+<h2>Dependency Clients</h2>
+
+<p>All external systems are accessed via TCA <code>@Dependency</code> clients. Each is a <code>struct</code> of <code>@Sendable</code> closures with a <code>liveValue</code> and a <code>testValue</code> that uses <code>unimplemented(...)</code>.</p>
+
+<table>
+  <thead>
+    <tr><th>Client</th><th>Purpose</th><th>Backing</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>DatabaseClient</code></td><td>GRDB queue + imported issue CRUD + filtered queries</td><td>SQLite via GRDB</td></tr>
+    <tr><td><code>WorktreeClient</code></td><td>Worktree/repository/queue-item CRUD</td><td>Same DB queue</td></tr>
+    <tr><td><code>LinearAPIClient</code></td><td>Linear GraphQL (issues, workflow states, updates)</td><td><code>URLSession</code> + bearer token</td></tr>
+    <tr><td><code>OAuthClient</code></td><td>PKCE OAuth flow for Linear login</td><td><code>NSWorkspace.open</code> + callback URL stream</td></tr>
+    <tr><td><code>KeychainClient</code></td><td>Access/refresh token storage</td><td>Keychain Services</td></tr>
+    <tr><td><code>GitClient</code></td><td><code>git worktree add/remove</code>, branch switching</td><td><code>/usr/bin/git</code> subprocess</td></tr>
+    <tr><td><code>SurfaceManager</code></td><td>Create/destroy/focus terminal surfaces</td><td><code>SurfaceStore</code> + libghostty</td></tr>
+    <tr><td><code>GhosttyAppClient</code></td><td><code>ghostty_app_t</code> lifecycle</td><td>libghostty C API</td></tr>
+  </tbody>
+</table>
+
+<p><code>DatabaseClient</code> and <code>WorktreeClient</code> share a single <code>DatabaseQueue</code> — <code>WorktreeClient.liveValue</code> pulls it from <code>databaseClient.getDbQueue()</code> at initialization, so all writes serialize through one connection.</p>
+
+<h2>Data Model</h2>
+
+<p>GRDB schema is defined in <code>DatabaseMigrations.swift</code> with sequential versioned migrations:</p>
+
+<div class="diagram">
+<svg viewBox="0 0 960 540" xmlns="http://www.w3.org/2000/svg">
+  <!-- repositories -->
+  <g>
+    <rect x="30" y="40" width="240" height="170" rx="8" fill="var(--panel-2)" stroke="var(--ext)" stroke-width="1.5"/>
+    <rect x="30" y="40" width="240" height="28" rx="8" fill="var(--ext-fill)" stroke="var(--ext)" stroke-width="1.5"/>
+    <text x="150" y="59" text-anchor="middle" class="node-label">repositories</text>
+    <line x1="30" y1="68" x2="270" y2="68" stroke="var(--ext)" stroke-width="1"/>
+
+    <text x="44" y="88" class="field field-pk">repoId</text>
+    <text x="260" y="88" text-anchor="end" class="field field-type">PK · text</text>
+    <text x="44" y="108" class="field">name</text>
+    <text x="260" y="108" text-anchor="end" class="field field-type">text</text>
+    <text x="44" y="128" class="field">path</text>
+    <text x="260" y="128" text-anchor="end" class="field field-type">text</text>
+    <text x="44" y="148" class="field">createdAt</text>
+    <text x="260" y="148" text-anchor="end" class="field field-type">text</text>
+    <text x="44" y="168" class="field">sortOrder</text>
+    <text x="260" y="168" text-anchor="end" class="field field-type">int</text>
+  </g>
+
+  <!-- worktrees -->
+  <g>
+    <rect x="360" y="40" width="240" height="210" rx="8" fill="var(--panel-2)" stroke="var(--tca)" stroke-width="1.5"/>
+    <rect x="360" y="40" width="240" height="28" rx="8" fill="var(--tca-fill)" stroke="var(--tca)" stroke-width="1.5"/>
+    <text x="480" y="59" text-anchor="middle" class="node-label">worktrees</text>
+    <line x1="360" y1="68" x2="600" y2="68" stroke="var(--tca)" stroke-width="1"/>
+
+    <text x="374" y="88" class="field field-pk">worktreeId</text>
+    <text x="590" y="88" text-anchor="end" class="field field-type">PK · text</text>
+    <text x="374" y="108" class="field">name</text>
+    <text x="590" y="108" text-anchor="end" class="field field-type">text</text>
+    <text x="374" y="128" class="field">sortOrder</text>
+    <text x="590" y="128" text-anchor="end" class="field field-type">int</text>
+    <text x="374" y="148" class="field">gitWorktreePath</text>
+    <text x="590" y="148" text-anchor="end" class="field field-type">text</text>
+    <text x="374" y="168" class="field">createdAt</text>
+    <text x="590" y="168" text-anchor="end" class="field field-type">text</text>
+    <text x="374" y="188" class="field" fill="#79b8ff">repoId</text>
+    <text x="590" y="188" text-anchor="end" class="field field-type">FK → repositories</text>
+  </g>
+
+  <!-- imported_issues -->
+  <g>
+    <rect x="30" y="290" width="260" height="230" rx="8" fill="var(--panel-2)" stroke="var(--ui)" stroke-width="1.5"/>
+    <rect x="30" y="290" width="260" height="28" rx="8" fill="var(--ui-fill)" stroke="var(--ui)" stroke-width="1.5"/>
+    <text x="160" y="309" text-anchor="middle" class="node-label">imported_issues</text>
+    <line x1="30" y1="318" x2="290" y2="318" stroke="var(--ui)" stroke-width="1"/>
+
+    <text x="44" y="338" class="field field-pk">linearId</text>
+    <text x="280" y="338" text-anchor="end" class="field field-type">PK · text</text>
+    <text x="44" y="358" class="field">identifier</text>
+    <text x="280" y="358" text-anchor="end" class="field field-type">text</text>
+    <text x="44" y="378" class="field">title</text>
+    <text x="280" y="378" text-anchor="end" class="field field-type">text</text>
+    <text x="44" y="398" class="field">status</text>
+    <text x="280" y="398" text-anchor="end" class="field field-type">text</text>
+    <text x="44" y="418" class="field">statusId</text>
+    <text x="280" y="418" text-anchor="end" class="field field-type">text</text>
+    <text x="44" y="438" class="field">url</text>
+    <text x="280" y="438" text-anchor="end" class="field field-type">text</text>
+    <text x="44" y="458" class="field">labels</text>
+    <text x="280" y="458" text-anchor="end" class="field field-type">text (JSON)</text>
+    <text x="44" y="478" class="field">sortOrder</text>
+    <text x="280" y="478" text-anchor="end" class="field field-type">int</text>
+  </g>
+
+  <!-- worktree_queue_items -->
+  <g>
+    <rect x="680" y="290" width="260" height="230" rx="8" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+    <rect x="680" y="290" width="260" height="28" rx="8" fill="var(--deps-fill)" stroke="var(--deps)" stroke-width="1.5"/>
+    <text x="810" y="309" text-anchor="middle" class="node-label">worktree_queue_items</text>
+    <line x1="680" y1="318" x2="940" y2="318" stroke="var(--deps)" stroke-width="1"/>
+
+    <text x="694" y="338" class="field field-pk">id</text>
+    <text x="930" y="338" text-anchor="end" class="field field-type">PK · text</text>
+    <text x="694" y="358" class="field" fill="#79b8ff">worktreeId</text>
+    <text x="930" y="358" text-anchor="end" class="field field-type">FK → worktrees</text>
+    <text x="694" y="378" class="field" fill="#79b8ff">issueLinearId</text>
+    <text x="930" y="378" text-anchor="end" class="field field-type">FK → issues</text>
+    <text x="694" y="398" class="field">queuePosition</text>
+    <text x="930" y="398" text-anchor="end" class="field field-type">inbox|proc|outbox</text>
+    <text x="694" y="418" class="field">sortOrder</text>
+    <text x="930" y="418" text-anchor="end" class="field field-type">int</text>
+    <text x="694" y="438" class="field">assignedAt</text>
+    <text x="930" y="438" text-anchor="end" class="field field-type">text</text>
+    <text x="694" y="458" class="field">completedAt</text>
+    <text x="930" y="458" text-anchor="end" class="field field-type">text?</text>
+  </g>
+
+  <!-- Relationships -->
+  <!-- repositories 1:N worktrees -->
+  <path d="M 270 130 L 360 130" stroke="var(--fg-muted)" stroke-width="1.5" fill="none"/>
+  <text x="278" y="122" class="edge-label">1</text>
+  <text x="342" y="122" class="edge-label">N</text>
+
+  <!-- worktrees 1:N worktree_queue_items (line from bottom of worktrees curving right & down) -->
+  <path d="M 600 145 Q 760 145 810 290" stroke="var(--fg-muted)" stroke-width="1.5" fill="none"/>
+  <text x="612" y="137" class="edge-label">1</text>
+  <text x="800" y="300" class="edge-label">N</text>
+
+  <!-- imported_issues 1:N worktree_queue_items -->
+  <path d="M 290 405 L 680 405" stroke="var(--fg-muted)" stroke-width="1.5" fill="none"/>
+  <text x="298" y="397" class="edge-label">1</text>
+  <text x="662" y="397" class="edge-label">N</text>
+
+  <!-- Cascade label -->
+  <text x="485" y="415" text-anchor="middle" fill="var(--fg-muted)" font-size="10" font-style="italic">ON DELETE CASCADE</text>
+</svg>
+</div>
+
+<p>Both foreign keys on <code>worktree_queue_items</code> use <code>ON DELETE CASCADE</code>, so deleting a worktree or an imported issue automatically cleans up its queue rows. The <code>MeisterFeature.onAppear</code> query uses a <code>NOT IN</code> subquery against <code>worktree_queue_items</code> to hide issues that are currently owned by any worktree queue.</p>
+
+<h2>Terminal Layer</h2>
+
+<p>The terminal stack bypasses SwiftUI entirely once mounted — SwiftUI is only the outer shell.</p>
+
+<div class="diagram">
+<svg viewBox="0 0 960 420" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--stroke)"/>
+    </marker>
+  </defs>
+
+  <!-- Input pipeline (top row) -->
+  <rect x="30" y="40" width="140" height="56" rx="8" fill="var(--panel-2)" stroke="var(--ui)" stroke-width="1.5"/>
+  <text x="100" y="64" text-anchor="middle" class="node-label">NSEvent</text>
+  <text x="100" y="82" text-anchor="middle" class="node-sub">keystroke</text>
+
+  <line x1="170" y1="68" x2="228" y2="68" stroke="var(--stroke)" stroke-width="1.5" marker-end="url(#arr4)"/>
+
+  <rect x="230" y="40" width="180" height="56" rx="8" fill="var(--panel-2)" stroke="var(--ui)" stroke-width="1.5"/>
+  <text x="320" y="64" text-anchor="middle" class="node-label">SurfaceView</text>
+  <text x="320" y="82" text-anchor="middle" class="node-sub">NSView + CAMetalLayer</text>
+
+  <!-- Branch 1: KeyMapping path -->
+  <path d="M 410 58 Q 465 58 465 130 L 465 146" stroke="var(--stroke)" stroke-width="1.5" fill="none" marker-end="url(#arr4)"/>
+  <rect x="390" y="148" width="170" height="56" rx="8" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+  <text x="475" y="172" text-anchor="middle" class="node-label">KeyMapping</text>
+  <text x="475" y="190" text-anchor="middle" class="node-sub">NSEvent → ghostty structs</text>
+
+  <!-- Branch 2: IME path -->
+  <path d="M 410 78 Q 660 78 660 130 L 660 146" stroke="var(--stroke)" stroke-width="1.5" fill="none" marker-end="url(#arr4)"/>
+  <rect x="580" y="148" width="170" height="56" rx="8" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+  <text x="665" y="172" text-anchor="middle" class="node-label">interpretKeyEvents</text>
+  <text x="665" y="190" text-anchor="middle" class="node-sub">NSTextInputClient / IME</text>
+
+  <!-- Merge to ghostty_surface_key -->
+  <line x1="475" y1="204" x2="475" y2="248" stroke="var(--stroke)" stroke-width="1.5"/>
+  <line x1="665" y1="204" x2="665" y2="248" stroke="var(--stroke)" stroke-width="1.5"/>
+  <line x1="475" y1="248" x2="665" y2="248" stroke="var(--stroke)" stroke-width="1.5"/>
+  <line x1="570" y1="248" x2="570" y2="278" stroke="var(--stroke)" stroke-width="1.5" marker-end="url(#arr4)"/>
+
+  <rect x="450" y="280" width="240" height="56" rx="8" fill="var(--panel-2)" stroke="var(--ext)" stroke-width="1.5"/>
+  <text x="570" y="304" text-anchor="middle" class="node-label">ghostty_surface_key</text>
+  <text x="570" y="322" text-anchor="middle" class="node-sub">libghostty C API</text>
+
+  <!-- Side: focus/lifecycle path -->
+  <rect x="30" y="160" width="180" height="56" rx="8" fill="var(--panel-2)" stroke="var(--tca)" stroke-width="1.5"/>
+  <text x="120" y="184" text-anchor="middle" class="node-label">AppFeature</text>
+  <text x="120" y="202" text-anchor="middle" class="node-sub">.tabSelected / .focus</text>
+
+  <line x1="120" y1="216" x2="120" y2="246" stroke="var(--stroke)" stroke-width="1.5" marker-end="url(#arr4)"/>
+
+  <rect x="30" y="248" width="180" height="56" rx="8" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+  <text x="120" y="272" text-anchor="middle" class="node-label">SurfaceManager</text>
+  <text x="120" y="290" text-anchor="middle" class="node-sub">@Dependency</text>
+
+  <line x1="210" y1="276" x2="258" y2="276" stroke="var(--stroke)" stroke-width="1.5" marker-end="url(#arr4)"/>
+
+  <rect x="260" y="248" width="170" height="56" rx="8" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+  <text x="345" y="272" text-anchor="middle" class="node-label">SurfaceStore</text>
+  <text x="345" y="290" text-anchor="middle" class="node-sub">UUID → SurfaceView</text>
+
+  <!-- Store writes back to SurfaceView -->
+  <path d="M 345 248 Q 345 220 320 96" stroke="var(--stroke)" stroke-width="1.2" stroke-dasharray="4,3" fill="none" marker-end="url(#arr4)"/>
+  <text x="360" y="180" class="edge-label">owns / focuses</text>
+
+  <!-- GhosttyApp singleton -->
+  <rect x="30" y="340" width="240" height="56" rx="8" fill="var(--panel-2)" stroke="var(--ext)" stroke-width="1.5"/>
+  <text x="150" y="364" text-anchor="middle" class="node-label">GhosttyApp (singleton)</text>
+  <text x="150" y="382" text-anchor="middle" class="node-sub">ghostty_app_t • @MainActor</text>
+
+  <path d="M 150 340 Q 150 320 160 304" stroke="var(--stroke)" stroke-width="1.2" stroke-dasharray="4,3" fill="none" marker-end="url(#arr4)"/>
+</svg>
+</div>
+
+<p><strong>Why a singleton for <code>GhosttyApp</code>?</strong> libghostty's C API owns a global app handle (<code>ghostty_app_t</code>) with <code>void*</code> userdata pointers wired into runtime callbacks. Getting that userdata wrong compiles fine but crashes at runtime (see <code>CLAUDE.md</code> libghostty callback rules). The <code>GhosttyApp</code> <code>@MainActor</code> class is the single owner of that handle; all callers go through <code>GhosttyAppClient</code>.</p>
+
+<p><strong>Why no sandbox?</strong> PTY spawning requires subprocess creation, which the App Sandbox blocks. Hardened runtime is still enabled.</p>
+
+<h2>Runtime Routing</h2>
+
+<p><code>TerminalContainerView</code> is a three-way switch driven from <code>AppFeature.State</code>:</p>
+
+<div class="diagram">
+<svg viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--stroke)"/>
+    </marker>
+  </defs>
+
+  <!-- Decision diamond -->
+  <polygon points="450,30 620,110 450,190 280,110" fill="var(--panel-2)" stroke="var(--tca)" stroke-width="1.5"/>
+  <text x="450" y="104" text-anchor="middle" class="node-label">TerminalContainerView</text>
+  <text x="450" y="122" text-anchor="middle" class="node-sub">reads AppFeature.State</text>
+
+  <!-- Three branches -->
+  <!-- Branch 1: Meister -->
+  <path d="M 340 160 Q 230 200 150 260" stroke="var(--stroke)" stroke-width="1.5" fill="none" marker-end="url(#arr5)"/>
+  <rect x="50" y="262" width="220" height="28" rx="4" fill="var(--panel)" stroke="var(--border)"/>
+  <text x="160" y="281" text-anchor="middle" fill="var(--ui)" font-size="11" font-weight="600">showMeister == true</text>
+  <rect x="40" y="298" width="240" height="70" rx="8" fill="var(--panel-2)" stroke="var(--ui)" stroke-width="1.5"/>
+  <text x="160" y="324" text-anchor="middle" class="node-label">MeisterTabView</text>
+  <text x="160" y="342" text-anchor="middle" class="node-sub">kanban + swimlanes</text>
+  <text x="160" y="358" text-anchor="middle" class="node-sub">meister + worktree stores</text>
+
+  <!-- Branch 2: Worktree -->
+  <line x1="450" y1="190" x2="450" y2="260" stroke="var(--stroke)" stroke-width="1.5" marker-end="url(#arr5)"/>
+  <rect x="320" y="262" width="260" height="28" rx="4" fill="var(--panel)" stroke="var(--border)"/>
+  <text x="450" y="281" text-anchor="middle" fill="var(--tca)" font-size="11" font-weight="600">selectedWorktreeId != nil</text>
+  <rect x="330" y="298" width="240" height="70" rx="8" fill="var(--panel-2)" stroke="var(--tca)" stroke-width="1.5"/>
+  <text x="450" y="324" text-anchor="middle" class="node-label">WorktreeDetailView</text>
+  <text x="450" y="342" text-anchor="middle" class="node-sub">single worktree detail</text>
+  <text x="450" y="358" text-anchor="middle" class="node-sub">worktree store</text>
+
+  <!-- Branch 3: Terminal -->
+  <path d="M 560 160 Q 670 200 750 260" stroke="var(--stroke)" stroke-width="1.5" fill="none" marker-end="url(#arr5)"/>
+  <rect x="630" y="262" width="220" height="28" rx="4" fill="var(--panel)" stroke="var(--border)"/>
+  <text x="740" y="281" text-anchor="middle" fill="var(--deps)" font-size="11" font-weight="600">default (active tab)</text>
+  <rect x="620" y="298" width="240" height="70" rx="8" fill="var(--panel-2)" stroke="var(--deps)" stroke-width="1.5"/>
+  <text x="740" y="324" text-anchor="middle" class="node-label">TerminalContentView</text>
+  <text x="740" y="342" text-anchor="middle" class="node-sub">NSViewRepresentable</text>
+  <text x="740" y="358" text-anchor="middle" class="node-sub">→ SurfaceView</text>
+</svg>
+</div>
+
+<p>State invariants keep these mutually exclusive: <code>.meisterTapped</code> sets <code>showMeister = true</code> and clears <code>activeTabID</code>; <code>.tabSelected(id)</code> sets <code>showMeister = false</code>; selecting a worktree in the sidebar clears both.</p>
+
+<h2>Directory Layout</h2>
+
+<pre><code>Klausemeister/
+├── KlausemeisterApp.swift         @main, window, keyboard commands
+├── AppFeature.swift               Root reducer + routing state
+├── TerminalContainerView.swift    Three-way detail pane router
+├── Database/                      GRDB records + migrations
+├── Dependencies/                  @Dependency clients
+├── Linear/                        MeisterFeature + Linear models + auth
+├── Terminal/                      SurfaceView, GhosttyApp, KeyMapping
+├── Theme/                         Everforest palette + AppTheme
+├── Views/                         Shared SwiftUI views
+└── Worktrees/                     WorktreeFeature + swimlane views
+</code></pre>
+
+<h2>Key Conventions</h2>
+
+<ul>
+  <li><strong>State is <code>@ObservableState</code></strong> on every feature; views use <code>StoreOf&lt;Feature&gt;</code> or <code>@Bindable var store</code> (never <code>WithViewStore</code>).</li>
+  <li><strong>Side effects live in <code>Effect.run</code></strong>; reducer bodies are synchronous state mutation only.</li>
+  <li><strong>Presentation components</strong> (<code>IssueCardView</code>, <code>SwimlaneRowView</code>) take plain values and closures — no store dependency — and are reused across contexts.</li>
+  <li><strong>Delegate actions</strong> (<code>.delegate(.event)</code>) are the only mechanism for cross-feature communication; the parent intercepts them in its <code>Reduce</code> block.</li>
+  <li><strong>Dependency clients</strong> are structs of closures, not protocols. Test values use <code>unimplemented(...)</code> to loudly fail on unstubbed paths.</li>
+  <li><strong>libghostty</strong> calls are verified against upstream headers via the <code>context7</code> MCP — see <code>CLAUDE.md</code> for the verification rules.</li>
+</ul>
+
+</main>
+</body>
+</html>
