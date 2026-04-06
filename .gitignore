@@ -18,3 +18,5 @@ Package.resolved
 # Notes (local research, not shipped)
 .notes/
 .superpowers/
+.worktrees
+docs/superpowers
