@@ -89,16 +89,16 @@ struct KanbanIssueCardView: View {
                         }
                         ForEach(grouped) { repo in
                             Section(repo.name) {
-                                ForEach(worktrees.filter { $0.repoId == repo.id }) { wt in
-                                    Button(wt.name) { onAssignToWorktree(issue, wt.id) }
+                                ForEach(worktrees.filter { $0.repoId == repo.id }) { worktree in
+                                    Button(worktree.name) { onAssignToWorktree(issue, worktree.id) }
                                 }
                             }
                         }
                         let ungrouped = worktrees.filter { $0.repoId == nil }
                         if !ungrouped.isEmpty {
                             if !grouped.isEmpty { Divider() }
-                            ForEach(ungrouped) { wt in
-                                Button(wt.name) { onAssignToWorktree(issue, wt.id) }
+                            ForEach(ungrouped) { worktree in
+                                Button(worktree.name) { onAssignToWorktree(issue, worktree.id) }
                             }
                         }
                     }

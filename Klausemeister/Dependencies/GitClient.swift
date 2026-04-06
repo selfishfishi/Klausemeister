@@ -36,7 +36,7 @@ enum GitClientError: Error, Equatable, LocalizedError {
 
 extension GitClient: DependencyKey {
     nonisolated static let liveValue: GitClient = {
-        func shell(_ arguments: [String]) throws -> String {
+        @Sendable func shell(_ arguments: [String]) throws -> String {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
             process.arguments = arguments

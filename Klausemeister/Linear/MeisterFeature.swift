@@ -2,7 +2,6 @@ import ComposableArchitecture
 import Foundation
 
 @Reducer
-// swiftlint:disable:next type_body_length
 struct MeisterFeature {
     @ObservableState
     struct State: Equatable {
@@ -52,6 +51,7 @@ struct MeisterFeature {
         case onAppear
         case refreshTapped
         case syncCompleted(TaskResult<SyncResult>)
+        case saveFailed(message: String)
         case syncIndicatorReset
         case issueDropped(issueId: String, onColumnId: String)
         case issueMoved(issueId: String, fromColumnId: String, toColumnId: String)
@@ -66,6 +66,7 @@ struct MeisterFeature {
         case issueDroppedFromWorktreeResolved(issue: LinearIssue, onColumnId: String)
         case delegate(Delegate)
 
+        // swiftlint:disable:next nesting
         enum Delegate: Equatable {
             case issueAssignedToWorktree(issue: LinearIssue, worktreeId: String)
             case issueReturnedFromWorktreeByDrop(issueId: String)
@@ -76,7 +77,6 @@ struct MeisterFeature {
     @Dependency(\.databaseClient) var databaseClient
     @Dependency(\.date) var date
 
-    // swiftlint:disable:next cyclomatic_complexity function_body_length
     var body: some Reducer<State, Action> {
         BindingReducer()
         Reduce { state, action in
@@ -111,7 +111,7 @@ struct MeisterFeature {
                         do {
                             try await databaseClient.batchSaveImportedIssues(records)
                         } catch {
-                            await send(.set(\.error, "Failed to save sync results: \(error.localizedDescription)"))
+                            await send(.saveFailed(message: "Failed to save sync results: \(error.localizedDescription)"))
                         }
                     },
                     .run { send in
@@ -123,6 +123,10 @@ struct MeisterFeature {
 
             case let .syncCompleted(.failure(error)):
                 state.syncStatus = .failed(MeisterFeature.describe(error))
+                return .none
+
+            case let .saveFailed(message):
+                state.error = message
                 return .none
 
             case .syncIndicatorReset:
@@ -274,7 +278,7 @@ struct MeisterFeature {
         orderedColumnTypes.contains(type) ? type : unknownColumnId
     }
 
-    nonisolated static func rebuildColumns(from issues: [LinearIssue]) -> IdentifiedArrayOf<KanbanColumn> {
+    static func rebuildColumns(from issues: [LinearIssue]) -> IdentifiedArrayOf<KanbanColumn> {
         let grouped = Dictionary(grouping: issues, by: { columnId(forType: $0.statusType) })
         var columns: [KanbanColumn] = orderedColumnTypes.map { type in
             KanbanColumn(
@@ -305,7 +309,7 @@ nonisolated private func performSync(
 
     let fetchedIssues = try await issuesTask
     let workflowStatesByTeam = try await statesTask
-    let dbRecords = try await databaseClient.fetchImportedIssuesExcludingWorktreeQueues()
+    let dbRecords = try await databaseClient.fetchUnqueuedImportedIssues()
 
     let fetchedIds = Set(fetchedIssues.map(\.id))
     let dbIds = Set(dbRecords.map(\.linearId))
@@ -367,7 +371,7 @@ extension LinearIssue {
 // MARK: - Record Conversions
 
 extension LinearIssue {
-    init(from record: ImportedIssueRecord) {
+    nonisolated init(from record: ImportedIssueRecord) {
         let decodedLabels: [String] = if let data = record.labels.data(using: .utf8),
                                          let parsed = try? JSONDecoder().decode([String].self, from: data)
         {

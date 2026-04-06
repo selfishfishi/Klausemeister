@@ -90,7 +90,6 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
         return result
     }
 
-    // swiftlint:disable:next unneeded_override
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil, !isCursorVisible {

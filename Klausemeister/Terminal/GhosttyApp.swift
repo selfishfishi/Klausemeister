@@ -44,6 +44,7 @@ final class GhosttyApp {
     }
 
     // swiftlint:disable identifier_name
+    // swiftlint:disable:next cyclomatic_complexity
     private func makeRuntimeConfig() -> ghostty_runtime_config_s {
         var runtime = ghostty_runtime_config_s()
         runtime.userdata = Unmanaged.passUnretained(self).toOpaque()

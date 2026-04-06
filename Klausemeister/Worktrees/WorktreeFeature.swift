@@ -35,7 +35,7 @@ struct Worktree: Equatable, Identifiable {
 @Reducer
 // swiftlint:disable:next type_body_length
 struct WorktreeFeature {
-    private static let log = Logger(subsystem: "com.klausemeister", category: "WorktreeFeature")
+    nonisolated private static let log = Logger(subsystem: "com.klausemeister", category: "WorktreeFeature")
     @ObservableState
     struct State: Equatable {
         var repositories: IdentifiedArrayOf<Repository> = []
@@ -105,18 +105,20 @@ struct WorktreeFeature {
         case delegate(Delegate)
 
         @CasePathable
+        // swiftlint:disable:next nesting
         enum Alert: Equatable {
             case confirmDelete(worktreeId: String)
             case confirmDeleteRepo(repoId: String)
         }
 
+        // swiftlint:disable:next nesting
         enum Delegate: Equatable {
             case issueReturnedToMeister(issue: LinearIssue)
             case issueRemovedFromKanban(issueId: String)
         }
     }
 
-    nonisolated private enum CancelID: Hashable, Sendable {
+    nonisolated private enum CancelID: Hashable {
         case load
         case syncRepo(String)
     }
@@ -198,9 +200,9 @@ struct WorktreeFeature {
                 return .merge(
                     .run { send in
                         var branches: [String: String] = [:]
-                        for wt in worktreePaths where !wt.path.isEmpty {
-                            if let branch = try? await gitClient.currentBranch(wt.path) {
-                                branches[wt.id] = branch
+                        for worktree in worktreePaths where !worktree.path.isEmpty {
+                            if let branch = try? await gitClient.currentBranch(worktree.path) {
+                                branches[worktree.id] = branch
                             }
                         }
                         await send(.branchesLoaded(branches))
@@ -294,6 +296,9 @@ struct WorktreeFeature {
             case let .alert(.presented(.confirmDelete(worktreeId))):
                 return .send(.deleteWorktreeTapped(worktreeId: worktreeId))
 
+            case let .alert(.presented(.confirmDeleteRepo(repoId))):
+                return .send(.deleteRepoConfirmed(repoId: repoId))
+
             case .alert:
                 return .none
 
@@ -373,13 +378,15 @@ struct WorktreeFeature {
                 }
 
             case let .issueMovedToProcessing(queueItemId, issueId, worktreeId):
-                var movedIssue: LinearIssue?
+                let movedIssue: LinearIssue?
                 if let wtIndex = state.worktrees.index(id: worktreeId),
                    let issueIndex = state.worktrees[wtIndex].inbox.firstIndex(where: { $0.id == issueId })
                 {
                     let issue = state.worktrees[wtIndex].inbox.remove(at: issueIndex)
                     state.worktrees[wtIndex].processing = issue
                     movedIssue = issue
+                } else {
+                    movedIssue = nil
                 }
                 return .run { _ in
                     try await worktreeClient.moveToProcessing(queueItemId)
@@ -392,19 +399,25 @@ struct WorktreeFeature {
                 }
 
             case let .issueMovedToOutbox(queueItemId, issueId, worktreeId):
-                var movedIssue: LinearIssue?
-                var fromProcessing = false
-                if let wtIndex = state.worktrees.index(id: worktreeId) {
-                    if let issueIndex = state.worktrees[wtIndex].inbox.firstIndex(where: { $0.id == issueId }) {
-                        let issue = state.worktrees[wtIndex].inbox.remove(at: issueIndex)
-                        state.worktrees[wtIndex].outbox.append(issue)
-                        movedIssue = issue
-                    } else if let proc = state.worktrees[wtIndex].processing, proc.id == issueId {
-                        state.worktrees[wtIndex].processing = nil
-                        state.worktrees[wtIndex].outbox.append(proc)
-                        movedIssue = proc
-                        fromProcessing = true
-                    }
+                let movedIssue: LinearIssue?
+                let fromProcessing: Bool
+                if let wtIndex = state.worktrees.index(id: worktreeId),
+                   let issueIndex = state.worktrees[wtIndex].inbox.firstIndex(where: { $0.id == issueId })
+                {
+                    let issue = state.worktrees[wtIndex].inbox.remove(at: issueIndex)
+                    state.worktrees[wtIndex].outbox.append(issue)
+                    movedIssue = issue
+                    fromProcessing = false
+                } else if let wtIndex = state.worktrees.index(id: worktreeId),
+                          let proc = state.worktrees[wtIndex].processing, proc.id == issueId
+                {
+                    state.worktrees[wtIndex].processing = nil
+                    state.worktrees[wtIndex].outbox.append(proc)
+                    movedIssue = proc
+                    fromProcessing = true
+                } else {
+                    movedIssue = nil
+                    fromProcessing = false
                 }
                 return .run { _ in
                     try await worktreeClient.moveToOutbox(queueItemId)
@@ -445,10 +458,10 @@ struct WorktreeFeature {
 
             case let .issueDroppedOnInbox(issueId, worktreeId):
                 // Check if issue is already in this worktree
-                if let wt = state.worktrees[id: worktreeId] {
-                    let alreadyQueued = wt.inbox.contains { $0.id == issueId }
-                        || wt.processing?.id == issueId
-                        || wt.outbox.contains { $0.id == issueId }
+                if let target = state.worktrees[id: worktreeId] {
+                    let alreadyQueued = target.inbox.contains { $0.id == issueId }
+                        || target.processing?.id == issueId
+                        || target.outbox.contains { $0.id == issueId }
                     if alreadyQueued { return .none }
                 }
                 // Check if issue is in another worktree — find and remove it first
@@ -523,14 +536,18 @@ struct WorktreeFeature {
 
             case let .issueDroppedOnOutbox(issueId, worktreeId):
                 guard let wtIndex = state.worktrees.index(id: worktreeId) else { return .none }
-                var movedIssue: LinearIssue?
-                var fromProcessing = false
+                let movedIssue: LinearIssue?
+                let fromProcessing: Bool
                 if let issueIndex = state.worktrees[wtIndex].inbox.firstIndex(where: { $0.id == issueId }) {
                     movedIssue = state.worktrees[wtIndex].inbox.remove(at: issueIndex)
+                    fromProcessing = false
                 } else if let proc = state.worktrees[wtIndex].processing, proc.id == issueId {
                     state.worktrees[wtIndex].processing = nil
                     movedIssue = proc
                     fromProcessing = true
+                } else {
+                    movedIssue = nil
+                    fromProcessing = false
                 }
                 guard let issue = movedIssue else { return .none }
                 state.worktrees[wtIndex].outbox.append(issue)
@@ -593,7 +610,7 @@ struct WorktreeFeature {
                 state.error = "Failed to move issue to outbox."
                 return .none
 
-            case let .returnToMeisterFailed(issueId, worktreeId, issue):
+            case let .returnToMeisterFailed(_, worktreeId, issue):
                 if let wtIndex = state.worktrees.index(id: worktreeId) {
                     state.worktrees[wtIndex].inbox.append(issue)
                 }
@@ -646,9 +663,6 @@ struct WorktreeFeature {
                     TextState("\(worktreeCount) worktree(s) will also be removed.")
                 }
                 return .none
-
-            case let .alert(.presented(.confirmDeleteRepo(repoId))):
-                return .send(.deleteRepoConfirmed(repoId: repoId))
 
             case let .deleteRepoConfirmed(repoId):
                 guard let repo = state.repositories[id: repoId] else { return .none }
