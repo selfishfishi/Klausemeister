@@ -1,0 +1,127 @@
+// Klausemeister/Dependencies/TmuxClient.swift
+import Dependencies
+import Foundation
+
+struct TmuxClient {
+    var createSession: @Sendable (_ name: String, _ workingDirectory: String) async throws -> Void
+    var hasSession: @Sendable (_ name: String) async throws -> Bool
+    var killSession: @Sendable (_ name: String) async throws -> Void
+    var listSessions: @Sendable () async throws -> [String]
+}
+
+enum TmuxClientError: Error, Equatable, LocalizedError {
+    case tmuxNotFound
+    case commandFailed(command: String, exitCode: Int32, stderr: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .tmuxNotFound:
+            "tmux not found. Install via `brew install tmux` and restart Klausemeister."
+        case let .commandFailed(command, exitCode, stderr):
+            "tmux \(command) failed (exit \(exitCode)): \(stderr)"
+        }
+    }
+}
+
+// MARK: - Live & Test values
+
+extension TmuxClient: DependencyKey {
+    nonisolated static let liveValue: TmuxClient = {
+        // Probe known install locations once at construction time. Stored as a
+        // captured local so every closure shares the same resolved (or unresolved)
+        // path. Resolution is a `stat()` per candidate — fast, no I/O blocking.
+        let tmuxPath: String? = {
+            let candidates = [
+                "/opt/homebrew/bin/tmux", // Apple Silicon Homebrew
+                "/usr/local/bin/tmux", // Intel Homebrew / manual install
+                "/opt/local/bin/tmux", // MacPorts
+                "/usr/bin/tmux" // system (rare on macOS)
+            ]
+            return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+        }()
+
+        @Sendable func shell(_ arguments: [String]) throws -> String {
+            guard let tmuxPath else { throw TmuxClientError.tmuxNotFound }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: tmuxPath)
+            process.arguments = arguments
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+            try process.run()
+            process.waitUntilExit()
+
+            let output = String(
+                data: stdout.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let errorOutput = String(
+                data: stderr.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+            guard process.terminationStatus == 0 else {
+                let cmd = arguments.first { !$0.hasPrefix("-") } ?? "tmux"
+                throw TmuxClientError.commandFailed(
+                    command: cmd,
+                    exitCode: process.terminationStatus,
+                    stderr: errorOutput
+                )
+            }
+            return output
+        }
+
+        return TmuxClient(
+            createSession: { name, workingDirectory in
+                _ = try shell(["new-session", "-d", "-s", name, "-c", workingDirectory])
+            },
+            hasSession: { name in
+                // tmux exits non-zero when the session does not exist OR when no
+                // server is running — both mean "no session" for our purposes.
+                // The `=` prefix forces an exact name match, not a prefix match.
+                // `.tmuxNotFound` deliberately propagates so callers can
+                // distinguish "no session" from "tmux not installed".
+                do {
+                    _ = try shell(["has-session", "-t", "=\(name)"])
+                    return true
+                } catch TmuxClientError.commandFailed {
+                    return false
+                }
+            },
+            killSession: { name in
+                _ = try shell(["kill-session", "-t", "=\(name)"])
+            },
+            listSessions: {
+                // `tmux ls` exits non-zero when no server is running. Treat that
+                // as "no sessions" rather than an error so reconciliation can
+                // run on a clean machine. Filter to `klause-` so unrelated user
+                // sessions never appear in the reconciliation set.
+                do {
+                    let output = try shell(["list-sessions", "-F", "#{session_name}"])
+                    guard !output.isEmpty else { return [] }
+                    return output
+                        .split(separator: "\n")
+                        .map(String.init)
+                        .filter { $0.hasPrefix("klause-") }
+                } catch TmuxClientError.commandFailed {
+                    return []
+                }
+            }
+        )
+    }()
+
+    nonisolated static let testValue = TmuxClient(
+        createSession: unimplemented("TmuxClient.createSession"),
+        hasSession: unimplemented("TmuxClient.hasSession"),
+        killSession: unimplemented("TmuxClient.killSession"),
+        listSessions: unimplemented("TmuxClient.listSessions")
+    )
+}
+
+extension DependencyValues {
+    var tmuxClient: TmuxClient {
+        get { self[TmuxClient.self] }
+        set { self[TmuxClient.self] = newValue }
+    }
+}

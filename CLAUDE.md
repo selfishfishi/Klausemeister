@@ -87,6 +87,7 @@ Cross-feature events use **TCA delegate actions** intercepted by `AppFeature`'s 
 - `OAuthClient` — PKCE flow
 - `KeychainClient` — access/refresh token storage
 - `GitClient` — `/usr/bin/git` subprocess wrapper
+- `TmuxClient` — `tmux` subprocess wrapper, session lifecycle bound 1:1 to worktrees
 - `SurfaceManager` + `GhosttyAppClient` — libghostty lifecycle and surface focus
 
 **Persistence** (`Klausemeister/Database/`): GRDB `FetchableRecord`/`PersistableRecord` structs + `DatabaseMigrations.swift` (sequential versioned migrations).
