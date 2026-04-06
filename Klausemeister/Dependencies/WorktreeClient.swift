@@ -32,6 +32,18 @@ struct WorktreeClient {
     var moveToProcessingByIssueId: @Sendable (_ issueLinearId: String, _ worktreeId: String) async throws -> Void
     var moveToOutboxByIssueId: @Sendable (_ issueLinearId: String, _ worktreeId: String) async throws -> Void
     var removeFromQueueByIssueId: @Sendable (_ issueLinearId: String, _ worktreeId: String) async throws -> Void
+
+    // MARK: - Discovery / Sync
+
+    var syncWorktreesForRepo: @Sendable (
+        _ repoId: String,
+        _ entries: [GitClient.WorktreeListEntry]
+    ) async throws -> SyncResult
+
+    struct SyncResult: Equatable {
+        let inserted: [WorktreeRecord]
+        let deletedWorktreeIds: [String]
+    }
 }
 
 // MARK: - Live & Test values
@@ -235,6 +247,47 @@ extension WorktreeClient: DependencyKey {
                         arguments: [issueLinearId, worktreeId]
                     )
                 }
+            },
+
+            syncWorktreesForRepo: { repoId, entries in
+                try await dbQueue.write { db in
+                    // Defense in depth: never sync main worktrees, even if caller forgets to filter
+                    let secondaryEntries = entries.filter { !$0.isMain }
+                    let existing = try WorktreeRecord
+                        .filter(Column("repoId") == repoId)
+                        .fetchAll(db)
+                    let existingByPath = Dictionary(
+                        uniqueKeysWithValues: existing.map { ($0.gitWorktreePath, $0) }
+                    )
+                    let entryPaths = Set(secondaryEntries.map(\.path))
+
+                    // Delete orphaned records (in DB, no longer on disk)
+                    var deletedIds: [String] = []
+                    for record in existing where !entryPaths.contains(record.gitWorktreePath) {
+                        try record.delete(db)
+                        deletedIds.append(record.worktreeId)
+                    }
+
+                    // Insert new records (on disk, not in DB)
+                    var inserted: [WorktreeRecord] = []
+                    var maxSort = try Int.fetchOne(db, sql: "SELECT MAX(sortOrder) FROM worktrees") ?? -1
+                    for entry in secondaryEntries where existingByPath[entry.path] == nil {
+                        maxSort += 1
+                        let name = URL(fileURLWithPath: entry.path).lastPathComponent
+                        let record = WorktreeRecord(
+                            worktreeId: UUID().uuidString,
+                            name: name,
+                            sortOrder: maxSort,
+                            gitWorktreePath: entry.path,
+                            createdAt: ISO8601DateFormatter().string(from: Date()),
+                            repoId: repoId
+                        )
+                        try record.save(db)
+                        inserted.append(record)
+                    }
+
+                    return SyncResult(inserted: inserted, deletedWorktreeIds: deletedIds)
+                }
             }
         )
     }()
@@ -256,7 +309,8 @@ extension WorktreeClient: DependencyKey {
         reorderQueue: unimplemented("WorktreeClient.reorderQueue"),
         moveToProcessingByIssueId: unimplemented("WorktreeClient.moveToProcessingByIssueId"),
         moveToOutboxByIssueId: unimplemented("WorktreeClient.moveToOutboxByIssueId"),
-        removeFromQueueByIssueId: unimplemented("WorktreeClient.removeFromQueueByIssueId")
+        removeFromQueueByIssueId: unimplemented("WorktreeClient.removeFromQueueByIssueId"),
+        syncWorktreesForRepo: unimplemented("WorktreeClient.syncWorktreesForRepo")
     )
 }
 

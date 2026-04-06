@@ -96,6 +96,11 @@ struct WorktreeFeature {
         case repoAdded(TaskResult<RepositoryRecord>)
         case confirmDeleteRepoTapped(repoId: String)
         case deleteRepoConfirmed(repoId: String)
+
+        // Discovery / sync
+        case syncRepo(repoId: String)
+        case syncAllRepos
+        case repoSynced(repoId: String, TaskResult<WorktreeClient.SyncResult>)
         case alert(PresentationAction<Alert>)
         case delegate(Delegate)
 
@@ -109,6 +114,11 @@ struct WorktreeFeature {
             case issueReturnedToMeister(issue: LinearIssue)
             case issueRemovedFromKanban(issueId: String)
         }
+    }
+
+    nonisolated private enum CancelID: Hashable, Sendable {
+        case load
+        case syncRepo(String)
     }
 
     @Dependency(\.worktreeClient) var worktreeClient
@@ -142,7 +152,7 @@ struct WorktreeFeature {
                 } catch: { error, send in
                     await send(.loadFailed(error.localizedDescription))
                 }
-                .cancellable(id: "WorktreeFeature.load", cancelInFlight: true)
+                .cancellable(id: CancelID.load, cancelInFlight: true)
 
             case let .worktreesLoaded(repoRecords, worktreeRecords, queueItems, issueRecords):
                 state.repositories = IdentifiedArrayOf(uniqueElements: repoRecords.map { record in
@@ -185,15 +195,18 @@ struct WorktreeFeature {
                     )
                 })
                 let worktreePaths = state.worktrees.map { (id: $0.id, path: $0.gitWorktreePath) }
-                return .run { send in
-                    var branches: [String: String] = [:]
-                    for wt in worktreePaths where !wt.path.isEmpty {
-                        if let branch = try? await gitClient.currentBranch(wt.path) {
-                            branches[wt.id] = branch
+                return .merge(
+                    .run { send in
+                        var branches: [String: String] = [:]
+                        for wt in worktreePaths where !wt.path.isEmpty {
+                            if let branch = try? await gitClient.currentBranch(wt.path) {
+                                branches[wt.id] = branch
+                            }
                         }
-                    }
-                    await send(.branchesLoaded(branches))
-                }
+                        await send(.branchesLoaded(branches))
+                    },
+                    .send(.syncAllRepos)
+                )
 
             case let .branchesLoaded(branches):
                 for (worktreeId, branch) in branches {
@@ -604,7 +617,7 @@ struct WorktreeFeature {
                     sortOrder: record.sortOrder
                 )
                 state.repositories.append(repo)
-                return .none
+                return .send(.syncRepo(repoId: record.repoId))
 
             case .repoAdded(.failure):
                 state.alert = AlertState {
@@ -659,6 +672,75 @@ struct WorktreeFeature {
                 } catch: { _, send in
                     await send(.onAppear)
                 }
+
+            // MARK: - Discovery / sync handlers
+
+            case .syncAllRepos:
+                let repoIds = state.repositories.map(\.id)
+                return .merge(repoIds.map { Effect.send(.syncRepo(repoId: $0)) })
+
+            case let .syncRepo(repoId):
+                guard let repo = state.repositories[id: repoId] else { return .none }
+                let repoPath = repo.path
+                return .run { send in
+                    let entries = try await gitClient.listWorktrees(repoPath)
+                    let filtered = entries.filter { !$0.isMain && !$0.isPrunable }
+                    let result = try await worktreeClient.syncWorktreesForRepo(repoId, filtered)
+                    await send(.repoSynced(repoId: repoId, .success(result)))
+                } catch: { error, send in
+                    await send(.repoSynced(repoId: repoId, .failure(error)))
+                }
+                .cancellable(id: CancelID.syncRepo(repoId), cancelInFlight: true)
+
+            case let .repoSynced(repoId, .success(result)):
+                let repoName = state.repositories[id: repoId]?.name
+                // Apply diff to in-memory state
+                for record in result.inserted {
+                    state.worktrees.append(Worktree(
+                        id: record.worktreeId,
+                        name: record.name,
+                        sortOrder: record.sortOrder,
+                        gitWorktreePath: record.gitWorktreePath,
+                        repoId: record.repoId,
+                        repoName: repoName
+                    ))
+                }
+                for worktreeId in result.deletedWorktreeIds {
+                    state.worktrees.remove(id: worktreeId)
+                    if state.selectedWorktreeId == worktreeId {
+                        state.selectedWorktreeId = nil
+                    }
+                }
+                if !result.deletedWorktreeIds.isEmpty {
+                    Self.log.info("Auto-removed \(result.deletedWorktreeIds.count) orphaned worktree(s) for repo \(repoId)")
+                }
+                // Background: fetch branches for new worktrees + auto-link issues
+                let inserted = result.inserted
+                guard !inserted.isEmpty else { return .none }
+                return .run { send in
+                    var branches: [String: String] = [:]
+                    for record in inserted {
+                        guard !record.gitWorktreePath.isEmpty else { continue }
+                        if let branch = try? await gitClient.currentBranch(record.gitWorktreePath) {
+                            branches[record.worktreeId] = branch
+                            if let identifier = WorktreeConfig.extractIssueIdentifier(fromBranchName: branch),
+                               let issueRecord = try? await databaseClient.fetchImportedIssueByIdentifier(identifier)
+                            {
+                                // Use the issueAssignedToWorktree action which both updates state
+                                // and persists via worktreeClient.assignIssueToWorktree
+                                let issue = LinearIssue(from: issueRecord)
+                                await send(.issueAssignedToWorktree(worktreeId: record.worktreeId, issue: issue))
+                            }
+                        }
+                    }
+                    if !branches.isEmpty {
+                        await send(.branchesLoaded(branches))
+                    }
+                }
+
+            case let .repoSynced(_, .failure(error)):
+                Self.log.warning("Repo sync failed: \(error.localizedDescription)")
+                return .none
 
             case .delegate:
                 return .none

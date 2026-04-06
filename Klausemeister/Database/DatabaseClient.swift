@@ -13,6 +13,7 @@ struct DatabaseClient {
     var batchSaveImportedIssues: @Sendable ([ImportedIssueRecord]) async throws -> Void
     var fetchImportedIssuesExcludingWorktreeQueues: @Sendable () async throws -> [ImportedIssueRecord]
     var fetchImportedIssue: @Sendable (_ linearId: String) async throws -> ImportedIssueRecord?
+    var fetchImportedIssueByIdentifier: @Sendable (_ identifier: String) async throws -> ImportedIssueRecord?
     var markOrphanedIssues: @Sendable (_ linearIds: [String], _ isOrphaned: Bool) async throws -> Void
 }
 
@@ -86,6 +87,13 @@ extension DatabaseClient: DependencyKey {
                     try ImportedIssueRecord.fetchOne(db, key: linearId)
                 }
             },
+            fetchImportedIssueByIdentifier: { identifier in
+                try await dbQueue.read { db in
+                    try ImportedIssueRecord
+                        .filter(Column("identifier") == identifier)
+                        .fetchOne(db)
+                }
+            },
             markOrphanedIssues: { linearIds, isOrphaned in
                 guard !linearIds.isEmpty else { return }
                 try await dbQueue.write { db in
@@ -110,6 +118,7 @@ extension DatabaseClient: DependencyKey {
         batchSaveImportedIssues: unimplemented("DatabaseClient.batchSaveImportedIssues"),
         fetchImportedIssuesExcludingWorktreeQueues: unimplemented("DatabaseClient.fetchImportedIssuesExcludingWorktreeQueues"),
         fetchImportedIssue: unimplemented("DatabaseClient.fetchImportedIssue"),
+        fetchImportedIssueByIdentifier: unimplemented("DatabaseClient.fetchImportedIssueByIdentifier"),
         markOrphanedIssues: unimplemented("DatabaseClient.markOrphanedIssues")
     )
 }
