@@ -6,88 +6,35 @@ struct WorktreeDetailView: View {
     @Bindable var store: StoreOf<WorktreeFeature>
 
     var body: some View {
-        if let worktreeId = store.selectedWorktreeId,
-           let worktree = store.worktrees[id: worktreeId]
-        {
-            VStack(alignment: .leading, spacing: 0) {
-                // Header
-                HStack {
-                    Image(systemName: "arrow.triangle.branch")
-                        .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(worktree.name)
-                            .font(.title2.weight(.semibold))
-                        if let branch = worktree.currentBranch {
-                            Text(branch)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    Button(role: .destructive) {
+        Group {
+            if let worktreeId = store.selectedWorktreeId,
+               let worktree = store.worktrees[id: worktreeId]
+            {
+                WorktreeDetailPaneView(
+                    worktree: worktree,
+                    onRename: { newName in
+                        store.send(.renameWorktreeTapped(worktreeId: worktreeId, newName: newName))
+                    },
+                    onMarkComplete: {
+                        store.send(.markAsCompleteTapped(worktreeId: worktreeId))
+                    },
+                    onReturnToMeister: { issueId in
+                        store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktreeId))
+                    },
+                    onDelete: {
                         store.send(.confirmDeleteTapped(worktreeId: worktreeId))
-                    } label: {
-                        Image(systemName: "trash")
-                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
-                }
-                .padding(16)
-
-                Divider()
-
-                // Swimlanes
-                HStack(alignment: .top, spacing: 0) {
-                    // Inbox
-                    WorktreeQueueColumn(
-                        title: "Inbox",
-                        icon: "tray.and.arrow.down",
-                        issues: worktree.inbox,
-                        emptyText: "Drag issues here",
-                        onReturnToMeister: { issueId in
-                            store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktreeId))
-                        }
-                    )
-
-                    Divider()
-
-                    // Processing
-                    WorktreeQueueColumn(
-                        title: "Processing",
-                        icon: "gearshape",
-                        issues: worktree.processing.map { [$0] } ?? [],
-                        emptyText: "Nothing in progress",
-                        onMarkComplete: worktree.processing != nil ? {
-                            store.send(.markAsCompleteTapped(worktreeId: worktreeId))
-                        } : nil,
-                        onReturnToMeister: { issueId in
-                            store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktreeId))
-                        }
-                    )
-
-                    Divider()
-
-                    // Outbox
-                    WorktreeQueueColumn(
-                        title: "Outbox",
-                        icon: "tray.and.arrow.up",
-                        issues: worktree.outbox,
-                        emptyText: "Completed issues appear here",
-                        onReturnToMeister: { issueId in
-                            store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktreeId))
-                        }
-                    )
-                }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                ContentUnavailableView(
+                    "Select a Worktree",
+                    systemImage: "arrow.triangle.branch",
+                    description: Text("Choose a worktree from the sidebar or create a new one.")
+                )
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .alert($store.scope(state: \.alert, action: \.alert))
-        } else {
-            ContentUnavailableView(
-                "Select a Worktree",
-                systemImage: "arrow.triangle.branch",
-                description: Text("Choose a worktree from the sidebar or create a new one.")
-            )
         }
+        .alert($store.scope(state: \.alert, action: \.alert))
     }
 }
 

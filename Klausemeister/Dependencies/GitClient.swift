@@ -8,6 +8,7 @@ struct GitClient {
     var removeWorktree: @Sendable (_ repoPath: String, _ worktreePath: String) async throws -> Void
     var switchBranch: @Sendable (_ worktreePath: String, _ branchName: String) async throws -> Void
     var listWorktrees: @Sendable (_ repoPath: String) async throws -> [WorktreeListEntry]
+    var listBranches: @Sendable (_ repoPath: String) async throws -> [String]
 
     struct WorktreeListEntry: Equatable {
         let path: String
@@ -97,6 +98,15 @@ extension GitClient: DependencyKey {
             listWorktrees: { repoPath in
                 let output = try shell(["-C", repoPath, "worktree", "list", "--porcelain"])
                 return parseWorktreeListPorcelain(output)
+            },
+            listBranches: { repoPath in
+                let output = try shell([
+                    "-C", repoPath, "for-each-ref", "--format=%(refname:short)", "refs/heads/"
+                ])
+                return output
+                    .split(separator: "\n")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
             }
         )
     }()
@@ -107,7 +117,8 @@ extension GitClient: DependencyKey {
         addWorktree: unimplemented("GitClient.addWorktree"),
         removeWorktree: unimplemented("GitClient.removeWorktree"),
         switchBranch: unimplemented("GitClient.switchBranch"),
-        listWorktrees: unimplemented("GitClient.listWorktrees")
+        listWorktrees: unimplemented("GitClient.listWorktrees"),
+        listBranches: unimplemented("GitClient.listBranches")
     )
 }
 

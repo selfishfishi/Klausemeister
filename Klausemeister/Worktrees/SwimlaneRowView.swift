@@ -8,6 +8,8 @@ struct SwimlaneRowView: View {
     var onDropToInbox: ((_ issueId: String) -> Void)?
     var onDropToProcessing: ((_ issueId: String) -> Void)?
     var onDropToOutbox: ((_ issueId: String) -> Void)?
+    var isExpanded: Bool = false
+    var onToggleExpand: (() -> Void)?
 
     @Environment(\.themeColors) private var themeColors
     @Environment(\.swimlaneAnimating) private var isAnimating
@@ -44,7 +46,12 @@ struct SwimlaneRowView: View {
 
     private var rowContent: some View {
         HStack(alignment: .top, spacing: 0) {
-            SwimlaneHeaderView(worktree: worktree, onDelete: onDelete)
+            SwimlaneHeaderView(
+                worktree: worktree,
+                onDelete: onDelete,
+                isExpanded: isExpanded,
+                onToggleExpand: onToggleExpand
+            )
 
             Divider()
 

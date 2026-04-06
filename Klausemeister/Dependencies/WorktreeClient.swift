@@ -15,6 +15,7 @@ struct WorktreeClient {
     var fetchWorktrees: @Sendable () async throws -> [WorktreeRecord]
     var createWorktree: @Sendable (_ name: String, _ gitWorktreePath: String, _ repoId: String) async throws -> WorktreeRecord
     var deleteWorktree: @Sendable (_ worktreeId: String) async throws -> Void
+    var renameWorktree: @Sendable (_ worktreeId: String, _ newName: String) async throws -> Void
     var updateWorktreeOrder: @Sendable (_ orderedIds: [String]) async throws -> Void
 
     // MARK: - Queue Management
@@ -110,6 +111,15 @@ extension WorktreeClient: DependencyKey {
             deleteWorktree: { worktreeId in
                 try await dbQueue.write { db in
                     _ = try WorktreeRecord.deleteOne(db, key: ["worktreeId": worktreeId])
+                }
+            },
+
+            renameWorktree: { worktreeId, newName in
+                try await dbQueue.write { db in
+                    try db.execute(
+                        sql: "UPDATE worktrees SET name = ? WHERE worktreeId = ?",
+                        arguments: [newName, worktreeId]
+                    )
                 }
             },
 
@@ -299,6 +309,7 @@ extension WorktreeClient: DependencyKey {
         fetchWorktrees: unimplemented("WorktreeClient.fetchWorktrees"),
         createWorktree: unimplemented("WorktreeClient.createWorktree"),
         deleteWorktree: unimplemented("WorktreeClient.deleteWorktree"),
+        renameWorktree: unimplemented("WorktreeClient.renameWorktree"),
         updateWorktreeOrder: unimplemented("WorktreeClient.updateWorktreeOrder"),
         fetchQueueItems: unimplemented("WorktreeClient.fetchQueueItems"),
         assignIssueToWorktree: unimplemented("WorktreeClient.assignIssueToWorktree"),

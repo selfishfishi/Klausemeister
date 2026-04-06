@@ -43,6 +43,35 @@ enum TmuxSessionStatus: Equatable {
     case needsCreation
 }
 
+/// State for the Create Worktree sheet presented from the Meister swimlane
+/// header. Holds the full form: repo pick, name, branch choice, and the
+/// loaded-branches list for the currently selected repo.
+struct CreateWorktreeSheetState: Equatable, Identifiable {
+    var id: String {
+        "create-worktree-sheet"
+    }
+
+    var repoId: String?
+    var name: String = ""
+    var branchChoice: BranchChoice = .newFromDefault
+    var branches: [String] = []
+    var isLoadingBranches: Bool = false
+
+    enum BranchChoice: Equatable {
+        case newFromDefault
+        case existing(String)
+    }
+
+    /// The explicit branch override passed into `createWorktreeTapped`, or nil
+    /// to derive the branch from the worktree name (default behavior).
+    var branchOverride: String? {
+        switch branchChoice {
+        case .newFromDefault: nil
+        case let .existing(branch): branch
+        }
+    }
+}
+
 @Reducer
 // swiftlint:disable:next type_body_length
 struct WorktreeFeature {
@@ -53,6 +82,13 @@ struct WorktreeFeature {
         var worktrees: IdentifiedArrayOf<Worktree> = []
         var isCreatingWorktree: Bool = false
         var selectedWorktreeId: String?
+        /// Which swimlane row is currently expanded inline inside the Meister
+        /// tab. **Kept separate from `selectedWorktreeId`** because the latter
+        /// triggers `AppFeature` to flip `showMeister = false` and route away
+        /// from Meister; expansion stays within Meister.
+        var expandedWorktreeIdInMeister: String?
+        /// Presented create-worktree sheet state, or nil when the sheet is hidden.
+        var createSheet: CreateWorktreeSheetState?
         @Presents var alert: AlertState<Action.Alert>?
 
         var nextDefaultName: String {
@@ -74,13 +110,26 @@ struct WorktreeFeature {
             queueItems: [WorktreeQueueItemRecord],
             issues: [ImportedIssueRecord]
         )
-        case createWorktreeTapped(repoId: String, name: String)
+        case createWorktreeTapped(repoId: String, name: String, branchOverride: String?)
         case worktreeCreated(TaskResult<WorktreeRecord>)
+        case createSheetShown(prefilledRepoId: String?)
+        case createSheetDismissed
+        case createSheetRepoChanged(repoId: String)
+        case createSheetNameChanged(String)
+        case createSheetBranchChoiceChanged(CreateWorktreeSheetState.BranchChoice)
+        case createSheetSubmitted
+        case branchListLoaded(repoId: String, branches: [String])
+        case branchListFailed(repoId: String, error: String)
         case confirmDeleteTapped(worktreeId: String)
         case deleteWorktreeTapped(worktreeId: String)
         case worktreeDeleted(worktreeId: String)
         case worktreeDeleteFailed(worktree: Worktree)
         case worktreeSelected(String?)
+        case meisterExpansionToggled(worktreeId: String)
+        case meisterExpansionCleared
+        case renameWorktreeTapped(worktreeId: String, newName: String)
+        case worktreeRenamed(worktreeId: String, newName: String)
+        case worktreeRenameFailed(worktreeId: String, previousName: String, error: String)
         case issueAssignedToWorktree(worktreeId: String, issue: LinearIssue)
         case markAsCompleteTapped(worktreeId: String)
         case issueReturnedToMeister(issueId: String, worktreeId: String)
@@ -237,7 +286,7 @@ struct WorktreeFeature {
                 state.worktrees[id: worktreeId]?.currentBranch = branchName
                 return .none
 
-            case let .createWorktreeTapped(repoId, name):
+            case let .createWorktreeTapped(repoId, name, branchOverride):
                 guard let repo = state.repositories[id: repoId] else { return .none }
                 let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
                 let worktreeName = trimmed.isEmpty ? state.nextDefaultName : trimmed
@@ -250,7 +299,8 @@ struct WorktreeFeature {
                     let worktreePath = WorktreeConfig.worktreePath(
                         basePath: basePath, repoRoot: repoPath, name: worktreeName
                     )
-                    let branch = WorktreeConfig.branchName(fromIdentifier: worktreeName)
+                    let branch = branchOverride
+                        ?? WorktreeConfig.branchName(fromIdentifier: worktreeName)
                     do {
                         try await gitClient.addWorktree(repoPath, worktreePath, branch)
                         do {
@@ -325,6 +375,9 @@ struct WorktreeFeature {
                 if state.selectedWorktreeId == worktreeId {
                     state.selectedWorktreeId = nil
                 }
+                if state.expandedWorktreeIdInMeister == worktreeId {
+                    state.expandedWorktreeIdInMeister = nil
+                }
                 let worktreePath = worktree.gitWorktreePath
                 let repoPath = worktree.repoId.flatMap { state.repositories[id: $0]?.path }
                 let tmuxSessionName = WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name)
@@ -357,6 +410,135 @@ struct WorktreeFeature {
             case let .worktreeSelected(worktreeId):
                 state.selectedWorktreeId = worktreeId
                 return .none
+
+            case let .meisterExpansionToggled(worktreeId):
+                if state.expandedWorktreeIdInMeister == worktreeId {
+                    state.expandedWorktreeIdInMeister = nil
+                } else {
+                    state.expandedWorktreeIdInMeister = worktreeId
+                }
+                return .none
+
+            case .meisterExpansionCleared:
+                state.expandedWorktreeIdInMeister = nil
+                return .none
+
+            case let .renameWorktreeTapped(worktreeId, newName):
+                let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty,
+                      let previousName = state.worktrees[id: worktreeId]?.name,
+                      previousName != trimmed
+                else {
+                    return .none
+                }
+                let collision = state.worktrees.contains { other in
+                    other.id != worktreeId && other.name == trimmed
+                }
+                if collision {
+                    return .send(.delegate(.errorOccurred(
+                        message: "A worktree named '\(trimmed)' already exists."
+                    )))
+                }
+                // Optimistic update
+                state.worktrees[id: worktreeId]?.name = trimmed
+                return .run { send in
+                    try await worktreeClient.renameWorktree(worktreeId, trimmed)
+                    await send(.worktreeRenamed(worktreeId: worktreeId, newName: trimmed))
+                } catch: { error, send in
+                    await send(.worktreeRenameFailed(
+                        worktreeId: worktreeId,
+                        previousName: previousName,
+                        error: error.localizedDescription
+                    ))
+                }
+
+            case .worktreeRenamed:
+                return .none
+
+            case let .worktreeRenameFailed(worktreeId, previousName, message):
+                state.worktrees[id: worktreeId]?.name = previousName
+                return .send(.delegate(.errorOccurred(
+                    message: "Failed to rename worktree: \(message)"
+                )))
+
+            case let .createSheetShown(prefilledRepoId):
+                let repoId = prefilledRepoId ?? state.repositories.first?.id
+                state.createSheet = CreateWorktreeSheetState(
+                    repoId: repoId,
+                    isLoadingBranches: repoId != nil
+                )
+                guard let repoId, let repo = state.repositories[id: repoId] else {
+                    return .none
+                }
+                let repoPath = repo.path
+                return .run { send in
+                    do {
+                        let branches = try await gitClient.listBranches(repoPath)
+                        await send(.branchListLoaded(repoId: repoId, branches: branches))
+                    } catch {
+                        await send(.branchListFailed(
+                            repoId: repoId, error: error.localizedDescription
+                        ))
+                    }
+                }
+
+            case .createSheetDismissed:
+                state.createSheet = nil
+                return .none
+
+            case let .createSheetRepoChanged(repoId):
+                guard state.createSheet != nil else { return .none }
+                state.createSheet?.repoId = repoId
+                state.createSheet?.branches = []
+                state.createSheet?.branchChoice = .newFromDefault
+                state.createSheet?.isLoadingBranches = true
+                guard let repo = state.repositories[id: repoId] else { return .none }
+                let repoPath = repo.path
+                return .run { send in
+                    do {
+                        let branches = try await gitClient.listBranches(repoPath)
+                        await send(.branchListLoaded(repoId: repoId, branches: branches))
+                    } catch {
+                        await send(.branchListFailed(
+                            repoId: repoId, error: error.localizedDescription
+                        ))
+                    }
+                }
+
+            case let .createSheetNameChanged(name):
+                state.createSheet?.name = name
+                return .none
+
+            case let .createSheetBranchChoiceChanged(choice):
+                state.createSheet?.branchChoice = choice
+                return .none
+
+            case .createSheetSubmitted:
+                guard let sheet = state.createSheet,
+                      let repoId = sheet.repoId
+                else {
+                    return .none
+                }
+                let name = sheet.name
+                let branchOverride = sheet.branchOverride
+                state.createSheet = nil
+                return .send(.createWorktreeTapped(
+                    repoId: repoId, name: name, branchOverride: branchOverride
+                ))
+
+            case let .branchListLoaded(repoId, branches):
+                guard state.createSheet?.repoId == repoId else { return .none }
+                state.createSheet?.branches = branches
+                state.createSheet?.isLoadingBranches = false
+                return .none
+
+            case let .branchListFailed(repoId, error):
+                guard state.createSheet?.repoId == repoId else { return .none }
+                state.createSheet?.isLoadingBranches = false
+                state.createSheet?.branches = []
+                return .send(.delegate(.errorOccurred(
+                    message: "Failed to load branches: \(error)"
+                )))
 
             case let .issueAssignedToWorktree(worktreeId, issue):
                 if let wtIndex = state.worktrees.index(id: worktreeId) {
@@ -695,6 +877,11 @@ struct WorktreeFeature {
                 if let selectedWt = state.selectedWorktreeId, worktreeIds.contains(selectedWt) {
                     state.selectedWorktreeId = nil
                 }
+                if let expandedWt = state.expandedWorktreeIdInMeister,
+                   worktreeIds.contains(expandedWt)
+                {
+                    state.expandedWorktreeIdInMeister = nil
+                }
                 let repoPath = repo.path
                 return .run { _ in
                     for path in worktreePaths where !path.isEmpty {
@@ -744,6 +931,9 @@ struct WorktreeFeature {
                     state.worktrees.remove(id: worktreeId)
                     if state.selectedWorktreeId == worktreeId {
                         state.selectedWorktreeId = nil
+                    }
+                    if state.expandedWorktreeIdInMeister == worktreeId {
+                        state.expandedWorktreeIdInMeister = nil
                     }
                 }
                 if !result.deletedWorktreeIds.isEmpty {
