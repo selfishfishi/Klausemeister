@@ -4,11 +4,13 @@ struct IssueCardView: View {
     let issue: LinearIssue
     var worktreeName: String?
 
+    @Environment(\.themeColors) private var themeColors
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(issue.identifier)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(themeColors.accentColor.opacity(0.8))
             Text(issue.title)
                 .font(.callout)
                 .lineLimit(2)

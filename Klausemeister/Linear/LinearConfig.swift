@@ -4,7 +4,7 @@ enum LinearConfig {
     // MARK: - OAuth
 
     // Replace with your Linear OAuth app's client ID
-    nonisolated static let clientID = "REPLACE_WITH_LINEAR_CLIENT_ID"
+    nonisolated static let clientID = "b35d3f1141afb26befcccdfe27757b5f"
     nonisolated static let redirectURI = "klausemeister://oauth/callback"
     nonisolated static let authorizeURL = URL(string: "https://linear.app/oauth/authorize")!
     nonisolated static let tokenURL = URL(string: "https://api.linear.app/oauth/token")!

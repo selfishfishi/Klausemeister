@@ -8,7 +8,7 @@ struct AppFeature {
         var tabs: IdentifiedArrayOf<Tab> = []
         var activeTabID: UUID?
         var showSidebar: Bool = true
-        var showMeister: Bool = false
+        var showMeister: Bool = true
         var meister = MeisterFeature.State()
         var worktree = WorktreeFeature.State()
         var linearAuth = LinearAuthFeature.State()

@@ -73,18 +73,22 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Button {
-                    store.send(.newTabButtonTapped)
-                } label: {
-                    Image(systemName: "plus")
-                        .foregroundStyle(.secondary)
+            VStack(spacing: 8) {
+                Divider()
+                SidebarLinearStatusView(store: store)
+                HStack {
+                    Spacer()
+                    Button {
+                        store.send(.newTabButtonTapped)
+                    } label: {
+                        Image(systemName: "plus")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
         }
     }
 }
@@ -186,5 +190,68 @@ struct SidebarTabRow: View {
         .onHover { hovering in
             isHovering = hovering
         }
+    }
+}
+
+// MARK: - Linear Connection Status
+
+struct SidebarLinearStatusView: View {
+    let store: StoreOf<AppFeature>
+
+    @Environment(\.themeColors) private var themeColors
+
+    var body: some View {
+        let authState = store.linearAuth
+
+        HStack(spacing: 6) {
+            switch authState.status {
+            case .unauthenticated, .failed:
+                Button {
+                    store.send(.linearAuth(.loginButtonTapped))
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color.secondary.opacity(0.4))
+                            .frame(width: 6, height: 6)
+                        Text("Connect to Linear")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+
+            case .authenticating:
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(themeColors.accentColor)
+                Text("Connecting...")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+
+            case .authenticated:
+                Circle()
+                    .fill(themeColors.accentColor)
+                    .frame(width: 6, height: 6)
+                if let user = authState.user {
+                    Text(user.name)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Button {
+                    store.send(.linearAuth(.logoutButtonTapped))
+                } label: {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Disconnect from Linear")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+        .task { store.send(.linearAuth(.onAppear)) }
     }
 }
