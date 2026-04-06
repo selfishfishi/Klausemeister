@@ -18,14 +18,10 @@ private let sampleIssue = LinearIssue(
     statusId: "state-todo",
     statusType: "unstarted",
     teamId: "team-1",
-    teamName: "KLA",
     projectName: "Klausemeister",
-    assigneeName: "Ali",
-    priority: 1,
     labels: ["feature", "klause"],
     description: "Build the meister tab",
     url: "https://linear.app/selfishfish/issue/KLA-12/meister-tab",
-    createdAt: "2026-04-01",
     updatedAt: "2026-04-04",
     isOrphaned: false
 )
@@ -38,14 +34,10 @@ private let sampleIssueKLA15 = LinearIssue(
     statusId: "state-progress",
     statusType: "started",
     teamId: "team-1",
-    teamName: "KLA",
     projectName: "Klausemeister",
-    assigneeName: "Ali",
-    priority: 2,
     labels: ["api", "klause"],
     description: nil,
     url: "https://linear.app/selfishfish/issue/KLA-15/linear-api-integration",
-    createdAt: "2026-04-02",
     updatedAt: "2026-04-04",
     isOrphaned: false
 )
@@ -70,7 +62,9 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
             return [sampleIssue, sampleIssueKLA15]
         }
         $0.linearAPIClient.fetchWorkflowStatesByTeam = { sampleWorkflowStates }
-        $0.databaseClient.fetchImportedIssuesExcludingWorktreeQueues = { [] }
+        $0.databaseClient.fetchUnqueuedImportedIssues = { [] }
+        $0.databaseClient.fetchWorkflowStates = { [] }
+        $0.databaseClient.saveWorkflowStates = { _ in }
         $0.databaseClient.batchSaveImportedIssues = { _ in }
         $0.databaseClient.markOrphanedIssues = { _, _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
@@ -84,6 +78,7 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
 
     await store.receive(\.syncCompleted.success) {
         $0.workflowStatesByTeam = sampleWorkflowStates
+        $0.workflowStatesLastFetched = Date(timeIntervalSince1970: 0)
         $0.columns = MeisterFeature.rebuildColumns(from: [sampleIssue, sampleIssueKLA15])
         $0.syncStatus = .succeeded
     }
@@ -105,7 +100,9 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
     } withDependencies: {
         $0.linearAPIClient.fetchLabeledIssues = { _ in [sampleIssue] }
         $0.linearAPIClient.fetchWorkflowStatesByTeam = { sampleWorkflowStates }
-        $0.databaseClient.fetchImportedIssuesExcludingWorktreeQueues = { [orphanedRecord] }
+        $0.databaseClient.fetchUnqueuedImportedIssues = { [orphanedRecord] }
+        $0.databaseClient.fetchWorkflowStates = { [] }
+        $0.databaseClient.saveWorkflowStates = { _ in }
         $0.databaseClient.batchSaveImportedIssues = { _ in }
         $0.databaseClient.markOrphanedIssues = { _, _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
@@ -122,6 +119,7 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
 
     await store.receive(\.syncCompleted.success) {
         $0.workflowStatesByTeam = sampleWorkflowStates
+        $0.workflowStatesLastFetched = Date(timeIntervalSince1970: 0)
         $0.columns = MeisterFeature.rebuildColumns(from: [sampleIssue, orphanedIssue])
         $0.syncStatus = .succeeded
     }
@@ -141,7 +139,9 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
     } withDependencies: {
         $0.linearAPIClient.fetchLabeledIssues = { _ in throw TestError() }
         $0.linearAPIClient.fetchWorkflowStatesByTeam = { [:] }
-        $0.databaseClient.fetchImportedIssuesExcludingWorktreeQueues = { [] }
+        $0.databaseClient.fetchUnqueuedImportedIssues = { [] }
+        $0.databaseClient.fetchWorkflowStates = { [] }
+        $0.databaseClient.saveWorkflowStates = { _ in }
     }
 
     await store.send(.onAppear) {

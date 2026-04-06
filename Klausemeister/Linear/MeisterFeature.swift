@@ -1,14 +1,19 @@
+// swiftlint:disable file_length
 import ComposableArchitecture
 import Foundation
 
 @Reducer
+// swiftlint:disable:next type_body_length
 struct MeisterFeature {
     @ObservableState
     struct State: Equatable {
         var columns: IdentifiedArrayOf<KanbanColumn> = []
         var workflowStatesByTeam: WorkflowStatesByTeam = [:]
+        var workflowStatesLastFetched: Date?
         var syncStatus: SyncStatus = .idle
     }
+
+    nonisolated static let workflowStatesCacheTTL: TimeInterval = 15 * 60
 
     enum SyncStatus: Equatable {
         case idle
@@ -18,7 +23,8 @@ struct MeisterFeature {
 
     struct SyncResult: Equatable {
         let issues: [LinearIssue]
-        let workflowStatesByTeam: WorkflowStatesByTeam
+        /// Non-nil only when the workflow-states cache was refreshed during this sync.
+        let workflowStatesByTeam: WorkflowStatesByTeam?
         let orphanedIds: Set<String>
         let restoredIds: Set<String>
     }
@@ -48,6 +54,8 @@ struct MeisterFeature {
         case binding(BindingAction<State>)
         case onAppear
         case refreshTapped
+        case refreshLinearMetadataTapped
+        case workflowStatesLoadedFromCache(WorkflowStatesByTeam, Date?)
         case syncCompleted(TaskResult<SyncResult>)
         case syncIndicatorReset
         case issueDropped(issueId: String, onColumnId: String)
@@ -79,6 +87,67 @@ struct MeisterFeature {
     @Dependency(\.date) var date
     @Dependency(\.continuousClock) var clock
 
+    private func syncEffect(shouldFetchStates: Bool) -> Effect<Action> {
+        .run { [linearAPIClient, databaseClient] send in
+            await send(.syncCompleted(TaskResult {
+                try await performSync(
+                    linearAPIClient: linearAPIClient,
+                    databaseClient: databaseClient,
+                    fetchWorkflowStates: shouldFetchStates
+                )
+            }))
+        }
+        .cancellable(id: "MeisterFeature.load", cancelInFlight: true)
+    }
+
+    /// On app launch: read the persisted workflow-states cache, then decide whether
+    /// the network fetch is needed based on the cache's `fetchedAt` timestamp.
+    /// This is sequential (read cache → decide TTL → run sync) to avoid the race
+    /// where in-memory state is empty and we always fetch fresh.
+    private func onAppearEffect() -> Effect<Action> {
+        .run { [linearAPIClient, databaseClient, currentNow = date.now] send in
+            // 1. Load persisted cache (if any)
+            let records = await (try? databaseClient.fetchWorkflowStates()) ?? []
+            var cachedFetchedAt: Date?
+            if !records.isEmpty {
+                let grouped = Dictionary(grouping: records, by: \.teamId)
+                let cachedStates: WorkflowStatesByTeam = grouped.mapValues { rows in
+                    rows.map { LinearWorkflowState(
+                        id: $0.id,
+                        name: $0.name,
+                        type: $0.type,
+                        position: $0.position,
+                        teamId: $0.teamId
+                    ) }.sorted { $0.position < $1.position }
+                }
+                let isoFormatter = ISO8601DateFormatter()
+                cachedFetchedAt = records.first.flatMap { isoFormatter.date(from: $0.fetchedAt) }
+                await send(.workflowStatesLoadedFromCache(cachedStates, cachedFetchedAt))
+            }
+
+            // 2. Decide whether to refetch states based on the cached timestamp
+            let shouldFetchStates = MeisterFeature.shouldFetchWorkflowStates(
+                lastFetched: cachedFetchedAt,
+                now: currentNow
+            )
+
+            // 3. Run the sync
+            await send(.syncCompleted(TaskResult {
+                try await performSync(
+                    linearAPIClient: linearAPIClient,
+                    databaseClient: databaseClient,
+                    fetchWorkflowStates: shouldFetchStates
+                )
+            }))
+        }
+        .cancellable(id: "MeisterFeature.load", cancelInFlight: true)
+    }
+
+    nonisolated static func shouldFetchWorkflowStates(lastFetched: Date?, now: Date) -> Bool {
+        guard let lastFetched else { return true }
+        return now.timeIntervalSince(lastFetched) >= workflowStatesCacheTTL
+    }
+
     var body: some Reducer<State, Action> {
         BindingReducer()
         Reduce { state, action in
@@ -86,28 +155,66 @@ struct MeisterFeature {
             case .binding:
                 return .none
 
-            case .onAppear, .refreshTapped:
+            case .onAppear:
+                state.syncStatus = .syncing
+                // First launch: must read persisted cache + check its timestamp before
+                // deciding whether the network states fetch is needed. This is sequential
+                // to avoid the race where in-memory state is empty and we always fetch.
+                return .merge(
+                    .cancel(id: "MeisterFeature.syncIndicatorReset"),
+                    onAppearEffect()
+                )
+
+            case .refreshTapped:
+                state.syncStatus = .syncing
+                let shouldFetchStates = MeisterFeature.shouldFetchWorkflowStates(
+                    lastFetched: state.workflowStatesLastFetched,
+                    now: date.now
+                )
+                return .merge(
+                    .cancel(id: "MeisterFeature.syncIndicatorReset"),
+                    syncEffect(shouldFetchStates: shouldFetchStates)
+                )
+
+            case .refreshLinearMetadataTapped:
+                state.workflowStatesLastFetched = nil
                 state.syncStatus = .syncing
                 return .merge(
                     .send(.delegate(.syncStarted)),
                     .cancel(id: "MeisterFeature.syncIndicatorReset"),
-                    .run { [linearAPIClient, databaseClient] send in
-                        await send(.syncCompleted(TaskResult {
-                            try await performSync(
-                                linearAPIClient: linearAPIClient,
-                                databaseClient: databaseClient
-                            )
-                        }))
-                    }
-                    .cancellable(id: "MeisterFeature.load", cancelInFlight: true)
+                    syncEffect(shouldFetchStates: true)
                 )
 
+            case let .workflowStatesLoadedFromCache(states, fetchedAt):
+                // Only apply if we don't already have a fresher in-memory copy
+                if state.workflowStatesByTeam.isEmpty {
+                    state.workflowStatesByTeam = states
+                    state.workflowStatesLastFetched = fetchedAt
+                }
+                return .none
+
             case let .syncCompleted(.success(result)):
-                state.workflowStatesByTeam = result.workflowStatesByTeam
+                let now = date.now
+                if let freshStates = result.workflowStatesByTeam {
+                    state.workflowStatesByTeam = freshStates
+                    state.workflowStatesLastFetched = now
+                }
                 state.columns = MeisterFeature.rebuildColumns(from: result.issues)
                 state.syncStatus = .succeeded
-                let now = date.now
                 let records = result.issues.map { ImportedIssueRecord(from: $0, importedAt: now) }
+                let workflowRecordsToSave: [LinearWorkflowStateRecord]? = result.workflowStatesByTeam.map { states in
+                    let timestamp = ISO8601DateFormatter().string(from: now)
+                    return states.values.flatMap(\.self).map { state in
+                        LinearWorkflowStateRecord(
+                            id: state.id,
+                            teamId: state.teamId,
+                            name: state.name,
+                            type: state.type,
+                            position: state.position,
+                            fetchedAt: timestamp
+                        )
+                    }
+                }
                 return .merge(
                     .send(.delegate(.syncSucceeded)),
                     .run { [databaseClient] send in
@@ -117,6 +224,11 @@ struct MeisterFeature {
                             await send(.delegate(.errorOccurred(
                                 message: "Failed to save sync results: \(error.localizedDescription)"
                             )))
+                        }
+                    },
+                    .run { [databaseClient] _ in
+                        if let workflowRecordsToSave {
+                            try? await databaseClient.saveWorkflowStates(workflowRecordsToSave)
                         }
                     },
                     .run { [clock] send in
@@ -302,10 +414,14 @@ struct MeisterFeature {
 
 nonisolated private func performSync(
     linearAPIClient: LinearAPIClient,
-    databaseClient: DatabaseClient
+    databaseClient: DatabaseClient,
+    fetchWorkflowStates: Bool
 ) async throws -> MeisterFeature.SyncResult {
     async let issuesTask = linearAPIClient.fetchLabeledIssues(MeisterFeature.syncLabel)
-    async let statesTask = linearAPIClient.fetchWorkflowStatesByTeam()
+    async let statesTask: WorkflowStatesByTeam? = {
+        guard fetchWorkflowStates else { return nil }
+        return try await linearAPIClient.fetchWorkflowStatesByTeam()
+    }()
 
     let fetchedIssues = try await issuesTask
     let workflowStatesByTeam = try await statesTask
@@ -359,10 +475,10 @@ extension LinearIssue {
         LinearIssue(
             id: id, identifier: identifier, title: title,
             status: status, statusId: statusId, statusType: statusType,
-            teamId: teamId, teamName: teamName,
-            projectName: projectName, assigneeName: assigneeName,
-            priority: priority, labels: labels, description: description,
-            url: url, createdAt: createdAt, updatedAt: updatedAt,
+            teamId: teamId,
+            projectName: projectName,
+            labels: labels, description: description,
+            url: url, updatedAt: updatedAt,
             isOrphaned: isOrphaned
         )
     }
@@ -387,14 +503,10 @@ extension LinearIssue {
             statusId: record.statusId,
             statusType: record.statusType,
             teamId: record.teamId,
-            teamName: record.teamName,
             projectName: record.projectName,
-            assigneeName: record.assigneeName,
-            priority: record.priority,
             labels: decodedLabels,
             description: record.description,
             url: record.url,
-            createdAt: record.createdAt,
             updatedAt: record.updatedAt,
             isOrphaned: record.isOrphaned
         )
@@ -418,14 +530,10 @@ extension ImportedIssueRecord {
             statusId: issue.statusId,
             statusType: issue.statusType,
             teamId: issue.teamId,
-            teamName: issue.teamName,
             projectName: issue.projectName,
-            assigneeName: issue.assigneeName,
-            priority: issue.priority,
             labels: labelsJSON,
             description: issue.description,
             url: issue.url,
-            createdAt: issue.createdAt,
             updatedAt: issue.updatedAt,
             importedAt: ISO8601DateFormatter().string(from: importedAt),
             sortOrder: 0,

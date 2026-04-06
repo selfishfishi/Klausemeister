@@ -110,13 +110,12 @@ extension LinearAPIClient: DependencyKey {
                 // Deduplicated by id at the merge step in MeisterFeature.performSync.
                 let query = """
                 query($filter: IssueFilter!, $after: String) {
-                  issues(filter: $filter, first: 250, after: $after) {
+                  issues(filter: $filter, first: 50, after: $after) {
                     nodes {
-                      id identifier title url description priority createdAt updatedAt
+                      id identifier title url description updatedAt
                       state { id name type }
-                      team { id name }
+                      team { id }
                       project { name }
-                      assignee { name }
                       labels { nodes { name } }
                     }
                     pageInfo { hasNextPage endCursor }
@@ -127,7 +126,7 @@ extension LinearAPIClient: DependencyKey {
                 var allIssues: [LinearIssue] = []
                 var seenIds = Set<String>()
                 var cursor: String?
-                let pageLimit = 10 // 10 × 250 = 2500 max
+                let pageLimit = 20 // 20 × 50 = 1000 max
 
                 for _ in 0 ..< pageLimit {
                     var variables: [String: Any] = [
@@ -263,8 +262,6 @@ nonisolated private struct LabeledIssuesResponse: Decodable {
                 let title: String
                 let url: String
                 let description: String?
-                let priority: Int?
-                let createdAt: String
                 let updatedAt: String
                 struct State: Decodable {
                     let id: String
@@ -275,14 +272,11 @@ nonisolated private struct LabeledIssuesResponse: Decodable {
                 let state: State
                 struct Team: Decodable {
                     let id: String
-                    let name: String
                 }
 
                 let team: Team?
                 struct Project: Decodable { let name: String }
                 let project: Project?
-                struct Assignee: Decodable { let name: String }
-                let assignee: Assignee?
                 struct Labels: Decodable {
                     struct LabelNode: Decodable { let name: String }
                     let nodes: [LabelNode]
@@ -299,14 +293,10 @@ nonisolated private struct LabeledIssuesResponse: Decodable {
                         statusId: state.id,
                         statusType: state.type,
                         teamId: team?.id ?? "",
-                        teamName: team?.name ?? "",
                         projectName: project?.name,
-                        assigneeName: assignee?.name,
-                        priority: priority ?? 0,
                         labels: labels?.nodes.map(\.name) ?? [],
                         description: description,
                         url: url,
-                        createdAt: createdAt,
                         updatedAt: updatedAt,
                         isOrphaned: false
                     )

@@ -68,5 +68,25 @@ enum DatabaseMigrations {
                 t.add(column: "isOrphaned", .boolean).notNull().defaults(to: false)
             }
         }
+
+        migrator.registerMigration("v5-trim-imported-issues") { db in
+            try db.alter(table: "imported_issues") { t in
+                t.drop(column: "priority")
+                t.drop(column: "assigneeName")
+                t.drop(column: "teamName")
+                t.drop(column: "createdAt")
+            }
+        }
+
+        migrator.registerMigration("v6-linear-workflow-states-cache") { db in
+            try db.create(table: "linear_workflow_states") { t in
+                t.column("id", .text).primaryKey()
+                t.column("teamId", .text).notNull()
+                t.column("name", .text).notNull()
+                t.column("type", .text).notNull()
+                t.column("position", .double).notNull().defaults(to: 0)
+                t.column("fetchedAt", .text).notNull()
+            }
+        }
     }
 }
