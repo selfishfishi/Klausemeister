@@ -122,7 +122,7 @@ struct MeisterFeature {
                 )
 
             case let .syncCompleted(.failure(error)):
-                state.syncStatus = .failed(error.localizedDescription)
+                state.syncStatus = .failed(MeisterFeature.describe(error))
                 return .none
 
             case .syncIndicatorReset:
@@ -250,6 +250,22 @@ struct MeisterFeature {
                 return .none
             }
         }
+    }
+
+    // MARK: - Error formatting
+
+    /// Produces a human-readable description of a sync error that preserves
+    /// enough detail to diagnose the failure. For `LocalizedError`, uses
+    /// `errorDescription`; for `DecodingError`, uses `String(describing:)`
+    /// which includes the full coding path.
+    nonisolated static func describe(_ error: any Error) -> String {
+        if let decodingError = error as? DecodingError {
+            return String(describing: decodingError)
+        }
+        if let localized = error as? LocalizedError, let description = localized.errorDescription {
+            return description
+        }
+        return String(describing: error)
     }
 
     // MARK: - Column helpers

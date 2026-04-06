@@ -25,7 +25,23 @@ nonisolated private func graphQLRequest(
     guard let httpResponse = response as? HTTPURLResponse else { throw OAuthError.networkError }
     if httpResponse.statusCode == 401 { throw OAuthError.unauthorized }
     if httpResponse.statusCode == 429 { throw LinearAPIError.rateLimited }
+
+    // Detect GraphQL-level errors returned with HTTP 200 + { "errors": [...] }
+    if let errorEnvelope = try? JSONDecoder().decode(GraphQLErrorEnvelope.self, from: data),
+       !errorEnvelope.errors.isEmpty
+    {
+        throw LinearAPIError.graphQLErrors(errorEnvelope.errors.map(\.message))
+    }
+
     return data
+}
+
+private struct GraphQLErrorEnvelope: Decodable {
+    struct GraphQLError: Decodable {
+        let message: String
+    }
+
+    let errors: [GraphQLError]
 }
 
 // MARK: - Token loading helper
@@ -93,7 +109,7 @@ extension LinearAPIClient: DependencyKey {
                   issues(filter: $filter, first: 250, after: $after) {
                     nodes {
                       id identifier title url description priority createdAt updatedAt
-                      state { id name type position }
+                      state { id name type }
                       team { id name }
                       project { name }
                       assignee { name }
@@ -234,7 +250,7 @@ private struct LabeledIssuesResponse: Decodable {
                 let title: String
                 let url: String
                 let description: String?
-                let priority: Int
+                let priority: Int?
                 let createdAt: String
                 let updatedAt: String
                 struct State: Decodable {
@@ -249,7 +265,7 @@ private struct LabeledIssuesResponse: Decodable {
                     let name: String
                 }
 
-                let team: Team
+                let team: Team?
                 struct Project: Decodable { let name: String }
                 let project: Project?
                 struct Assignee: Decodable { let name: String }
@@ -259,7 +275,7 @@ private struct LabeledIssuesResponse: Decodable {
                     let nodes: [LabelNode]
                 }
 
-                let labels: Labels
+                let labels: Labels?
 
                 var linearIssue: LinearIssue {
                     LinearIssue(
@@ -269,12 +285,12 @@ private struct LabeledIssuesResponse: Decodable {
                         status: state.name,
                         statusId: state.id,
                         statusType: state.type,
-                        teamId: team.id,
-                        teamName: team.name,
+                        teamId: team?.id ?? "",
+                        teamName: team?.name ?? "",
                         projectName: project?.name,
                         assigneeName: assignee?.name,
-                        priority: priority,
-                        labels: labels.nodes.map(\.name),
+                        priority: priority ?? 0,
+                        labels: labels?.nodes.map(\.name) ?? [],
                         description: description,
                         url: url,
                         createdAt: createdAt,
@@ -303,9 +319,21 @@ private struct LabeledIssuesResponse: Decodable {
 
 // MARK: - API Errors
 
-enum LinearAPIError: Error, Equatable {
+enum LinearAPIError: Error, Equatable, LocalizedError {
     case issueNotFound(String)
     case rateLimited
+    case graphQLErrors([String])
+
+    var errorDescription: String? {
+        switch self {
+        case let .issueNotFound(identifier):
+            "Issue not found: \(identifier)"
+        case .rateLimited:
+            "Linear API rate limit exceeded"
+        case let .graphQLErrors(messages):
+            "Linear API error: \(messages.joined(separator: "; "))"
+        }
+    }
 }
 
 extension DependencyValues {
