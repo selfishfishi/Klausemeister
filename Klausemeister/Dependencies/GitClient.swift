@@ -7,6 +7,15 @@ struct GitClient {
     var addWorktree: @Sendable (_ repoPath: String, _ worktreePath: String, _ branch: String) async throws -> Void
     var removeWorktree: @Sendable (_ repoPath: String, _ worktreePath: String) async throws -> Void
     var switchBranch: @Sendable (_ worktreePath: String, _ branchName: String) async throws -> Void
+    var listWorktrees: @Sendable (_ repoPath: String) async throws -> [WorktreeListEntry]
+
+    struct WorktreeListEntry: Equatable {
+        let path: String
+        let branch: String?
+        let isMain: Bool
+        let isLocked: Bool
+        let isPrunable: Bool
+    }
 }
 
 enum GitClientError: Error, Equatable, LocalizedError {
@@ -84,6 +93,10 @@ extension GitClient: DependencyKey {
             },
             switchBranch: { worktreePath, branchName in
                 _ = try shell(["-C", worktreePath, "checkout", "-B", branchName])
+            },
+            listWorktrees: { repoPath in
+                let output = try shell(["-C", repoPath, "worktree", "list", "--porcelain"])
+                return parseWorktreeListPorcelain(output)
             }
         )
     }()
@@ -93,8 +106,46 @@ extension GitClient: DependencyKey {
         currentBranch: unimplemented("GitClient.currentBranch"),
         addWorktree: unimplemented("GitClient.addWorktree"),
         removeWorktree: unimplemented("GitClient.removeWorktree"),
-        switchBranch: unimplemented("GitClient.switchBranch")
+        switchBranch: unimplemented("GitClient.switchBranch"),
+        listWorktrees: unimplemented("GitClient.listWorktrees")
     )
+}
+
+// MARK: - Porcelain parser
+
+nonisolated private func parseWorktreeListPorcelain(_ output: String) -> [GitClient.WorktreeListEntry] {
+    var entries: [GitClient.WorktreeListEntry] = []
+    let blocks = output.components(separatedBy: "\n\n")
+    var isFirst = true
+    for block in blocks {
+        let lines = block.split(separator: "\n").map(String.init)
+        var path: String?
+        var branch: String?
+        var isLocked = false
+        var isPrunable = false
+        for line in lines {
+            if line.hasPrefix("worktree ") {
+                path = String(line.dropFirst("worktree ".count))
+            } else if line.hasPrefix("branch refs/heads/") {
+                branch = String(line.dropFirst("branch refs/heads/".count))
+            } else if line == "locked" || line.hasPrefix("locked ") {
+                isLocked = true
+            } else if line == "prunable" || line.hasPrefix("prunable ") {
+                isPrunable = true
+            }
+        }
+        if let path {
+            entries.append(GitClient.WorktreeListEntry(
+                path: path,
+                branch: branch,
+                isMain: isFirst,
+                isLocked: isLocked,
+                isPrunable: isPrunable
+            ))
+            isFirst = false
+        }
+    }
+    return entries
 }
 
 extension DependencyValues {

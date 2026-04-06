@@ -71,6 +71,12 @@ struct WorktreeSwimlaneView: View {
                     store.send(.createWorktreeTapped(repoId: repo.id, name: name))
                 }
                 Menu {
+                    Button {
+                        store.send(.syncRepo(repoId: repo.id))
+                    } label: {
+                        Label("Refresh worktrees", systemImage: "arrow.clockwise")
+                    }
+                    Divider()
                     Button(role: .destructive) {
                         store.send(.confirmDeleteRepoTapped(repoId: repo.id))
                     } label: {
