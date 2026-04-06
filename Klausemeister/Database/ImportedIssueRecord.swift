@@ -11,6 +11,8 @@ struct ImportedIssueRecord: Codable, Equatable, FetchableRecord, PersistableReco
     var status: String
     var statusId: String
     var statusType: String
+    var teamId: String
+    var teamName: String
     var projectName: String?
     var assigneeName: String?
     var priority: Int
@@ -21,4 +23,5 @@ struct ImportedIssueRecord: Codable, Equatable, FetchableRecord, PersistableReco
     var updatedAt: String
     var importedAt: String
     var sortOrder: Int
+    var isOrphaned: Bool
 }

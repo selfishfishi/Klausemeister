@@ -11,18 +11,18 @@ struct MeisterView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Import bar
+            // Header with sync button
             HStack(spacing: 8) {
-                TextField("Import issue: KLA-15 or paste URL...", text: $store.importText)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { store.send(.importSubmitted) }
-                if store.isImporting {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(themeColors.accentColor)
+                Text("Meister")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Spacer()
+                SyncIndicatorButton(syncStatus: store.syncStatus) {
+                    store.send(.refreshTapped)
                 }
             }
-            .padding(12)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
 
             // Error banner
             if let error = store.error {
@@ -50,12 +50,12 @@ struct MeisterView: View {
                     ForEach(store.columns) { column in
                         KanbanColumnView(
                             column: column,
-                            workflowStates: store.workflowStates,
+                            workflowStatesByTeam: store.workflowStatesByTeam,
                             worktrees: worktrees,
                             repositories: repositories,
                             assignedWorktreeNames: assignedWorktreeNames,
-                            onMoveToStatus: { issueId, statusId in
-                                store.send(.moveToStatusTapped(issueId: issueId, statusId: statusId))
+                            onMoveToStatus: { issueId, statusType in
+                                store.send(.moveToStatusTapped(issueId: issueId, targetStatusType: statusType))
                             },
                             onAssignToWorktree: { issue, worktreeId in
                                 store.send(.assignIssueToWorktree(issue: issue, worktreeId: worktreeId))
@@ -71,15 +71,57 @@ struct MeisterView: View {
                 }
                 .padding(12)
             }
-
-            if store.isRefreshing {
-                ProgressView("Refreshing...")
-                    .controlSize(.small)
-                    .tint(themeColors.accentColor)
-                    .padding(4)
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { store.send(.onAppear) }
+    }
+}
+
+// MARK: - Sync Indicator Button
+
+private struct SyncIndicatorButton: View {
+    let syncStatus: MeisterFeature.SyncStatus
+    let action: () -> Void
+
+    @Environment(\.themeColors) private var themeColors
+
+    var body: some View {
+        Button(action: action) {
+            image
+                .imageScale(.small)
+                .frame(width: 18, height: 18)
+        }
+        .buttonStyle(.plain)
+        .disabled(syncStatus == .syncing)
+        .help(helpText)
+    }
+
+    @ViewBuilder
+    private var image: some View {
+        switch syncStatus {
+        case .idle:
+            Image(systemName: "arrow.clockwise")
+                .foregroundStyle(.secondary)
+        case .syncing:
+            ProgressView()
+                .controlSize(.small)
+                .tint(themeColors.accentColor)
+        case .succeeded:
+            Image(systemName: "checkmark")
+                .foregroundStyle(themeColors.accentColor)
+                .transition(.opacity)
+        case .failed:
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(themeColors.warningColor)
+        }
+    }
+
+    private var helpText: String {
+        switch syncStatus {
+        case .idle: "Sync issues with klause label"
+        case .syncing: "Syncing..."
+        case .succeeded: "Sync complete"
+        case let .failed(msg): "Sync failed: \(msg)"
+        }
     }
 }

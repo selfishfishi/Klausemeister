@@ -60,5 +60,13 @@ enum DatabaseMigrations {
                 t.add(column: "repoId", .text)
             }
         }
+
+        migrator.registerMigration("v4-imported-issue-team-orphaned") { db in
+            try db.alter(table: "imported_issues") { t in
+                t.add(column: "teamId", .text).notNull().defaults(to: "")
+                t.add(column: "teamName", .text).notNull().defaults(to: "")
+                t.add(column: "isOrphaned", .boolean).notNull().defaults(to: false)
+            }
+        }
     }
 }

@@ -4,10 +4,9 @@ import Foundation
 struct LinearAPIClient {
     // swiftlint:disable:next identifier_name
     var me: @Sendable () async throws -> LinearUser
-    var fetchIssue: @Sendable (_ identifier: String) async throws -> LinearIssue
-    var fetchIssues: @Sendable (_ identifiers: [String]) async throws -> [LinearIssue]
+    var fetchLabeledIssues: @Sendable (_ label: String) async throws -> [LinearIssue]
+    var fetchWorkflowStatesByTeam: @Sendable () async throws -> WorkflowStatesByTeam
     var updateIssueStatus: @Sendable (_ issueId: String, _ statusId: String) async throws -> Void
-    var fetchWorkflowStates: @Sendable () async throws -> [LinearWorkflowState]
 }
 
 // MARK: - Shared GraphQL helper
@@ -25,6 +24,7 @@ nonisolated private func graphQLRequest(
     let (data, response) = try await URLSession.shared.data(for: request)
     guard let httpResponse = response as? HTTPURLResponse else { throw OAuthError.networkError }
     if httpResponse.statusCode == 401 { throw OAuthError.unauthorized }
+    if httpResponse.statusCode == 429 { throw LinearAPIError.rateLimited }
     return data
 }
 
@@ -60,10 +60,9 @@ extension LinearAPIClient: DependencyKey {
                     token: token, query: query, variables: nil
                 )
 
+                // swiftlint:disable nesting
                 struct GraphQLResponse: Decodable {
-                    // swiftlint:disable:next nesting
                     struct Data: Decodable {
-                        // swiftlint:disable:next nesting
                         struct Viewer: Decodable {
                             let id: String
                             let name: String
@@ -75,6 +74,7 @@ extension LinearAPIClient: DependencyKey {
 
                     let data: Data
                 }
+                // swiftlint:enable nesting
                 let graphQLResponse = try JSONDecoder().decode(
                     GraphQLResponse.self, from: data
                 )
@@ -85,154 +85,92 @@ extension LinearAPIClient: DependencyKey {
                 )
             },
 
-            fetchIssue: { identifier in
+            fetchLabeledIssues: { label in
                 let token = try await loadToken(keychainClient: keychainClient)
 
                 let query = """
-                query($filter: IssueFilter!) {
-                  issues(filter: $filter, first: 1) {
+                query($filter: IssueFilter!, $after: String) {
+                  issues(filter: $filter, first: 250, after: $after) {
                     nodes {
                       id identifier title url description priority createdAt updatedAt
                       state { id name type position }
+                      team { id name }
                       project { name }
                       assignee { name }
                       labels { nodes { name } }
                     }
+                    pageInfo { hasNextPage endCursor }
                   }
                 }
                 """
-                let variables: [String: Any] = [
-                    "filter": ["identifier": ["eq": identifier]]
-                ]
-                let data = try await graphQLRequest(
-                    token: token, query: query, variables: variables
-                )
 
-                // swiftlint:disable nesting
-                struct GraphQLResponse: Decodable {
-                    struct Data: Decodable {
-                        struct Issues: Decodable {
-                            struct Node: Decodable {
-                                let id: String
-                                let identifier: String
-                                let title: String
-                                let url: String
-                                let description: String?
-                                let priority: Int
-                                let createdAt: String
-                                let updatedAt: String
-                                struct State: Decodable {
-                                    let id: String
-                                    let name: String
-                                    let type: String
-                                    let position: Double
-                                }
+                var allIssues: [LinearIssue] = []
+                var cursor: String?
+                let pageLimit = 4 // 4 × 250 = 1000 max
 
-                                let state: State
-                                struct Project: Decodable { let name: String }
-                                let project: Project?
-                                struct Assignee: Decodable { let name: String }
-                                let assignee: Assignee?
-                                struct Labels: Decodable {
-                                    struct LabelNode: Decodable { let name: String }
-                                    let nodes: [LabelNode]
-                                }
+                for _ in 0 ..< pageLimit {
+                    var variables: [String: Any] = [
+                        "filter": ["labels": ["name": ["eq": label]]]
+                    ]
+                    if let cursor { variables["after"] = cursor }
 
-                                let labels: Labels
-                            }
+                    let data = try await graphQLRequest(
+                        token: token, query: query, variables: variables
+                    )
 
-                            let nodes: [Node]
-                        }
+                    let page = try JSONDecoder().decode(LabeledIssuesResponse.self, from: data)
+                    allIssues.append(contentsOf: page.data.issues.nodes.map(\.linearIssue))
 
-                        let issues: Issues
-                    }
-
-                    let data: Data
+                    guard page.data.issues.pageInfo.hasNextPage,
+                          let endCursor = page.data.issues.pageInfo.endCursor
+                    else { break }
+                    cursor = endCursor
                 }
-                // swiftlint:enable nesting
 
-                let graphQLResponse = try JSONDecoder().decode(
-                    GraphQLResponse.self, from: data
-                )
-                guard let node = graphQLResponse.data.issues.nodes.first else {
-                    throw LinearAPIError.issueNotFound(identifier)
-                }
-                return LinearIssue(
-                    id: node.id,
-                    identifier: node.identifier,
-                    title: node.title,
-                    status: node.state.name,
-                    statusId: node.state.id,
-                    statusType: node.state.type,
-                    projectName: node.project?.name,
-                    assigneeName: node.assignee?.name,
-                    priority: node.priority,
-                    labels: node.labels.nodes.map(\.name),
-                    description: node.description,
-                    url: node.url,
-                    createdAt: node.createdAt,
-                    updatedAt: node.updatedAt
-                )
+                return allIssues
             },
 
-            fetchIssues: { identifiers in
-                guard !identifiers.isEmpty else { return [] }
+            fetchWorkflowStatesByTeam: {
                 let token = try await loadToken(keychainClient: keychainClient)
 
                 let query = """
-                query($filter: IssueFilter!) {
-                  issues(filter: $filter, first: \(identifiers.count)) {
+                query {
+                  teams(first: 250) {
                     nodes {
-                      id identifier title url description priority createdAt updatedAt
-                      state { id name type position }
-                      project { name }
-                      assignee { name }
-                      labels { nodes { name } }
+                      id
+                      states { nodes { id name type position } }
                     }
                   }
                 }
                 """
-                let variables: [String: Any] = [
-                    "filter": ["identifier": ["in": identifiers]]
-                ]
                 let data = try await graphQLRequest(
-                    token: token, query: query, variables: variables
+                    token: token, query: query, variables: nil
                 )
 
                 // swiftlint:disable nesting
                 struct GraphQLResponse: Decodable {
                     struct Data: Decodable {
-                        struct Issues: Decodable {
-                            struct Node: Decodable {
+                        struct Teams: Decodable {
+                            struct TeamNode: Decodable {
+                                struct States: Decodable {
+                                    struct StateNode: Decodable {
+                                        let id: String
+                                        let name: String
+                                        let type: String
+                                        let position: Double
+                                    }
+
+                                    let nodes: [StateNode]
+                                }
+
                                 let id: String
-                                let identifier: String
-                                let title: String
-                                let url: String
-                                let description: String?
-                                let priority: Int
-                                let createdAt: String
-                                let updatedAt: String
-                                struct State: Decodable {
-                                    let id: String; let name: String; let type: String; let position: Double
-                                }
-
-                                let state: State
-                                struct Project: Decodable { let name: String }
-                                let project: Project?
-                                struct Assignee: Decodable { let name: String }
-                                let assignee: Assignee?
-                                struct Labels: Decodable {
-                                    struct LabelNode: Decodable { let name: String }
-                                    let nodes: [LabelNode]
-                                }
-
-                                let labels: Labels
+                                let states: States
                             }
 
-                            let nodes: [Node]
+                            let nodes: [TeamNode]
                         }
 
-                        let issues: Issues
+                        let teams: Teams
                     }
 
                     let data: Data
@@ -242,24 +180,19 @@ extension LinearAPIClient: DependencyKey {
                 let graphQLResponse = try JSONDecoder().decode(
                     GraphQLResponse.self, from: data
                 )
-                return graphQLResponse.data.issues.nodes.map { node in
-                    LinearIssue(
-                        id: node.id,
-                        identifier: node.identifier,
-                        title: node.title,
-                        status: node.state.name,
-                        statusId: node.state.id,
-                        statusType: node.state.type,
-                        projectName: node.project?.name,
-                        assigneeName: node.assignee?.name,
-                        priority: node.priority,
-                        labels: node.labels.nodes.map(\.name),
-                        description: node.description,
-                        url: node.url,
-                        createdAt: node.createdAt,
-                        updatedAt: node.updatedAt
-                    )
+                var result: WorkflowStatesByTeam = [:]
+                for team in graphQLResponse.data.teams.nodes {
+                    result[team.id] = team.states.nodes
+                        .map { LinearWorkflowState(
+                            id: $0.id,
+                            name: $0.name,
+                            type: $0.type,
+                            position: $0.position,
+                            teamId: team.id
+                        ) }
+                        .sorted { $0.position < $1.position }
                 }
+                return result
             },
 
             updateIssueStatus: { issueId, statusId in
@@ -277,87 +210,102 @@ extension LinearAPIClient: DependencyKey {
                 _ = try await graphQLRequest(
                     token: token, query: query, variables: variables
                 )
-            },
-
-            fetchWorkflowStates: {
-                let token = try await loadToken(keychainClient: keychainClient)
-
-                let query = """
-                query {
-                  organization {
-                    teams(first: 1) {
-                      nodes {
-                        states { nodes { id name type position } }
-                      }
-                    }
-                  }
-                }
-                """
-                let data = try await graphQLRequest(
-                    token: token, query: query, variables: nil
-                )
-
-                // swiftlint:disable nesting
-                struct GraphQLResponse: Decodable {
-                    struct Data: Decodable {
-                        struct Organization: Decodable {
-                            struct Teams: Decodable {
-                                struct TeamNode: Decodable {
-                                    struct States: Decodable {
-                                        struct StateNode: Decodable {
-                                            let id: String
-                                            let name: String
-                                            let type: String
-                                            let position: Double
-                                        }
-
-                                        let nodes: [StateNode]
-                                    }
-
-                                    let states: States
-                                }
-
-                                let nodes: [TeamNode]
-                            }
-
-                            let teams: Teams
-                        }
-
-                        let organization: Organization
-                    }
-
-                    let data: Data
-                }
-                // swiftlint:enable nesting
-
-                let graphQLResponse = try JSONDecoder().decode(
-                    GraphQLResponse.self, from: data
-                )
-                guard let team = graphQLResponse.data.organization.teams.nodes.first else {
-                    return []
-                }
-                return team.states.nodes
-                    .map { LinearWorkflowState(
-                        id: $0.id, name: $0.name, type: $0.type, position: $0.position
-                    ) }
-                    .sorted { $0.position < $1.position }
             }
         )
     }()
 
     nonisolated static let testValue = LinearAPIClient(
         me: unimplemented("LinearAPIClient.me"),
-        fetchIssue: unimplemented("LinearAPIClient.fetchIssue"),
-        fetchIssues: unimplemented("LinearAPIClient.fetchIssues"),
-        updateIssueStatus: unimplemented("LinearAPIClient.updateIssueStatus"),
-        fetchWorkflowStates: unimplemented("LinearAPIClient.fetchWorkflowStates")
+        fetchLabeledIssues: unimplemented("LinearAPIClient.fetchLabeledIssues"),
+        fetchWorkflowStatesByTeam: unimplemented("LinearAPIClient.fetchWorkflowStatesByTeam"),
+        updateIssueStatus: unimplemented("LinearAPIClient.updateIssueStatus")
     )
 }
+
+// MARK: - Labeled Issues Response
+
+// swiftlint:disable nesting
+private struct LabeledIssuesResponse: Decodable {
+    struct Data: Decodable {
+        struct Issues: Decodable {
+            struct Node: Decodable {
+                let id: String
+                let identifier: String
+                let title: String
+                let url: String
+                let description: String?
+                let priority: Int
+                let createdAt: String
+                let updatedAt: String
+                struct State: Decodable {
+                    let id: String
+                    let name: String
+                    let type: String
+                }
+
+                let state: State
+                struct Team: Decodable {
+                    let id: String
+                    let name: String
+                }
+
+                let team: Team
+                struct Project: Decodable { let name: String }
+                let project: Project?
+                struct Assignee: Decodable { let name: String }
+                let assignee: Assignee?
+                struct Labels: Decodable {
+                    struct LabelNode: Decodable { let name: String }
+                    let nodes: [LabelNode]
+                }
+
+                let labels: Labels
+
+                var linearIssue: LinearIssue {
+                    LinearIssue(
+                        id: id,
+                        identifier: identifier,
+                        title: title,
+                        status: state.name,
+                        statusId: state.id,
+                        statusType: state.type,
+                        teamId: team.id,
+                        teamName: team.name,
+                        projectName: project?.name,
+                        assigneeName: assignee?.name,
+                        priority: priority,
+                        labels: labels.nodes.map(\.name),
+                        description: description,
+                        url: url,
+                        createdAt: createdAt,
+                        updatedAt: updatedAt,
+                        isOrphaned: false
+                    )
+                }
+            }
+
+            struct PageInfo: Decodable {
+                let hasNextPage: Bool
+                let endCursor: String?
+            }
+
+            let nodes: [Node]
+            let pageInfo: PageInfo
+        }
+
+        let issues: Issues
+    }
+
+    let data: Data
+}
+
+// swiftlint:enable nesting
 
 // MARK: - API Errors
 
 enum LinearAPIError: Error, Equatable {
     case issueNotFound(String)
+    case rateLimited
 }
 
 extension DependencyValues {
