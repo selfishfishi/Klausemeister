@@ -46,18 +46,7 @@ struct SidebarView: View {
                     )
                 }
             } header: {
-                HStack {
-                    Text("Worktrees")
-                    Spacer()
-                    Button {
-                        store.send(.worktree(.createWorktreeTapped))
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
+                Text("Worktrees")
             }
 
             Section("Terminals") {

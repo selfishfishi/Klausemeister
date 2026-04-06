@@ -23,19 +23,6 @@ struct WorktreeSwimlaneView: View {
             Text("Worktrees")
                 .font(.headline)
             Spacer()
-            if !store.repositories.isEmpty {
-                Picker("Repository", selection: $store.selectedRepoId) {
-                    ForEach(store.repositories) { repo in
-                        Text(repo.name).tag(Optional(repo.id))
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 150)
-            }
-            TextField("New worktree...", text: $store.newWorktreeName)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 200)
-                .onSubmit { store.send(.createWorktreeTapped) }
             if store.isCreatingWorktree {
                 ProgressView()
                     .controlSize(.small)
@@ -43,10 +30,13 @@ struct WorktreeSwimlaneView: View {
             Button {
                 openRepoFolderPicker()
             } label: {
-                Image(systemName: "folder.badge.plus")
-                    .foregroundStyle(.secondary)
+                Label("Add Repo", systemImage: "folder.badge.plus")
+                    .font(.callout)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
             }
             .buttonStyle(.plain)
+            .glassEffect(.regular.interactive(), in: Capsule())
             .help("Add Repository")
         }
         .padding(12)
@@ -69,7 +59,7 @@ struct WorktreeSwimlaneView: View {
 
     private func repoSection(repo: Repository) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 Image(systemName: "folder")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -77,6 +67,9 @@ struct WorktreeSwimlaneView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+                AddWorktreeInlineButton { name in
+                    store.send(.createWorktreeTapped(repoId: repo.id, name: name))
+                }
                 Menu {
                     Button(role: .destructive) {
                         store.send(.confirmDeleteRepoTapped(repoId: repo.id))
@@ -137,8 +130,10 @@ struct WorktreeSwimlaneView: View {
         panel.allowsMultipleSelection = false
         panel.message = "Select a git repository folder"
         panel.prompt = "Add Repository"
-        if panel.runModal() == .OK, let url = panel.url {
-            store.send(.addRepoFolderSelected(url))
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                store.send(.addRepoFolderSelected(url))
+            }
         }
     }
 }
