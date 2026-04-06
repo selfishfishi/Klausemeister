@@ -6,15 +6,9 @@ import Testing
 
 // MARK: - Test Helpers
 
-private let todoColumn = MeisterFeature.KanbanColumn(
-    id: "state-todo", name: "Todo", type: "unstarted"
-)
-private let inProgressColumn = MeisterFeature.KanbanColumn(
-    id: "state-progress", name: "In Progress", type: "started"
-)
-private let doneColumn = MeisterFeature.KanbanColumn(
-    id: "state-done", name: "Done", type: "completed"
-)
+private let todoColumn = MeisterFeature.KanbanColumn(id: "unstarted", name: "To Do")
+private let inProgressColumn = MeisterFeature.KanbanColumn(id: "started", name: "In Progress")
+private let doneColumn = MeisterFeature.KanbanColumn(id: "completed", name: "Done")
 
 private let sampleIssue = LinearIssue(
     id: "issue-1",
@@ -23,14 +17,17 @@ private let sampleIssue = LinearIssue(
     status: "Todo",
     statusId: "state-todo",
     statusType: "unstarted",
+    teamId: "team-1",
+    teamName: "KLA",
     projectName: "Klausemeister",
     assigneeName: "Ali",
     priority: 1,
-    labels: ["feature"],
+    labels: ["feature", "klause"],
     description: "Build the meister tab",
     url: "https://linear.app/selfishfish/issue/KLA-12/meister-tab",
     createdAt: "2026-04-01",
-    updatedAt: "2026-04-04"
+    updatedAt: "2026-04-04",
+    isOrphaned: false
 )
 
 private let sampleIssueKLA15 = LinearIssue(
@@ -40,125 +37,159 @@ private let sampleIssueKLA15 = LinearIssue(
     status: "In Progress",
     statusId: "state-progress",
     statusType: "started",
+    teamId: "team-1",
+    teamName: "KLA",
     projectName: "Klausemeister",
     assigneeName: "Ali",
     priority: 2,
-    labels: ["api"],
+    labels: ["api", "klause"],
     description: nil,
     url: "https://linear.app/selfishfish/issue/KLA-15/linear-api-integration",
     createdAt: "2026-04-02",
-    updatedAt: "2026-04-04"
+    updatedAt: "2026-04-04",
+    isOrphaned: false
 )
 
-// MARK: - Tests
+private let sampleWorkflowStates: WorkflowStatesByTeam = [
+    "team-1": [
+        LinearWorkflowState(id: "state-todo", name: "Todo", type: "unstarted", position: 1, teamId: "team-1"),
+        LinearWorkflowState(id: "state-progress", name: "In Progress", type: "started", position: 2, teamId: "team-1"),
+        LinearWorkflowState(id: "state-done", name: "Done", type: "completed", position: 3, teamId: "team-1")
+    ]
+]
 
-@Test func `import issue success`() async {
-    let store = TestStore(
-        initialState: MeisterFeature.State(
-            columns: [
-                .init(id: todoColumn.id, name: todoColumn.name, type: todoColumn.type),
-                .init(id: inProgressColumn.id, name: inProgressColumn.name, type: inProgressColumn.type),
-                .init(id: doneColumn.id, name: doneColumn.name, type: doneColumn.type)
-            ],
-            importText: "KLA-12"
-        )
-    ) {
+// MARK: - Sync Tests
+
+@Test func `sync populates columns by status type`() async {
+    let store = TestStore(initialState: MeisterFeature.State()) {
         MeisterFeature()
     } withDependencies: {
-        $0.linearAPIClient.fetchIssue = { identifier in
-            #expect(identifier == "KLA-12")
-            return sampleIssue
+        $0.linearAPIClient.fetchLabeledIssues = { label in
+            #expect(label == MeisterFeature.syncLabel)
+            return [sampleIssue, sampleIssueKLA15]
         }
-        $0.databaseClient.saveImportedIssue = { _ in }
+        $0.linearAPIClient.fetchWorkflowStatesByTeam = { sampleWorkflowStates }
+        $0.databaseClient.fetchImportedIssuesExcludingWorktreeQueues = { [] }
+        $0.databaseClient.batchSaveImportedIssues = { _ in }
+        $0.databaseClient.markOrphanedIssues = { _, _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
     }
 
-    await store.send(.importSubmitted) {
-        $0.isImporting = true
-        $0.importText = ""
+    await store.send(.onAppear) {
+        $0.syncStatus = .syncing
     }
 
-    await store.receive(\.issueImported.success) {
-        $0.isImporting = false
-        $0.columns[id: "state-todo"]?.issues = [sampleIssue]
+    let expectedResult = MeisterFeature.SyncResult(
+        issues: [sampleIssue, sampleIssueKLA15],
+        workflowStatesByTeam: sampleWorkflowStates,
+        orphanedIds: [],
+        restoredIds: []
+    )
+
+    await store.receive(\.syncCompleted.success) {
+        $0.workflowStatesByTeam = sampleWorkflowStates
+        $0.columns = MeisterFeature.rebuildColumns(from: [sampleIssue, sampleIssueKLA15])
+        $0.syncStatus = .succeeded
     }
+
+    await store.receive(\.syncIndicatorReset) {
+        $0.syncStatus = .idle
+    }
+
+    _ = expectedResult
 }
 
-@Test func `import issue from URL`() async {
-    let store = TestStore(
-        initialState: MeisterFeature.State(
-            columns: [
-                .init(id: todoColumn.id, name: todoColumn.name, type: todoColumn.type),
-                .init(id: inProgressColumn.id, name: inProgressColumn.name, type: inProgressColumn.type),
-                .init(id: doneColumn.id, name: doneColumn.name, type: doneColumn.type)
-            ],
-            importText: "https://linear.app/selfishfish/issue/KLA-15/linear-api-integration"
-        )
-    ) {
+@Test func `sync marks issues no longer labeled as orphaned`() async {
+    // DB has both issues; fetch returns only one → the other is orphaned.
+    let orphanedRecord = ImportedIssueRecord(from: sampleIssueKLA15, importedAt: Date(timeIntervalSince1970: 0))
+
+    let store = TestStore(initialState: MeisterFeature.State()) {
         MeisterFeature()
     } withDependencies: {
-        $0.linearAPIClient.fetchIssue = { identifier in
-            #expect(identifier == "KLA-15")
-            return sampleIssueKLA15
-        }
-        $0.databaseClient.saveImportedIssue = { _ in }
+        $0.linearAPIClient.fetchLabeledIssues = { _ in [sampleIssue] }
+        $0.linearAPIClient.fetchWorkflowStatesByTeam = { sampleWorkflowStates }
+        $0.databaseClient.fetchImportedIssuesExcludingWorktreeQueues = { [orphanedRecord] }
+        $0.databaseClient.batchSaveImportedIssues = { _ in }
+        $0.databaseClient.markOrphanedIssues = { _, _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
     }
 
-    await store.send(.importSubmitted) {
-        $0.isImporting = true
-        $0.importText = ""
+    await store.send(.onAppear) {
+        $0.syncStatus = .syncing
     }
 
-    await store.receive(\.issueImported.success) {
-        $0.isImporting = false
-        $0.columns[id: "state-progress"]?.issues = [sampleIssueKLA15]
+    var orphanedIssue = sampleIssueKLA15
+    orphanedIssue.isOrphaned = true
+
+    await store.receive(\.syncCompleted.success) {
+        $0.workflowStatesByTeam = sampleWorkflowStates
+        $0.columns = MeisterFeature.rebuildColumns(from: [sampleIssue, orphanedIssue])
+        $0.syncStatus = .succeeded
+    }
+
+    await store.receive(\.syncIndicatorReset) {
+        $0.syncStatus = .idle
     }
 }
 
-@Test func `move issue optimistic success`() async {
+@Test func `sync failure sets error status`() async {
+    struct TestError: Error, Equatable {}
+
+    let store = TestStore(initialState: MeisterFeature.State()) {
+        MeisterFeature()
+    } withDependencies: {
+        $0.linearAPIClient.fetchLabeledIssues = { _ in throw TestError() }
+        $0.linearAPIClient.fetchWorkflowStatesByTeam = { [:] }
+        $0.databaseClient.fetchImportedIssuesExcludingWorktreeQueues = { [] }
+    }
+
+    await store.send(.onAppear) {
+        $0.syncStatus = .syncing
+    }
+
+    await store.receive(\.syncCompleted.failure) { state in
+        if case .failed = state.syncStatus {
+            // OK — specific message depends on localizedDescription
+        } else {
+            Issue.record("Expected syncStatus to be .failed")
+        }
+    }
+}
+
+// MARK: - Move-to-status Tests
+
+@Test func `move issue resolves team-specific workflow state`() async {
     var todoWithIssue = todoColumn
     todoWithIssue.issues = [sampleIssue]
 
-    let movedIssue = LinearIssue(
-        id: sampleIssue.id,
-        identifier: sampleIssue.identifier,
-        title: sampleIssue.title,
-        status: inProgressColumn.name,
-        statusId: inProgressColumn.id,
-        statusType: inProgressColumn.type,
-        projectName: sampleIssue.projectName,
-        assigneeName: sampleIssue.assigneeName,
-        priority: sampleIssue.priority,
-        labels: sampleIssue.labels,
-        description: sampleIssue.description,
-        url: sampleIssue.url,
-        createdAt: sampleIssue.createdAt,
-        updatedAt: sampleIssue.updatedAt
+    let movedIssue = sampleIssue.withUpdatedStatus(
+        status: "In Progress",
+        statusId: "state-progress",
+        statusType: "started"
     )
 
     let store = TestStore(
         initialState: MeisterFeature.State(
-            columns: [
-                todoWithIssue,
-                .init(id: inProgressColumn.id, name: inProgressColumn.name, type: inProgressColumn.type),
-                .init(id: doneColumn.id, name: doneColumn.name, type: doneColumn.type)
-            ]
+            columns: [todoWithIssue, inProgressColumn, doneColumn],
+            workflowStatesByTeam: sampleWorkflowStates
         )
     ) {
         MeisterFeature()
     } withDependencies: {
-        $0.linearAPIClient.updateIssueStatus = { _, _ in }
+        $0.linearAPIClient.updateIssueStatus = { issueId, stateId in
+            #expect(issueId == "issue-1")
+            #expect(stateId == "state-progress")
+        }
         $0.databaseClient.updateIssueStatus = { _, _, _, _ in }
     }
 
     await store.send(.issueMoved(
         issueId: sampleIssue.id,
-        fromColumnId: todoColumn.id,
-        toColumnId: inProgressColumn.id
+        fromColumnId: "unstarted",
+        toColumnId: "started"
     )) {
-        $0.columns[id: todoColumn.id]?.issues = []
-        $0.columns[id: inProgressColumn.id]?.issues = [movedIssue]
+        $0.columns[id: "unstarted"]?.issues = []
+        $0.columns[id: "started"]?.issues = [movedIssue]
     }
 
     await store.receive(\.statusUpdateSucceeded)
@@ -168,30 +199,16 @@ private let sampleIssueKLA15 = LinearIssue(
     var todoWithIssue = todoColumn
     todoWithIssue.issues = [sampleIssue]
 
-    let movedIssue = LinearIssue(
-        id: sampleIssue.id,
-        identifier: sampleIssue.identifier,
-        title: sampleIssue.title,
-        status: inProgressColumn.name,
-        statusId: inProgressColumn.id,
-        statusType: inProgressColumn.type,
-        projectName: sampleIssue.projectName,
-        assigneeName: sampleIssue.assigneeName,
-        priority: sampleIssue.priority,
-        labels: sampleIssue.labels,
-        description: sampleIssue.description,
-        url: sampleIssue.url,
-        createdAt: sampleIssue.createdAt,
-        updatedAt: sampleIssue.updatedAt
+    let movedIssue = sampleIssue.withUpdatedStatus(
+        status: "In Progress",
+        statusId: "state-progress",
+        statusType: "started"
     )
 
     let store = TestStore(
         initialState: MeisterFeature.State(
-            columns: [
-                todoWithIssue,
-                .init(id: inProgressColumn.id, name: inProgressColumn.name, type: inProgressColumn.type),
-                .init(id: doneColumn.id, name: doneColumn.name, type: doneColumn.type)
-            ]
+            columns: [todoWithIssue, inProgressColumn, doneColumn],
+            workflowStatesByTeam: sampleWorkflowStates
         )
     ) {
         MeisterFeature()
@@ -203,17 +220,17 @@ private let sampleIssueKLA15 = LinearIssue(
 
     await store.send(.issueMoved(
         issueId: sampleIssue.id,
-        fromColumnId: todoColumn.id,
-        toColumnId: inProgressColumn.id
+        fromColumnId: "unstarted",
+        toColumnId: "started"
     )) {
-        $0.columns[id: todoColumn.id]?.issues = []
-        $0.columns[id: inProgressColumn.id]?.issues = [movedIssue]
+        $0.columns[id: "unstarted"]?.issues = []
+        $0.columns[id: "started"]?.issues = [movedIssue]
     }
 
     await store.receive(\.statusUpdateFailed) {
-        $0.columns[id: inProgressColumn.id]?.issues = []
-        $0.columns[id: todoColumn.id]?.issues = [sampleIssue]
-        $0.error = "issueNotFound(\"issue-1\")"
+        $0.columns[id: "started"]?.issues = []
+        $0.columns[id: "unstarted"]?.issues = [sampleIssue]
+        $0.error = "Failed to update issue status"
     }
 }
 
@@ -223,10 +240,7 @@ private let sampleIssueKLA15 = LinearIssue(
 
     let store = TestStore(
         initialState: MeisterFeature.State(
-            columns: [
-                todoWithIssue,
-                .init(id: inProgressColumn.id, name: inProgressColumn.name, type: inProgressColumn.type)
-            ]
+            columns: [todoWithIssue, inProgressColumn]
         )
     ) {
         MeisterFeature()
@@ -235,6 +249,6 @@ private let sampleIssueKLA15 = LinearIssue(
     }
 
     await store.send(.removeIssueTapped(issueId: sampleIssue.id)) {
-        $0.columns[id: todoColumn.id]?.issues = []
+        $0.columns[id: "unstarted"]?.issues = []
     }
 }

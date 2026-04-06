@@ -2,36 +2,60 @@ import ComposableArchitecture
 import Foundation
 
 @Reducer
+// swiftlint:disable:next type_body_length
 struct MeisterFeature {
     @ObservableState
     struct State: Equatable {
         var columns: IdentifiedArrayOf<KanbanColumn> = []
-        var workflowStates: [LinearWorkflowState] = []
-        var importText: String = ""
-        var isImporting: Bool = false
-        var isRefreshing: Bool = false
+        var workflowStatesByTeam: WorkflowStatesByTeam = [:]
+        var syncStatus: SyncStatus = .idle
         var error: String?
     }
 
-    struct KanbanColumn: Equatable, Identifiable {
-        let id: String
-        let name: String
-        let type: String
-        var issues: [LinearIssue] = []
+    enum SyncStatus: Equatable {
+        case idle
+        case syncing
+        case succeeded
+        case failed(String)
     }
+
+    struct SyncResult: Equatable {
+        let issues: [LinearIssue]
+        let workflowStatesByTeam: WorkflowStatesByTeam
+        let orphanedIds: Set<String>
+        let restoredIds: Set<String>
+    }
+
+    struct KanbanColumn: Equatable, Identifiable {
+        let id: String // statusType string
+        let name: String
+        var issues: [LinearIssue] = []
+
+        nonisolated static func displayName(forType type: String) -> String {
+            switch type {
+            case "backlog": "Backlog"
+            case "unstarted": "To Do"
+            case "started": "In Progress"
+            case "completed": "Done"
+            case "canceled": "Canceled"
+            default: "Unknown"
+            }
+        }
+    }
+
+    nonisolated static let orderedColumnTypes = ["backlog", "unstarted", "started", "completed", "canceled"]
+    nonisolated static let unknownColumnId = "unknown"
+    nonisolated static let syncLabel = "klause"
 
     enum Action: BindableAction, Equatable {
         case binding(BindingAction<State>)
         case onAppear
-        case importSubmitted
-        case issueImported(TaskResult<LinearIssue>)
-        case refreshAllIssues
-        case issuesRefreshed(TaskResult<[LinearIssue]>)
-        case workflowStatesLoaded(TaskResult<[LinearWorkflowState]>)
-        case issuesLoadedFromDB([ImportedIssueRecord])
+        case refreshTapped
+        case syncCompleted(TaskResult<SyncResult>)
+        case syncIndicatorReset
         case issueDropped(issueId: String, onColumnId: String)
         case issueMoved(issueId: String, fromColumnId: String, toColumnId: String)
-        case moveToStatusTapped(issueId: String, statusId: String)
+        case moveToStatusTapped(issueId: String, targetStatusType: String)
         case statusUpdateSucceeded(issueId: String)
         case statusUpdateFailed(issueId: String, restoreToColumnId: String, originalIssue: LinearIssue)
         case removeIssueTapped(issueId: String)
@@ -52,6 +76,7 @@ struct MeisterFeature {
     @Dependency(\.databaseClient) var databaseClient
     @Dependency(\.date) var date
 
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     var body: some Reducer<State, Action> {
         BindingReducer()
         Reduce { state, action in
@@ -59,124 +84,72 @@ struct MeisterFeature {
             case .binding:
                 return .none
 
-            case .onAppear:
-                return .run { send in
-                    async let statesResult: [LinearWorkflowState] = linearAPIClient.fetchWorkflowStates()
-                    async let recordsResult: [ImportedIssueRecord] = databaseClient.fetchImportedIssuesExcludingWorktreeQueues()
-                    do {
-                        let states = try await statesResult
-                        await send(.workflowStatesLoaded(.success(states)))
-                    } catch {
-                        await send(.workflowStatesLoaded(.failure(error)))
+            case .onAppear, .refreshTapped:
+                state.syncStatus = .syncing
+                return .merge(
+                    .cancel(id: "MeisterFeature.syncIndicatorReset"),
+                    .run { [linearAPIClient, databaseClient] send in
+                        await send(.syncCompleted(TaskResult {
+                            try await performSync(
+                                linearAPIClient: linearAPIClient,
+                                databaseClient: databaseClient
+                            )
+                        }))
                     }
-                    let records = await (try? recordsResult) ?? []
-                    await send(.issuesLoadedFromDB(records))
-                }
-                .cancellable(id: "MeisterFeature.load", cancelInFlight: true)
-
-            case .importSubmitted:
-                let text = state.importText.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !text.isEmpty else { return .none }
-                let identifier = MeisterFeature.extractIdentifier(from: text)
-                state.isImporting = true
-                state.importText = ""
-                return .run { send in
-                    await send(.issueImported(
-                        TaskResult { try await linearAPIClient.fetchIssue(identifier) }
-                    ))
-                }
-
-            case let .issueImported(.success(issue)):
-                state.isImporting = false
-                let alreadyExists = state.columns.contains { $0.issues.contains { $0.id == issue.id } }
-                guard !alreadyExists else { return .none }
-                if state.columns[id: issue.statusId] != nil {
-                    state.columns[id: issue.statusId]?.issues.append(issue)
-                } else if let firstColumn = state.columns.first {
-                    state.columns[id: firstColumn.id]?.issues.append(issue)
-                }
-                let record = ImportedIssueRecord(from: issue, importedAt: date.now)
-                return .run { _ in
-                    try await databaseClient.saveImportedIssue(record)
-                }
-
-            case let .issueImported(.failure(error)):
-                state.isImporting = false
-                state.error = String(describing: error)
-                return .none
-
-            case .refreshAllIssues:
-                state.isRefreshing = true
-                let allIdentifiers = state.columns.flatMap { $0.issues.map(\.identifier) }
-                return .run { send in
-                    await send(.issuesRefreshed(
-                        TaskResult { try await linearAPIClient.fetchIssues(allIdentifiers) }
-                    ))
-                }
-                .cancellable(id: "MeisterFeature.refresh", cancelInFlight: true)
-
-            case let .issuesRefreshed(.success(issues)):
-                state.isRefreshing = false
-                for index in state.columns.indices {
-                    state.columns[index].issues = []
-                }
-                for issue in issues where state.columns[id: issue.statusId] != nil {
-                    state.columns[id: issue.statusId]?.issues.append(issue)
-                }
-                let now = date.now
-                let records = issues.map { ImportedIssueRecord(from: $0, importedAt: now) }
-                return .run { _ in
-                    try await databaseClient.batchSaveImportedIssues(records)
-                }
-
-            case .issuesRefreshed(.failure):
-                state.isRefreshing = false
-                return .none
-
-            case let .workflowStatesLoaded(.success(states)):
-                state.workflowStates = states
-                let existingIssues = Dictionary(
-                    grouping: state.columns.flatMap(\.issues),
-                    by: \.statusId
+                    .cancellable(id: "MeisterFeature.load", cancelInFlight: true)
                 )
-                state.columns = IdentifiedArrayOf(uniqueElements: states.map { workflowState in
-                    KanbanColumn(
-                        id: workflowState.id,
-                        name: workflowState.name,
-                        type: workflowState.type,
-                        issues: existingIssues[workflowState.id] ?? []
-                    )
-                })
-                return .none
 
-            case .workflowStatesLoaded(.failure):
-                return .none
-
-            case let .issuesLoadedFromDB(records):
-                for record in records {
-                    let issue = LinearIssue(from: record)
-                    if state.columns[id: issue.statusId] != nil {
-                        let alreadyExists = state.columns[id: issue.statusId]!.issues.contains {
-                            $0.id == issue.id
+            case let .syncCompleted(.success(result)):
+                state.workflowStatesByTeam = result.workflowStatesByTeam
+                state.columns = MeisterFeature.rebuildColumns(from: result.issues)
+                state.syncStatus = .succeeded
+                state.error = nil
+                let now = date.now
+                let records = result.issues.map { ImportedIssueRecord(from: $0, importedAt: now) }
+                return .merge(
+                    .run { [databaseClient] send in
+                        do {
+                            try await databaseClient.batchSaveImportedIssues(records)
+                        } catch {
+                            await send(.set(\.error, "Failed to save sync results: \(error.localizedDescription)"))
                         }
-                        if !alreadyExists {
-                            state.columns[id: issue.statusId]?.issues.append(issue)
-                        }
+                    },
+                    .run { send in
+                        try await Task.sleep(nanoseconds: 2_000_000_000)
+                        await send(.syncIndicatorReset)
                     }
+                    .cancellable(id: "MeisterFeature.syncIndicatorReset", cancelInFlight: true)
+                )
+
+            case let .syncCompleted(.failure(error)):
+                state.syncStatus = .failed(error.localizedDescription)
+                return .none
+
+            case .syncIndicatorReset:
+                if state.syncStatus == .succeeded {
+                    state.syncStatus = .idle
                 }
                 return .none
 
             case let .issueMoved(issueId, fromColumnId, toColumnId):
                 guard let sourceColumn = state.columns[id: fromColumnId],
                       let issueIndex = sourceColumn.issues.firstIndex(where: { $0.id == issueId }),
-                      let targetColumn = state.columns[id: toColumnId]
+                      state.columns[id: toColumnId] != nil
                 else { return .none }
 
                 let originalIssue = sourceColumn.issues[issueIndex]
+                // Resolve the team-specific workflow state for the target type
+                guard let teamStates = state.workflowStatesByTeam[originalIssue.teamId],
+                      let targetState = teamStates.first(where: { $0.type == toColumnId })
+                else {
+                    // No matching workflow state for this team — cannot move
+                    return .none
+                }
+
                 let movedIssue = originalIssue.withUpdatedStatus(
-                    status: targetColumn.name,
-                    statusId: targetColumn.id,
-                    statusType: targetColumn.type
+                    status: targetState.name,
+                    statusId: targetState.id,
+                    statusType: toColumnId
                 )
 
                 // Optimistic update
@@ -184,9 +157,9 @@ struct MeisterFeature {
                 state.columns[id: toColumnId]?.issues.append(movedIssue)
 
                 return .run { send in
-                    try await linearAPIClient.updateIssueStatus(issueId, toColumnId)
+                    try await linearAPIClient.updateIssueStatus(issueId, targetState.id)
                     try await databaseClient.updateIssueStatus(
-                        issueId, targetColumn.name, toColumnId, targetColumn.type
+                        issueId, targetState.name, targetState.id, toColumnId
                     )
                     await send(.statusUpdateSucceeded(issueId: issueId))
                 } catch: { _, send in
@@ -208,21 +181,21 @@ struct MeisterFeature {
                 // Issue not in any column — coming from a worktree
                 return .send(.issueDroppedFromWorktree(issueId: issueId, onColumnId: onColumnId))
 
-            case let .moveToStatusTapped(issueId, statusId):
+            case let .moveToStatusTapped(issueId, targetStatusType):
                 guard let fromColumn = state.columnContainingIssue(issueId) else { return .none }
                 return .send(.issueMoved(
                     issueId: issueId,
                     fromColumnId: fromColumn.id,
-                    toColumnId: statusId
+                    toColumnId: targetStatusType
                 ))
 
             case .statusUpdateSucceeded:
                 return .none
 
-            case let .statusUpdateFailed(issueId, restoreToColumnId, originalIssue):
-                state.removeIssueFromAllColumns(issueId)
+            case let .statusUpdateFailed(_, restoreToColumnId, originalIssue):
+                state.removeIssueFromAllColumns(originalIssue.id)
                 state.columns[id: restoreToColumnId]?.issues.append(originalIssue)
-                state.error = String(describing: LinearAPIError.issueNotFound(issueId))
+                state.error = "Failed to update issue status"
                 return .none
 
             case let .removeIssueTapped(issueId):
@@ -243,8 +216,9 @@ struct MeisterFeature {
                 guard !state.columns.isEmpty else { return .none }
                 let alreadyPresent = state.columns.contains { $0.issues.contains { $0.id == issue.id } }
                 guard !alreadyPresent else { return .none }
-                if state.columns[id: issue.statusId] != nil {
-                    state.columns[id: issue.statusId]?.issues.append(issue)
+                let targetColumnId = MeisterFeature.columnId(forType: issue.statusType)
+                if state.columns[id: targetColumnId] != nil {
+                    state.columns[id: targetColumnId]?.issues.append(issue)
                 } else if let firstColumn = state.columns.first {
                     state.columns[id: firstColumn.id]?.issues.append(issue)
                 }
@@ -262,10 +236,13 @@ struct MeisterFeature {
                 guard !alreadyPresent else { return .none }
                 if state.columns[id: onColumnId] != nil {
                     state.columns[id: onColumnId]?.issues.append(issue)
-                } else if state.columns[id: issue.statusId] != nil {
-                    state.columns[id: issue.statusId]?.issues.append(issue)
-                } else if let firstColumn = state.columns.first {
-                    state.columns[id: firstColumn.id]?.issues.append(issue)
+                } else {
+                    let typeColumnId = MeisterFeature.columnId(forType: issue.statusType)
+                    if state.columns[id: typeColumnId] != nil {
+                        state.columns[id: typeColumnId]?.issues.append(issue)
+                    } else if let firstColumn = state.columns.first {
+                        state.columns[id: firstColumn.id]?.issues.append(issue)
+                    }
                 }
                 return .send(.delegate(.issueReturnedFromWorktreeByDrop(issueId: issue.id)))
 
@@ -275,22 +252,70 @@ struct MeisterFeature {
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Column helpers
 
-    nonisolated static func extractIdentifier(from text: String) -> String {
-        if let url = URL(string: text),
-           let host = url.host,
-           host.contains("linear.app")
-        {
-            let components = url.pathComponents
-            if let issueIndex = components.firstIndex(of: "issue"),
-               issueIndex + 1 < components.count
-            {
-                return components[issueIndex + 1]
-            }
-        }
-        return text
+    nonisolated static func columnId(forType type: String) -> String {
+        orderedColumnTypes.contains(type) ? type : unknownColumnId
     }
+
+    nonisolated static func rebuildColumns(from issues: [LinearIssue]) -> IdentifiedArrayOf<KanbanColumn> {
+        let grouped = Dictionary(grouping: issues, by: { columnId(forType: $0.statusType) })
+        var columns: [KanbanColumn] = orderedColumnTypes.map { type in
+            KanbanColumn(
+                id: type,
+                name: KanbanColumn.displayName(forType: type),
+                issues: grouped[type] ?? []
+            )
+        }
+        if let unknownIssues = grouped[unknownColumnId], !unknownIssues.isEmpty {
+            columns.append(KanbanColumn(
+                id: unknownColumnId,
+                name: KanbanColumn.displayName(forType: unknownColumnId),
+                issues: unknownIssues
+            ))
+        }
+        return IdentifiedArrayOf(uniqueElements: columns)
+    }
+}
+
+// MARK: - Sync logic
+
+nonisolated private func performSync(
+    linearAPIClient: LinearAPIClient,
+    databaseClient: DatabaseClient
+) async throws -> MeisterFeature.SyncResult {
+    async let issuesTask = linearAPIClient.fetchLabeledIssues(MeisterFeature.syncLabel)
+    async let statesTask = linearAPIClient.fetchWorkflowStatesByTeam()
+
+    let fetchedIssues = try await issuesTask
+    let workflowStatesByTeam = try await statesTask
+    let dbRecords = try await databaseClient.fetchImportedIssuesExcludingWorktreeQueues()
+
+    let fetchedIds = Set(fetchedIssues.map(\.id))
+    let dbIds = Set(dbRecords.map(\.linearId))
+
+    // Orphaned: in DB but not in the fresh fetch
+    let orphanedIds = dbIds.subtracting(fetchedIds)
+
+    // Restored: previously orphaned but now present in the fetch
+    let previouslyOrphaned = Set(dbRecords.filter(\.isOrphaned).map(\.linearId))
+    let restoredIds = fetchedIds.intersection(previouslyOrphaned)
+
+    // Merge fetched issues with still-orphaned DB issues so they remain visible in the kanban
+    let stillOrphanedRecords = dbRecords.filter { orphanedIds.contains($0.linearId) }
+    var mergedIssues = fetchedIssues
+    for record in stillOrphanedRecords {
+        var issue = LinearIssue(from: record)
+        issue.isOrphaned = true
+        mergedIssues.append(issue)
+    }
+
+    return MeisterFeature.SyncResult(
+        issues: mergedIssues,
+        workflowStatesByTeam: workflowStatesByTeam,
+        orphanedIds: orphanedIds,
+        restoredIds: restoredIds
+    )
 }
 
 // MARK: - State Helpers
@@ -314,9 +339,11 @@ extension LinearIssue {
         LinearIssue(
             id: id, identifier: identifier, title: title,
             status: status, statusId: statusId, statusType: statusType,
+            teamId: teamId, teamName: teamName,
             projectName: projectName, assigneeName: assigneeName,
             priority: priority, labels: labels, description: description,
-            url: url, createdAt: createdAt, updatedAt: updatedAt
+            url: url, createdAt: createdAt, updatedAt: updatedAt,
+            isOrphaned: isOrphaned
         )
     }
 }
@@ -339,6 +366,8 @@ extension LinearIssue {
             status: record.status,
             statusId: record.statusId,
             statusType: record.statusType,
+            teamId: record.teamId,
+            teamName: record.teamName,
             projectName: record.projectName,
             assigneeName: record.assigneeName,
             priority: record.priority,
@@ -346,7 +375,8 @@ extension LinearIssue {
             description: record.description,
             url: record.url,
             createdAt: record.createdAt,
-            updatedAt: record.updatedAt
+            updatedAt: record.updatedAt,
+            isOrphaned: record.isOrphaned
         )
     }
 }
@@ -367,6 +397,8 @@ extension ImportedIssueRecord {
             status: issue.status,
             statusId: issue.statusId,
             statusType: issue.statusType,
+            teamId: issue.teamId,
+            teamName: issue.teamName,
             projectName: issue.projectName,
             assigneeName: issue.assigneeName,
             priority: issue.priority,
@@ -376,7 +408,8 @@ extension ImportedIssueRecord {
             createdAt: issue.createdAt,
             updatedAt: issue.updatedAt,
             importedAt: ISO8601DateFormatter().string(from: importedAt),
-            sortOrder: 0
+            sortOrder: 0,
+            isOrphaned: issue.isOrphaned
         )
     }
 }

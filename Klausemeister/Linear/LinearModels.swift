@@ -30,6 +30,8 @@ struct LinearIssue: Equatable, Codable {
     let status: String
     let statusId: String
     let statusType: String
+    let teamId: String
+    let teamName: String
     let projectName: String?
     let assigneeName: String?
     let priority: Int
@@ -38,6 +40,7 @@ struct LinearIssue: Equatable, Codable {
     let url: String
     let createdAt: String
     let updatedAt: String
+    var isOrphaned: Bool = false
 }
 
 struct LinearWorkflowState: Equatable, Identifiable {
@@ -45,4 +48,7 @@ struct LinearWorkflowState: Equatable, Identifiable {
     let name: String
     let type: String
     let position: Double
+    let teamId: String
 }
+
+typealias WorkflowStatesByTeam = [String: [LinearWorkflowState]]
