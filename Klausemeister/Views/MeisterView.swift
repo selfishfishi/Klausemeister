@@ -17,9 +17,11 @@ struct MeisterView: View {
                     .font(.headline)
                     .foregroundStyle(.primary)
                 Spacer()
-                SyncIndicatorButton(syncStatus: store.syncStatus) {
-                    store.send(.refreshTapped)
-                }
+                SyncIndicatorMenu(
+                    syncStatus: store.syncStatus,
+                    onRefresh: { store.send(.refreshTapped) },
+                    onReloadMetadata: { store.send(.refreshLinearMetadataTapped) }
+                )
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -59,19 +61,35 @@ struct MeisterView: View {
 
 // MARK: - Sync Indicator Button
 
-private struct SyncIndicatorButton: View {
+private struct SyncIndicatorMenu: View {
     let syncStatus: MeisterFeature.SyncStatus
-    let action: () -> Void
+    let onRefresh: () -> Void
+    let onReloadMetadata: () -> Void
 
     @Environment(\.themeColors) private var themeColors
 
     var body: some View {
-        Button(action: action) {
+        Menu {
+            Button {
+                onRefresh()
+            } label: {
+                Label("Refresh issues", systemImage: "arrow.clockwise")
+            }
+            Button {
+                onReloadMetadata()
+            } label: {
+                Label("Reload Linear metadata", systemImage: "arrow.triangle.2.circlepath")
+            }
+        } label: {
             image
                 .imageScale(.small)
                 .frame(width: 18, height: 18)
+        } primaryAction: {
+            onRefresh()
         }
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
         .disabled(syncStatus == .syncing)
         .help(helpText)
     }

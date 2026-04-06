@@ -12,14 +12,10 @@ struct ImportedIssueRecord: Codable, Equatable, FetchableRecord, PersistableReco
     var statusId: String
     var statusType: String
     var teamId: String
-    var teamName: String
     var projectName: String?
-    var assigneeName: String?
-    var priority: Int
     var labels: String
     var description: String?
     var url: String
-    var createdAt: String
     var updatedAt: String
     var importedAt: String
     var sortOrder: Int

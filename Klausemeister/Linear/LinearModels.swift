@@ -31,14 +31,10 @@ struct LinearIssue: Equatable, Codable {
     let statusId: String
     let statusType: String
     let teamId: String
-    let teamName: String
     let projectName: String?
-    let assigneeName: String?
-    let priority: Int
     let labels: [String]
     let description: String?
     let url: String
-    let createdAt: String
     let updatedAt: String
     var isOrphaned: Bool = false
 }

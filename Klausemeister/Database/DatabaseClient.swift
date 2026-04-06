@@ -15,6 +15,8 @@ struct DatabaseClient {
     var fetchImportedIssue: @Sendable (_ linearId: String) async throws -> ImportedIssueRecord?
     var fetchImportedIssueByIdentifier: @Sendable (_ identifier: String) async throws -> ImportedIssueRecord?
     var markOrphanedIssues: @Sendable (_ linearIds: [String], _ isOrphaned: Bool) async throws -> Void
+    var fetchWorkflowStates: @Sendable () async throws -> [LinearWorkflowStateRecord]
+    var saveWorkflowStates: @Sendable (_ records: [LinearWorkflowStateRecord]) async throws -> Void
 }
 
 extension DatabaseClient: DependencyKey {
@@ -104,6 +106,19 @@ extension DatabaseClient: DependencyKey {
                         arguments: StatementArguments(arguments)
                     )
                 }
+            },
+            fetchWorkflowStates: {
+                try await dbQueue.read { db in
+                    try LinearWorkflowStateRecord.fetchAll(db)
+                }
+            },
+            saveWorkflowStates: { records in
+                try await dbQueue.write { db in
+                    try db.execute(sql: "DELETE FROM linear_workflow_states")
+                    for record in records {
+                        try record.save(db)
+                    }
+                }
             }
         )
     }()
@@ -120,7 +135,9 @@ extension DatabaseClient: DependencyKey {
         fetchUnqueuedImportedIssues: unimplemented("DatabaseClient.fetchUnqueuedImportedIssues"),
         fetchImportedIssue: unimplemented("DatabaseClient.fetchImportedIssue"),
         fetchImportedIssueByIdentifier: unimplemented("DatabaseClient.fetchImportedIssueByIdentifier"),
-        markOrphanedIssues: unimplemented("DatabaseClient.markOrphanedIssues")
+        markOrphanedIssues: unimplemented("DatabaseClient.markOrphanedIssues"),
+        fetchWorkflowStates: unimplemented("DatabaseClient.fetchWorkflowStates"),
+        saveWorkflowStates: unimplemented("DatabaseClient.saveWorkflowStates")
     )
 }
 
