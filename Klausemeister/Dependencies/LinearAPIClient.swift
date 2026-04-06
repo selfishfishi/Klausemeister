@@ -104,6 +104,10 @@ extension LinearAPIClient: DependencyKey {
             fetchLabeledIssues: { label in
                 let token = try await loadToken(keychainClient: keychainClient)
 
+                // Matches issues that are either:
+                //   1. Individually labeled with `label`, OR
+                //   2. In a project that is labeled with `label`
+                // Deduplicated by id at the merge step in MeisterFeature.performSync.
                 let query = """
                 query($filter: IssueFilter!, $after: String) {
                   issues(filter: $filter, first: 250, after: $after) {
@@ -121,12 +125,18 @@ extension LinearAPIClient: DependencyKey {
                 """
 
                 var allIssues: [LinearIssue] = []
+                var seenIds = Set<String>()
                 var cursor: String?
-                let pageLimit = 4 // 4 × 250 = 1000 max
+                let pageLimit = 10 // 10 × 250 = 2500 max
 
                 for _ in 0 ..< pageLimit {
                     var variables: [String: Any] = [
-                        "filter": ["labels": ["name": ["eq": label]]]
+                        "filter": [
+                            "or": [
+                                ["labels": ["name": ["eq": label]]],
+                                ["project": ["labels": ["name": ["eq": label]]]]
+                            ]
+                        ]
                     ]
                     if let cursor { variables["after"] = cursor }
 
@@ -135,7 +145,10 @@ extension LinearAPIClient: DependencyKey {
                     )
 
                     let page = try JSONDecoder().decode(LabeledIssuesResponse.self, from: data)
-                    allIssues.append(contentsOf: page.data.issues.nodes.map(\.linearIssue))
+                    for node in page.data.issues.nodes {
+                        guard seenIds.insert(node.id).inserted else { continue }
+                        allIssues.append(node.linearIssue)
+                    }
 
                     guard page.data.issues.pageInfo.hasNextPage,
                           let endCursor = page.data.issues.pageInfo.endCursor
