@@ -8,14 +8,12 @@ struct MeisterFeature {
         var columns: IdentifiedArrayOf<KanbanColumn> = []
         var workflowStatesByTeam: WorkflowStatesByTeam = [:]
         var syncStatus: SyncStatus = .idle
-        var error: String?
     }
 
     enum SyncStatus: Equatable {
         case idle
         case syncing
         case succeeded
-        case failed(String)
     }
 
     struct SyncResult: Equatable {
@@ -51,7 +49,6 @@ struct MeisterFeature {
         case onAppear
         case refreshTapped
         case syncCompleted(TaskResult<SyncResult>)
-        case saveFailed(message: String)
         case syncIndicatorReset
         case issueDropped(issueId: String, onColumnId: String)
         case issueMoved(issueId: String, fromColumnId: String, toColumnId: String)
@@ -70,12 +67,17 @@ struct MeisterFeature {
         enum Delegate: Equatable {
             case issueAssignedToWorktree(issue: LinearIssue, worktreeId: String)
             case issueReturnedFromWorktreeByDrop(issueId: String)
+            case syncStarted
+            case syncSucceeded
+            case syncFailed(message: String)
+            case errorOccurred(message: String)
         }
     }
 
     @Dependency(\.linearAPIClient) var linearAPIClient
     @Dependency(\.databaseClient) var databaseClient
     @Dependency(\.date) var date
+    @Dependency(\.continuousClock) var clock
 
     var body: some Reducer<State, Action> {
         BindingReducer()
@@ -87,6 +89,7 @@ struct MeisterFeature {
             case .onAppear, .refreshTapped:
                 state.syncStatus = .syncing
                 return .merge(
+                    .send(.delegate(.syncStarted)),
                     .cancel(id: "MeisterFeature.syncIndicatorReset"),
                     .run { [linearAPIClient, databaseClient] send in
                         await send(.syncCompleted(TaskResult {
@@ -103,31 +106,29 @@ struct MeisterFeature {
                 state.workflowStatesByTeam = result.workflowStatesByTeam
                 state.columns = MeisterFeature.rebuildColumns(from: result.issues)
                 state.syncStatus = .succeeded
-                state.error = nil
                 let now = date.now
                 let records = result.issues.map { ImportedIssueRecord(from: $0, importedAt: now) }
                 return .merge(
+                    .send(.delegate(.syncSucceeded)),
                     .run { [databaseClient] send in
                         do {
                             try await databaseClient.batchSaveImportedIssues(records)
                         } catch {
-                            await send(.saveFailed(message: "Failed to save sync results: \(error.localizedDescription)"))
+                            await send(.delegate(.errorOccurred(
+                                message: "Failed to save sync results: \(error.localizedDescription)"
+                            )))
                         }
                     },
-                    .run { send in
-                        try await Task.sleep(nanoseconds: 2_000_000_000)
+                    .run { [clock] send in
+                        try await clock.sleep(for: .seconds(2))
                         await send(.syncIndicatorReset)
                     }
                     .cancellable(id: "MeisterFeature.syncIndicatorReset", cancelInFlight: true)
                 )
 
             case let .syncCompleted(.failure(error)):
-                state.syncStatus = .failed(MeisterFeature.describe(error))
-                return .none
-
-            case let .saveFailed(message):
-                state.error = message
-                return .none
+                state.syncStatus = .idle
+                return .send(.delegate(.syncFailed(message: MeisterFeature.describe(error))))
 
             case .syncIndicatorReset:
                 if state.syncStatus == .succeeded {
@@ -199,8 +200,7 @@ struct MeisterFeature {
             case let .statusUpdateFailed(_, restoreToColumnId, originalIssue):
                 state.removeIssueFromAllColumns(originalIssue.id)
                 state.columns[id: restoreToColumnId]?.issues.append(originalIssue)
-                state.error = "Failed to update issue status"
-                return .none
+                return .send(.delegate(.errorOccurred(message: "Failed to update issue status")))
 
             case let .removeIssueTapped(issueId):
                 state.removeIssueFromAllColumns(issueId)

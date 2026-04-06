@@ -14,9 +14,6 @@ struct LinearConnectView: View {
             VStack(spacing: 48) {
                 logoSection
                 connectButton
-                if case let .failed(message) = status {
-                    errorBanner(message)
-                }
             }
             .frame(maxWidth: 400)
 
@@ -81,20 +78,5 @@ struct LinearConnectView: View {
         }
         .buttonStyle(.plain)
         .disabled(status == .authenticating)
-    }
-
-    // MARK: - Error
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(themeColors.warningColor)
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 8))
     }
 }

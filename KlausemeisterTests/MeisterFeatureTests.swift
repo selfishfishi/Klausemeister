@@ -61,6 +61,7 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
 // MARK: - Sync Tests
 
 @Test func `sync populates columns by status type`() async {
+    let testClock = TestClock()
     let store = TestStore(initialState: MeisterFeature.State()) {
         MeisterFeature()
     } withDependencies: {
@@ -73,35 +74,31 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
         $0.databaseClient.batchSaveImportedIssues = { _ in }
         $0.databaseClient.markOrphanedIssues = { _, _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
+        $0.continuousClock = testClock
     }
 
     await store.send(.onAppear) {
         $0.syncStatus = .syncing
     }
-
-    let expectedResult = MeisterFeature.SyncResult(
-        issues: [sampleIssue, sampleIssueKLA15],
-        workflowStatesByTeam: sampleWorkflowStates,
-        orphanedIds: [],
-        restoredIds: []
-    )
+    await store.receive(\.delegate.syncStarted)
 
     await store.receive(\.syncCompleted.success) {
         $0.workflowStatesByTeam = sampleWorkflowStates
         $0.columns = MeisterFeature.rebuildColumns(from: [sampleIssue, sampleIssueKLA15])
         $0.syncStatus = .succeeded
     }
+    await store.receive(\.delegate.syncSucceeded)
 
+    await testClock.advance(by: .seconds(2))
     await store.receive(\.syncIndicatorReset) {
         $0.syncStatus = .idle
     }
-
-    _ = expectedResult
 }
 
 @Test func `sync marks issues no longer labeled as orphaned`() async {
     // DB has both issues; fetch returns only one → the other is orphaned.
     let orphanedRecord = ImportedIssueRecord(from: sampleIssueKLA15, importedAt: Date(timeIntervalSince1970: 0))
+    let testClock = TestClock()
 
     let store = TestStore(initialState: MeisterFeature.State()) {
         MeisterFeature()
@@ -112,11 +109,13 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
         $0.databaseClient.batchSaveImportedIssues = { _ in }
         $0.databaseClient.markOrphanedIssues = { _, _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
+        $0.continuousClock = testClock
     }
 
     await store.send(.onAppear) {
         $0.syncStatus = .syncing
     }
+    await store.receive(\.delegate.syncStarted)
 
     var orphanedIssue = sampleIssueKLA15
     orphanedIssue.isOrphaned = true
@@ -126,13 +125,15 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
         $0.columns = MeisterFeature.rebuildColumns(from: [sampleIssue, orphanedIssue])
         $0.syncStatus = .succeeded
     }
+    await store.receive(\.delegate.syncSucceeded)
 
+    await testClock.advance(by: .seconds(2))
     await store.receive(\.syncIndicatorReset) {
         $0.syncStatus = .idle
     }
 }
 
-@Test func `sync failure sets error status`() async {
+@Test func `sync failure emits delegate and resets syncStatus`() async {
     struct TestError: Error, Equatable {}
 
     let store = TestStore(initialState: MeisterFeature.State()) {
@@ -146,14 +147,12 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
     await store.send(.onAppear) {
         $0.syncStatus = .syncing
     }
+    await store.receive(\.delegate.syncStarted)
 
-    await store.receive(\.syncCompleted.failure) { state in
-        if case .failed = state.syncStatus {
-            // OK — specific message depends on localizedDescription
-        } else {
-            Issue.record("Expected syncStatus to be .failed")
-        }
+    await store.receive(\.syncCompleted.failure) {
+        $0.syncStatus = .idle
     }
+    await store.receive(\.delegate.syncFailed)
 }
 
 // MARK: - Move-to-status Tests
@@ -230,8 +229,8 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
     await store.receive(\.statusUpdateFailed) {
         $0.columns[id: "started"]?.issues = []
         $0.columns[id: "unstarted"]?.issues = [sampleIssue]
-        $0.error = "Failed to update issue status"
     }
+    await store.receive(\.delegate.errorOccurred)
 }
 
 @Test func `remove issue`() async {
