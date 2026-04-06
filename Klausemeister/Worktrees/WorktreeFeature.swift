@@ -41,9 +41,7 @@ struct WorktreeFeature {
         var repositories: IdentifiedArrayOf<Repository> = []
         var worktrees: IdentifiedArrayOf<Worktree> = []
         var isCreatingWorktree: Bool = false
-        var newWorktreeName: String = ""
         var selectedWorktreeId: String?
-        var selectedRepoId: String?
         var error: String?
         @Presents var alert: AlertState<Action.Alert>?
 
@@ -66,7 +64,7 @@ struct WorktreeFeature {
             queueItems: [WorktreeQueueItemRecord],
             issues: [ImportedIssueRecord]
         )
-        case createWorktreeTapped
+        case createWorktreeTapped(repoId: String, name: String)
         case worktreeCreated(TaskResult<WorktreeRecord>)
         case confirmDeleteTapped(worktreeId: String)
         case deleteWorktreeTapped(worktreeId: String)
@@ -150,9 +148,6 @@ struct WorktreeFeature {
                 state.repositories = IdentifiedArrayOf(uniqueElements: repoRecords.map { record in
                     Repository(id: record.repoId, name: record.name, path: record.path, sortOrder: record.sortOrder)
                 })
-                if state.selectedRepoId == nil {
-                    state.selectedRepoId = state.repositories.first?.id
-                }
 
                 let issuesByLinearId = Dictionary(
                     uniqueKeysWithValues: issueRecords.map { ($0.linearId, LinearIssue(from: $0)) }
@@ -210,25 +205,13 @@ struct WorktreeFeature {
                 state.worktrees[id: worktreeId]?.currentBranch = branchName
                 return .none
 
-            case .createWorktreeTapped:
-                guard let repoId = state.selectedRepoId,
-                      let repo = state.repositories[id: repoId]
-                else {
-                    state.alert = AlertState {
-                        TextState("No Repository Selected")
-                    } actions: {
-                        ButtonState(role: .cancel) { TextState("OK") }
-                    } message: {
-                        TextState("Add a repository before creating worktrees.")
-                    }
-                    return .none
-                }
-                let name = state.newWorktreeName.trimmingCharacters(in: .whitespacesAndNewlines)
-                let worktreeName = name.isEmpty ? state.nextDefaultName : name
+            case let .createWorktreeTapped(repoId, name):
+                guard let repo = state.repositories[id: repoId] else { return .none }
+                let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let worktreeName = trimmed.isEmpty ? state.nextDefaultName : trimmed
                 state.isCreatingWorktree = true
-                state.newWorktreeName = ""
                 let repoPath = repo.path
-                return .run { [repoId] send in
+                return .run { send in
                     let basePath = UserDefaults.standard.string(
                         forKey: WorktreeConfig.userDefaultsBasePathKey
                     ) ?? WorktreeConfig.defaultBasePath
@@ -621,9 +604,6 @@ struct WorktreeFeature {
                     sortOrder: record.sortOrder
                 )
                 state.repositories.append(repo)
-                if state.selectedRepoId == nil {
-                    state.selectedRepoId = repo.id
-                }
                 return .none
 
             case .repoAdded(.failure):
@@ -667,9 +647,6 @@ struct WorktreeFeature {
                     state.worktrees.remove(id: id)
                 }
                 state.repositories.remove(id: repoId)
-                if state.selectedRepoId == repoId {
-                    state.selectedRepoId = state.repositories.first?.id
-                }
                 if let selectedWt = state.selectedWorktreeId, worktreeIds.contains(selectedWt) {
                     state.selectedWorktreeId = nil
                 }
