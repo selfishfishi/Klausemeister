@@ -8,6 +8,21 @@ enum WorktreeConfig {
         identifier.lowercased()
     }
 
+    /// Tmux session name bound 1:1 to a worktree. Lowercased for stability and
+    /// to match the branch-name convention. Sessions live under the `klause-`
+    /// prefix so reconciliation can ignore unrelated user sessions. Characters
+    /// tmux disallows or treats specially in target syntax (`:`, `.`,
+    /// whitespace) are replaced with `-` so the name we store always round-trips
+    /// through `kill-session -t =<name>`.
+    nonisolated static func tmuxSessionName(forWorktreeName name: String) -> String {
+        let sanitized = name
+            .lowercased()
+            .replacingOccurrences(of: ":", with: "-")
+            .replacingOccurrences(of: ".", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
+        return "klause-\(sanitized)"
+    }
+
     nonisolated static func worktreePath(basePath: String, repoRoot: String, name: String) -> String {
         if basePath.hasPrefix("/") {
             return "\(basePath)/\(name.lowercased())"

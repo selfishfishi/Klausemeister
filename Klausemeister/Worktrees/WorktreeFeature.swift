@@ -19,6 +19,7 @@ struct Worktree: Equatable, Identifiable {
     var repoId: String?
     var repoName: String?
     var currentBranch: String?
+    var tmuxSessionStatus: TmuxSessionStatus = .unknown
     var inbox: [LinearIssue] = []
     var processing: LinearIssue?
     var outbox: [LinearIssue] = []
@@ -30,6 +31,16 @@ struct Worktree: Equatable, Identifiable {
     var isActive: Bool {
         processing != nil
     }
+}
+
+/// Lifecycle status of the tmux session bound to a worktree. Reconciled at app
+/// launch via `TmuxClient.listSessions` and updated as worktrees are created or
+/// deleted. `.unknown` represents the gap between launch and the first
+/// reconciliation completing.
+enum TmuxSessionStatus: Equatable {
+    case unknown
+    case sessionExists
+    case needsCreation
 }
 
 @Reducer
@@ -100,6 +111,10 @@ struct WorktreeFeature {
         case syncRepo(repoId: String)
         case syncAllRepos
         case repoSynced(repoId: String, TaskResult<WorktreeClient.SyncResult>)
+
+        // Tmux session reconciliation
+        case reconcileTmuxSessions
+        case tmuxSessionsReconciled([String: TmuxSessionStatus])
         case alert(PresentationAction<Alert>)
         case delegate(Delegate)
 
@@ -121,11 +136,13 @@ struct WorktreeFeature {
     nonisolated private enum CancelID: Hashable {
         case load
         case syncRepo(String)
+        case reconcileTmux
     }
 
     @Dependency(\.worktreeClient) var worktreeClient
     @Dependency(\.databaseClient) var databaseClient
     @Dependency(\.gitClient) var gitClient
+    @Dependency(\.tmuxClient) var tmuxClient
 
     var body: some Reducer<State, Action> {
         BindingReducer()
@@ -206,7 +223,8 @@ struct WorktreeFeature {
                         }
                         await send(.branchesLoaded(branches))
                     },
-                    .send(.syncAllRepos)
+                    .send(.syncAllRepos),
+                    .send(.reconcileTmuxSessions)
                 )
 
             case let .branchesLoaded(branches):
@@ -260,7 +278,8 @@ struct WorktreeFeature {
                     gitWorktreePath: record.gitWorktreePath,
                     repoId: record.repoId,
                     repoName: repoName,
-                    currentBranch: branch
+                    currentBranch: branch,
+                    tmuxSessionStatus: .needsCreation
                 ))
                 return .none
 
@@ -308,12 +327,15 @@ struct WorktreeFeature {
                 }
                 let worktreePath = worktree.gitWorktreePath
                 let repoPath = worktree.repoId.flatMap { state.repositories[id: $0]?.path }
+                let tmuxSessionName = WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name)
                 state.worktrees.remove(id: worktreeId)
                 return .run { send in
                     try await worktreeClient.deleteWorktree(worktreeId)
                     if let repoPath, !worktreePath.isEmpty {
                         try? await gitClient.removeWorktree(repoPath, worktreePath)
                     }
+                    // Soft-fail: a missing tmux session must not block deletion.
+                    try? await tmuxClient.killSession(tmuxSessionName)
                     await send(.worktreeDeleted(worktreeId: worktreeId))
                 } catch: { _, send in
                     await send(.worktreeDeleteFailed(worktree: worktree))
@@ -660,10 +682,12 @@ struct WorktreeFeature {
 
             case let .deleteRepoConfirmed(repoId):
                 guard let repo = state.repositories[id: repoId] else { return .none }
-                let worktreePaths = state.worktrees
-                    .filter { $0.repoId == repoId }
-                    .map(\.gitWorktreePath)
-                let worktreeIds = state.worktrees.filter { $0.repoId == repoId }.map(\.id)
+                let worktreesForRepo = state.worktrees.filter { $0.repoId == repoId }
+                let worktreePaths = worktreesForRepo.map(\.gitWorktreePath)
+                let worktreeIds = worktreesForRepo.map(\.id)
+                let tmuxSessionNames = worktreesForRepo.map { worktree in
+                    WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name)
+                }
                 for id in worktreeIds {
                     state.worktrees.remove(id: id)
                 }
@@ -675,6 +699,9 @@ struct WorktreeFeature {
                 return .run { _ in
                     for path in worktreePaths where !path.isEmpty {
                         try? await gitClient.removeWorktree(repoPath, path)
+                    }
+                    for sessionName in tmuxSessionNames {
+                        try? await tmuxClient.killSession(sessionName)
                     }
                     try await worktreeClient.removeRepository(repoId)
                 } catch: { _, send in
@@ -725,29 +752,73 @@ struct WorktreeFeature {
                 // Background: fetch branches for new worktrees + auto-link issues
                 let inserted = result.inserted
                 guard !inserted.isEmpty else { return .none }
-                return .run { send in
-                    var branches: [String: String] = [:]
-                    for record in inserted {
-                        guard !record.gitWorktreePath.isEmpty else { continue }
-                        if let branch = try? await gitClient.currentBranch(record.gitWorktreePath) {
-                            branches[record.worktreeId] = branch
-                            if let identifier = WorktreeConfig.extractIssueIdentifier(fromBranchName: branch),
-                               let issueRecord = try? await databaseClient.fetchImportedIssueByIdentifier(identifier)
-                            {
-                                // Use the issueAssignedToWorktree action which both updates state
-                                // and persists via worktreeClient.assignIssueToWorktree
-                                let issue = LinearIssue(from: issueRecord)
-                                await send(.issueAssignedToWorktree(worktreeId: record.worktreeId, issue: issue))
+                return .merge(
+                    .run { send in
+                        var branches: [String: String] = [:]
+                        for record in inserted {
+                            guard !record.gitWorktreePath.isEmpty else { continue }
+                            if let branch = try? await gitClient.currentBranch(record.gitWorktreePath) {
+                                branches[record.worktreeId] = branch
+                                if let identifier = WorktreeConfig.extractIssueIdentifier(fromBranchName: branch),
+                                   let issueRecord = try? await databaseClient.fetchImportedIssueByIdentifier(identifier)
+                                {
+                                    // Use the issueAssignedToWorktree action which both updates state
+                                    // and persists via worktreeClient.assignIssueToWorktree
+                                    let issue = LinearIssue(from: issueRecord)
+                                    await send(.issueAssignedToWorktree(worktreeId: record.worktreeId, issue: issue))
+                                }
                             }
                         }
-                    }
-                    if !branches.isEmpty {
-                        await send(.branchesLoaded(branches))
-                    }
-                }
+                        if !branches.isEmpty {
+                            await send(.branchesLoaded(branches))
+                        }
+                    },
+                    // Reconcile tmux for newly-discovered worktrees. Without
+                    // this, sync-imported worktrees stay `.unknown` indefinitely
+                    // because the boot reconciliation already ran before sync
+                    // completed. The CancelID makes concurrent reconciliations
+                    // safe — only the most recent one wins.
+                    .send(.reconcileTmuxSessions)
+                )
 
             case let .repoSynced(_, .failure(error)):
                 Self.log.warning("Repo sync failed: \(error.localizedDescription)")
+                return .none
+
+            // MARK: - Tmux session reconciliation
+
+            case .reconcileTmuxSessions:
+                let worktreeNames = state.worktrees.map { (id: $0.id, name: $0.name) }
+                guard !worktreeNames.isEmpty else { return .none }
+                return .run { send in
+                    let existing: Set<String>
+                    do {
+                        existing = try await Set(tmuxClient.listSessions())
+                    } catch {
+                        // tmux not installed or unreachable — leave statuses
+                        // as `.unknown` so the UI does not lie about state.
+                        Self.log.warning(
+                            "Tmux reconciliation skipped: \(error.localizedDescription)"
+                        )
+                        return
+                    }
+                    var statuses: [String: TmuxSessionStatus] = [:]
+                    for worktree in worktreeNames {
+                        let sessionName = WorktreeConfig.tmuxSessionName(
+                            forWorktreeName: worktree.name
+                        )
+                        statuses[worktree.id] = existing.contains(sessionName)
+                            ? .sessionExists
+                            : .needsCreation
+                    }
+                    await send(.tmuxSessionsReconciled(statuses))
+                }
+                .cancellable(id: CancelID.reconcileTmux, cancelInFlight: true)
+
+            case let .tmuxSessionsReconciled(statuses):
+                for (worktreeId, status) in statuses {
+                    state.worktrees[id: worktreeId]?.tmuxSessionStatus = status
+                }
                 return .none
 
             case .delegate:
