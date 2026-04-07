@@ -142,6 +142,7 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
         $0.databaseClient.fetchUnqueuedImportedIssues = { [] }
         $0.databaseClient.fetchWorkflowStates = { [] }
         $0.databaseClient.saveWorkflowStates = { _ in }
+        $0.date = .constant(Date(timeIntervalSince1970: 0))
     }
 
     await store.send(.onAppear) {

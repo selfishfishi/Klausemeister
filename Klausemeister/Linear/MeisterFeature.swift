@@ -71,6 +71,7 @@ struct MeisterFeature {
         case issueDroppedFromWorktreeResolved(issue: LinearIssue, onColumnId: String)
         case delegate(Delegate)
 
+        @CasePathable
         // swiftlint:disable:next nesting
         enum Delegate: Equatable {
             case issueAssignedToWorktree(issue: LinearIssue, worktreeId: String)
@@ -161,6 +162,7 @@ struct MeisterFeature {
                 // deciding whether the network states fetch is needed. This is sequential
                 // to avoid the race where in-memory state is empty and we always fetch.
                 return .merge(
+                    .send(.delegate(.syncStarted)),
                     .cancel(id: "MeisterFeature.syncIndicatorReset"),
                     onAppearEffect()
                 )
@@ -172,6 +174,7 @@ struct MeisterFeature {
                     now: date.now
                 )
                 return .merge(
+                    .send(.delegate(.syncStarted)),
                     .cancel(id: "MeisterFeature.syncIndicatorReset"),
                     syncEffect(shouldFetchStates: shouldFetchStates)
                 )

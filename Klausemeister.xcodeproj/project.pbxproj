@@ -18,6 +18,9 @@
 		A8TE000B2F816B35005797B3 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE000C2F816B35005797B3 /* ComposableArchitecture */; };
 		A8TE000E2F816B35005797B3 /* IdentifiedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE000D2F816B35005797B3 /* IdentifiedCollections */; };
 		A8TE00112F816B35005797B3 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE00102F816B35005797B3 /* Dependencies */; };
+		A8SN00022F816B35005797B3 /* SwiftNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = A8SN00012F816B35005797B3 /* SwiftNavigation */; };
+		A8TE00142F816B35005797B3 /* Clocks in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE00132F816B35005797B3 /* Clocks */; };
+		A8TE00162F816B35005797B3 /* ConcurrencyExtras in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE00152F816B35005797B3 /* ConcurrencyExtras */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -61,6 +64,7 @@
 				A8PC00022F816B35005797B3 /* PerceptionCore in Frameworks */,
 				A8DP00022F816B35005797B3 /* Dependencies in Frameworks */,
 				A8GR00022F816B35005797B3 /* GRDB in Frameworks */,
+				A8SN00022F816B35005797B3 /* SwiftNavigation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +75,8 @@
 				A8TE000B2F816B35005797B3 /* ComposableArchitecture in Frameworks */,
 				A8TE000E2F816B35005797B3 /* IdentifiedCollections in Frameworks */,
 				A8TE00112F816B35005797B3 /* Dependencies in Frameworks */,
+				A8TE00142F816B35005797B3 /* Clocks in Frameworks */,
+				A8TE00162F816B35005797B3 /* ConcurrencyExtras in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -124,6 +130,7 @@
 				A8PC00012F816B35005797B3 /* PerceptionCore */,
 				A8DP00012F816B35005797B3 /* Dependencies */,
 				A8GR00012F816B35005797B3 /* GRDB */,
+				A8SN00012F816B35005797B3 /* SwiftNavigation */,
 			);
 			productName = Klausemeister;
 			productReference = A869EEE02F816B35005797B3 /* Klausemeister.app */;
@@ -150,6 +157,8 @@
 				A8TE000C2F816B35005797B3 /* ComposableArchitecture */,
 				A8TE000D2F816B35005797B3 /* IdentifiedCollections */,
 				A8TE00102F816B35005797B3 /* Dependencies */,
+				A8TE00132F816B35005797B3 /* Clocks */,
+				A8TE00152F816B35005797B3 /* ConcurrencyExtras */,
 			);
 			productName = KlausemeisterTests;
 			productReference = A8TE00012F816B35005797B3 /* KlausemeisterTests.xctest */;
@@ -599,6 +608,18 @@
 		A8TE00102F816B35005797B3 /* Dependencies */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Dependencies;
+		};
+		A8SN00012F816B35005797B3 /* SwiftNavigation */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SwiftNavigation;
+		};
+		A8TE00132F816B35005797B3 /* Clocks */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Clocks;
+		};
+		A8TE00152F816B35005797B3 /* ConcurrencyExtras */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ConcurrencyExtras;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
