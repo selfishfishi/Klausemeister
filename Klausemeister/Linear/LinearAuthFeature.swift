@@ -24,6 +24,7 @@ struct LinearAuthFeature {
         case delegate(Delegate)
     }
 
+    @CasePathable
     enum Delegate: Equatable {
         case errorOccurred(message: String)
     }
