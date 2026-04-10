@@ -39,11 +39,17 @@ struct AppFeature {
         case worktree(WorktreeFeature.Action)
         case linearAuth(LinearAuthFeature.Action)
         case statusBar(StatusBarFeature.Action)
+        case mcpServerEvent(MCPServerEvent)
+    }
+
+    nonisolated private enum CancelID {
+        case mcpServer
     }
 
     @Dependency(\.surfaceManager) var surfaceManager
     @Dependency(\.ghosttyApp) var ghosttyApp
     @Dependency(\.oauthClient) var oauthClient
+    @Dependency(\.mcpServerClient) var mcpServerClient
     @Dependency(\.uuid) var uuid
 
     var body: some Reducer<State, Action> {
@@ -62,7 +68,19 @@ struct AppFeature {
         Reduce { state, action in
             switch action {
             case .onAppear:
-                return .send(.newTabButtonTapped)
+                return .merge(
+                    .send(.newTabButtonTapped),
+                    .run { [mcpServerClient] _ in
+                        await mcpServerClient.start()
+                    }
+                    .cancellable(id: CancelID.mcpServer),
+                    .run { [mcpServerClient] send in
+                        for await event in mcpServerClient.events() {
+                            await send(.mcpServerEvent(event))
+                        }
+                    }
+                    .cancellable(id: CancelID.mcpServer)
+                )
 
             case .newTabButtonTapped:
                 let id = uuid()
@@ -229,6 +247,15 @@ struct AppFeature {
                 return .none
 
             case .statusBar:
+                return .none
+
+            case let .mcpServerEvent(.errorOccurred(message)):
+                return .send(.statusBar(.errorReported(source: .mcpServer, message: message)))
+
+            case .mcpServerEvent(.progressReported):
+                // KLA-80 will route per-session progress into the sidebar.
+                // For v1, we accept the event and surface nothing — the
+                // master sees its own status, and errors take a different path.
                 return .none
             }
         }
