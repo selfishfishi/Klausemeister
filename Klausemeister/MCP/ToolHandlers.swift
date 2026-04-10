@@ -30,7 +30,7 @@ enum ToolHandlers {
     /// Claim the next inbox item for a worktree, set its Linear status to
     /// "In Progress", and return its details. Returns a `success` result with
     /// `{"item":null}` if the inbox is empty.
-    nonisolated static func getNextItem(worktreeId: String) async throws -> ToolResult {
+    static func getNextItem(worktreeId: String) async throws -> ToolResult {
         @Dependency(\.worktreeClient) var worktreeClient
         @Dependency(\.databaseClient) var databaseClient
         @Dependency(\.linearAPIClient) var linearAPIClient
@@ -80,7 +80,7 @@ enum ToolHandlers {
     ///
     /// `nextLinearState` is a state name (e.g. `"Todo"`, `"Done"`); it is resolved to
     /// a team-specific UUID before calling `LinearAPIClient.updateIssueStatus`.
-    nonisolated static func completeItem(
+    static func completeItem(
         issueLinearId: String,
         worktreeId: String,
         nextLinearState: String
@@ -116,7 +116,7 @@ enum ToolHandlers {
     /// Validates the progress report and yields it on the event stream so
     /// `AppFeature` can route it to the UI. The `eventContinuation` is
     /// threaded through because this file does not own it — the listener does.
-    nonisolated static func reportProgress(
+    static func reportProgress(
         issueLinearId: String,
         worktreeId: String,
         statusText: String,
@@ -134,7 +134,7 @@ enum ToolHandlers {
 
     /// Read-only snapshot of a worktree's queue: counts per position, current
     /// processing item id (if any).
-    nonisolated static func getStatus(worktreeId: String) async throws -> ToolResult {
+    static func getStatus(worktreeId: String) async throws -> ToolResult {
         @Dependency(\.worktreeClient) var worktreeClient
 
         let items = try await worktreeClient.fetchQueueItems(worktreeId)

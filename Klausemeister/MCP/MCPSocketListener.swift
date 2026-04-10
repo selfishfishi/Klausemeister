@@ -180,8 +180,9 @@ enum MCPSocketListener {
             capabilities: .init(tools: .init(listChanged: false))
         )
 
+        let registeredTools = ToolCatalog.tools
         await server.withMethodHandler(ListTools.self) { _ in
-            ListTools.Result(tools: ToolCatalog.tools)
+            ListTools.Result(tools: registeredTools)
         }
 
         await server.withMethodHandler(CallTool.self) { params in
@@ -241,7 +242,7 @@ enum MCPSocketListener {
             if result.isError {
                 eventContinuation.yield(.errorOccurred(message: result.text))
             }
-            return CallTool.Result(content: [.text(result.text)], isError: result.isError)
+            return CallTool.Result(content: [.text(text: result.text, annotations: nil, _meta: nil)], isError: result.isError)
         } catch {
             let message = "MCP tool \(name) failed: \(error.localizedDescription)"
             eventContinuation.yield(.errorOccurred(message: message))
@@ -250,7 +251,7 @@ enum MCPSocketListener {
     }
 
     private static func errorResult(_ message: String) -> CallTool.Result {
-        CallTool.Result(content: [.text(message)], isError: true)
+        CallTool.Result(content: [.text(text: message, annotations: nil, _meta: nil)], isError: true)
     }
 }
 
