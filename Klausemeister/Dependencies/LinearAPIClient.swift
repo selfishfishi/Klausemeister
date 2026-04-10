@@ -44,6 +44,41 @@ nonisolated private struct GraphQLErrorEnvelope: Decodable {
     let errors: [GraphQLError]
 }
 
+// MARK: - Paginated issue fetch helper
+
+/// Runs a paginated issues query with a single filter (no OR), appending
+/// results to `allIssues` and deduplicating via `seenIds`.
+nonisolated private func fetchPaginatedIssues(
+    token: String,
+    query: String,
+    filter: [String: Any],
+    into allIssues: inout [LinearIssue],
+    seenIds: inout Set<String>
+) async throws {
+    var cursor: String?
+    let pageLimit = 20 // 20 × 50 = 1000 max per filter
+
+    for _ in 0 ..< pageLimit {
+        var variables: [String: Any] = ["filter": filter]
+        if let cursor { variables["after"] = cursor }
+
+        let data = try await graphQLRequest(
+            token: token, query: query, variables: variables
+        )
+
+        let page = try JSONDecoder().decode(LabeledIssuesResponse.self, from: data)
+        for node in page.data.issues.nodes {
+            guard seenIds.insert(node.id).inserted else { continue }
+            allIssues.append(node.linearIssue)
+        }
+
+        guard page.data.issues.pageInfo.hasNextPage,
+              let endCursor = page.data.issues.pageInfo.endCursor
+        else { break }
+        cursor = endCursor
+    }
+}
+
 // MARK: - Token loading helper
 
 nonisolated private func loadToken(
@@ -104,56 +139,53 @@ extension LinearAPIClient: DependencyKey {
             fetchLabeledIssues: { label in
                 let token = try await loadToken(keychainClient: keychainClient)
 
-                // Matches issues that are either:
-                //   1. Individually labeled with `label`, OR
-                //   2. In a project that is labeled with `label`
-                // Deduplicated by id at the merge step in MeisterFeature.performSync.
-                let query = """
-                query($filter: IssueFilter!, $after: String) {
-                  issues(filter: $filter, first: 50, after: $after) {
-                    nodes {
+                // Two separate, simple queries instead of one complex OR filter.
+                // Linear's complexity scoring punishes nested OR filters with
+                // sub-relation traversals (project→labels) heavily — splitting
+                // avoids the "Query too complex" error that the combined query
+                // triggers on larger workspaces.
+
+                let issueFields = """
                       id identifier title url description updatedAt
                       state { id name type }
                       team { id }
                       project { name }
                       labels { nodes { name } }
-                    }
+                """
+
+                // Query 1: issues directly labeled with `label`
+                let directQuery = """
+                query($filter: IssueFilter!, $after: String) {
+                  issues(filter: $filter, first: 50, after: $after) {
+                    nodes { \(issueFields) }
                     pageInfo { hasNextPage endCursor }
                   }
                 }
                 """
 
+                // Query 2: issues in projects labeled with `label`
+                let projectQuery = directQuery // same shape, different filter
+
                 var allIssues: [LinearIssue] = []
                 var seenIds = Set<String>()
-                var cursor: String?
-                let pageLimit = 20 // 20 × 50 = 1000 max
 
-                for _ in 0 ..< pageLimit {
-                    var variables: [String: Any] = [
-                        "filter": [
-                            "or": [
-                                ["labels": ["name": ["eq": label]]],
-                                ["project": ["labels": ["name": ["eq": label]]]]
-                            ]
-                        ]
-                    ]
-                    if let cursor { variables["after"] = cursor }
+                // Fetch issues with the direct label
+                try await fetchPaginatedIssues(
+                    token: token,
+                    query: directQuery,
+                    filter: ["labels": ["name": ["eq": label]]],
+                    into: &allIssues,
+                    seenIds: &seenIds
+                )
 
-                    let data = try await graphQLRequest(
-                        token: token, query: query, variables: variables
-                    )
-
-                    let page = try JSONDecoder().decode(LabeledIssuesResponse.self, from: data)
-                    for node in page.data.issues.nodes {
-                        guard seenIds.insert(node.id).inserted else { continue }
-                        allIssues.append(node.linearIssue)
-                    }
-
-                    guard page.data.issues.pageInfo.hasNextPage,
-                          let endCursor = page.data.issues.pageInfo.endCursor
-                    else { break }
-                    cursor = endCursor
-                }
+                // Fetch issues from labeled projects
+                try await fetchPaginatedIssues(
+                    token: token,
+                    query: projectQuery,
+                    filter: ["project": ["labels": ["name": ["eq": label]]]],
+                    into: &allIssues,
+                    seenIds: &seenIds
+                )
 
                 return allIssues
             },
@@ -163,7 +195,7 @@ extension LinearAPIClient: DependencyKey {
 
                 let query = """
                 query {
-                  teams(first: 250) {
+                  teams(first: 50) {
                     nodes {
                       id
                       states { nodes { id name type position } }
