@@ -128,10 +128,13 @@ enum MCPSocketListener {
 
         listener.start(queue: queue)
 
-        // Block until the surrounding Task is cancelled.
+        // Park until the surrounding Task is cancelled (app shutdown).
         await withTaskCancellationHandler {
-            // Sleep forever (the cancellation handler kills the listener).
-            try? await Task.sleep(nanoseconds: UInt64.max)
+            await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in
+                // Never resumed — cancellation handler tears down the listener.
+                // The continuation is intentionally leaked; Swift Concurrency
+                // cleans it up when the enclosing Task is cancelled.
+            }
         } onCancel: {
             listener.cancel()
         }
@@ -153,7 +156,7 @@ enum MCPSocketListener {
                 connection: connection,
                 logger: Logger(label: "klausemeister.mcp.transport.\(hello.klauseWorktreeId)")
             )
-            let server = makeServer(
+            let server = await makeServer(
                 worktreeId: hello.klauseWorktreeId,
                 eventContinuation: eventContinuation
             )
@@ -170,26 +173,24 @@ enum MCPSocketListener {
     private static func makeServer(
         worktreeId: String,
         eventContinuation: AsyncStream<MCPServerEvent>.Continuation
-    ) -> Server {
+    ) async -> Server {
         let server = Server(
             name: "klausemeister-mcp",
             version: "1.0.0",
             capabilities: .init(tools: .init(listChanged: false))
         )
 
-        Task {
-            await server.withMethodHandler(ListTools.self) { _ in
-                ListTools.Result(tools: ToolCatalog.tools)
-            }
+        await server.withMethodHandler(ListTools.self) { _ in
+            ListTools.Result(tools: ToolCatalog.tools)
+        }
 
-            await server.withMethodHandler(CallTool.self) { params in
-                await dispatchTool(
-                    name: params.name,
-                    arguments: params.arguments,
-                    worktreeId: worktreeId,
-                    eventContinuation: eventContinuation
-                )
-            }
+        await server.withMethodHandler(CallTool.self) { params in
+            await dispatchTool(
+                name: params.name,
+                arguments: params.arguments,
+                worktreeId: worktreeId,
+                eventContinuation: eventContinuation
+            )
         }
 
         return server
@@ -228,13 +229,9 @@ enum MCPSocketListener {
                 result = try await ToolHandlers.reportProgress(
                     issueLinearId: issueLinearId,
                     worktreeId: worktreeId,
-                    statusText: statusText
+                    statusText: statusText,
+                    eventContinuation: eventContinuation
                 )
-                eventContinuation.yield(.progressReported(
-                    worktreeId: worktreeId,
-                    itemId: issueLinearId,
-                    statusText: statusText
-                ))
             case "getStatus":
                 result = try await ToolHandlers.getStatus(worktreeId: worktreeId)
             default:

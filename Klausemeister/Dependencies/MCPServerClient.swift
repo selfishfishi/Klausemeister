@@ -13,6 +13,11 @@ import Foundation
 /// long-lived `.run` effect, mirroring how `OAuthClient` bridges callback URLs.
 struct MCPServerClient {
     var start: @Sendable () async -> Void
+
+    /// Returns the single event stream from the MCP server.
+    /// WARNING: `AsyncStream` is single-consumer — calling this from
+    /// two `for await` loops concurrently will race and drop events.
+    /// Only `AppFeature.onAppear` should consume this stream.
     var events: @Sendable () -> AsyncStream<MCPServerEvent>
 }
 

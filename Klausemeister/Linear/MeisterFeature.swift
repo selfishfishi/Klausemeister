@@ -71,8 +71,8 @@ struct MeisterFeature {
         case issueDroppedFromWorktreeResolved(issue: LinearIssue, onColumnId: String)
         case delegate(Delegate)
 
-        // swiftlint:disable:next nesting
         @CasePathable
+        // swiftlint:disable:next nesting
         enum Delegate: Equatable {
             case issueAssignedToWorktree(issue: LinearIssue, worktreeId: String)
             case issueReturnedFromWorktreeByDrop(issueId: String)

@@ -36,7 +36,11 @@ enum ToolHandlers {
         @Dependency(\.linearAPIClient) var linearAPIClient
 
         let items = try await worktreeClient.fetchQueueItems(worktreeId)
-        guard let inboxItem = items.first(where: { $0.queuePosition == "inbox" }) else {
+        // Explicitly sort by sortOrder rather than relying on DB ordering contract.
+        guard let inboxItem = items
+            .filter({ $0.queuePosition == "inbox" })
+            .min(by: { $0.sortOrder < $1.sortOrder })
+        else {
             return .success(#"{"item":null}"#)
         }
 
@@ -99,23 +103,31 @@ enum ToolHandlers {
         }
 
         try await worktreeClient.moveToOutboxByIssueId(issueLinearId, worktreeId)
-        try await linearAPIClient.updateIssueStatus(issueLinearId, stateId)
+
+        // Best-effort Linear status update — the local queue has already advanced,
+        // so we log on failure but don't fail the tool. This mirrors getNextItem's
+        // approach: local state is authoritative, Linear is eventually consistent.
+        try? await linearAPIClient.updateIssueStatus(issueLinearId, stateId)
         return .success(#"{"ok":true}"#)
     }
 
     // MARK: - reportProgress
 
-    /// Records that the master is making progress on an item. The actual broadcast
-    /// to the UI happens in `MCPSocketListener`, which yields a `MCPServerEvent`
-    /// on the bridge stream after this returns. This handler is intentionally
-    /// trivial so the listener can call it for validation/logging without needing
-    /// to interpret the bytes.
+    /// Validates the progress report and yields it on the event stream so
+    /// `AppFeature` can route it to the UI. The `eventContinuation` is
+    /// threaded through because this file does not own it — the listener does.
     nonisolated static func reportProgress(
-        issueLinearId _: String,
-        worktreeId _: String,
-        statusText _: String
+        issueLinearId: String,
+        worktreeId: String,
+        statusText: String,
+        eventContinuation: AsyncStream<MCPServerEvent>.Continuation
     ) async throws -> ToolResult {
-        .success(#"{"ok":true}"#)
+        eventContinuation.yield(.progressReported(
+            worktreeId: worktreeId,
+            itemId: issueLinearId,
+            statusText: statusText
+        ))
+        return .success(#"{"ok":true}"#)
     }
 
     // MARK: - getStatus

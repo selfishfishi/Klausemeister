@@ -33,14 +33,16 @@ guard let worktreeId = env["KLAUSE_WORKTREE_ID"], !worktreeId.isEmpty else {
 
 // MARK: - Socket path
 
-let socketPath: String = {
-    let home = FileManager.default.homeDirectoryForCurrentUser
-    return home
-        .appendingPathComponent("Library")
-        .appendingPathComponent("Application Support")
+// Prefer KLAUSE_SOCKET_PATH env var (set by Klausemeister when spawning the
+// master) so the app is the single source of truth for the socket location.
+// Fall back to the conventional path for manual testing.
+
+let socketPath: String = env["KLAUSE_SOCKET_PATH"] ?? {
+    let appSupport = FileManager.default
+        .urls(for: .applicationSupportDirectory, in: .userDomainMask)
+        .first!
         .appendingPathComponent("Klausemeister")
-        .appendingPathComponent("klause.sock")
-        .path
+    return appSupport.appendingPathComponent("klause.sock").path
 }()
 
 // MARK: - Connect
@@ -81,6 +83,13 @@ guard connectResult == 0 else {
     close(socketFD)
     exit(3)
 }
+
+// Set non-blocking I/O on the socket and stdout to prevent the classic
+// bidirectional pipe deadlock: if the app stops draining and stdin keeps
+// feeding, a blocking write to socketFD would stall the shim while the
+// socketReader might be blocked writing to stdout in the other direction.
+_ = fcntl(socketFD, F_SETFL, fcntl(socketFD, F_GETFL) | O_NONBLOCK)
+_ = fcntl(STDOUT_FILENO, F_SETFL, fcntl(STDOUT_FILENO, F_GETFL) | O_NONBLOCK)
 
 // MARK: - Hello frame
 

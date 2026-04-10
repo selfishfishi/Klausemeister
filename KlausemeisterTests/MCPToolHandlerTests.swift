@@ -5,6 +5,11 @@ import Testing
 
 // MARK: - Fixtures
 
+// NOTE: These fixtures use *Record types directly because DatabaseClient and
+// WorktreeClient return records (not domain types) — a pre-existing layer
+// violation tracked as KLA-60. Once KLA-60 is resolved, these fixtures
+// should be expressed as domain types instead.
+
 private let teamId = "team-1"
 private let worktreeId = "wt-1"
 
@@ -200,13 +205,24 @@ private let processingItem = WorktreeQueueItemRecord(
 
 // MARK: - reportProgress
 
-@Test func `reportProgress always succeeds`() async throws {
+@Test func `reportProgress yields event and succeeds`() async throws {
+    let (stream, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
+
     let result = try await ToolHandlers.reportProgress(
         issueLinearId: "issue-1",
         worktreeId: worktreeId,
-        statusText: "halfway through"
+        statusText: "halfway through",
+        eventContinuation: continuation
     )
+    continuation.finish()
+
     #expect(!result.isError)
+
+    var events: [MCPServerEvent] = []
+    for await event in stream {
+        events.append(event)
+    }
+    #expect(events == [.progressReported(worktreeId: worktreeId, itemId: "issue-1", statusText: "halfway through")])
 }
 
 // MARK: - getStatus

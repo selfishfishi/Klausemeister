@@ -98,22 +98,29 @@ actor SocketTransport: Transport {
     }
 
     private func receiveChunk() async throws -> Data {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Swift.Error>) in
-            connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, isComplete, error in
-                if let error {
-                    cont.resume(throwing: error)
-                    return
+        // Loop until we get actual bytes or a terminal condition.
+        // NWConnection.receive can fire with empty data on spurious wakes;
+        // returning Data() would cause a busy-loop in receiveLoop.
+        while true {
+            let chunk: Data = try await withCheckedThrowingContinuation { cont in
+                connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, isComplete, error in
+                    if let error {
+                        cont.resume(throwing: error)
+                        return
+                    }
+                    if let data, !data.isEmpty {
+                        cont.resume(returning: data)
+                        return
+                    }
+                    if isComplete {
+                        cont.resume(throwing: SocketTransportError.closed)
+                        return
+                    }
+                    // Spurious wake — resume with empty to retry
+                    cont.resume(returning: Data())
                 }
-                if let data, !data.isEmpty {
-                    cont.resume(returning: data)
-                    return
-                }
-                if isComplete {
-                    cont.resume(throwing: SocketTransportError.closed)
-                    return
-                }
-                cont.resume(returning: Data())
             }
+            if !chunk.isEmpty { return chunk }
         }
     }
 }
@@ -137,6 +144,19 @@ extension SocketTransport {
     static func readHelloLine(from connection: NWConnection) async throws -> (line: Data, remainder: Data) {
         var buffer = Data()
         while true {
+            let chunk = try await readNonEmptyChunk(from: connection)
+            buffer.append(chunk)
+            if let nlIndex = buffer.firstIndex(of: 0x0A) {
+                let line = buffer.subdata(in: 0 ..< nlIndex)
+                let remainder = buffer.subdata(in: (nlIndex + 1) ..< buffer.endIndex)
+                return (line, remainder)
+            }
+        }
+    }
+
+    /// Shared helper that reads from a connection, retrying on spurious empty wakes.
+    private static func readNonEmptyChunk(from connection: NWConnection) async throws -> Data {
+        while true {
             let chunk: Data = try await withCheckedThrowingContinuation { cont in
                 connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, isComplete, error in
                     if let error {
@@ -154,12 +174,7 @@ extension SocketTransport {
                     cont.resume(returning: Data())
                 }
             }
-            buffer.append(chunk)
-            if let nlIndex = buffer.firstIndex(of: 0x0A) {
-                let line = buffer.subdata(in: 0 ..< nlIndex)
-                let remainder = buffer.subdata(in: (nlIndex + 1) ..< buffer.endIndex)
-                return (line, remainder)
-            }
+            if !chunk.isEmpty { return chunk }
         }
     }
 }
