@@ -11,6 +11,9 @@
 		A869F53B2F817984005797B3 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = A8GHOST022F816B35005797B3 /* GhosttyTerminal */; };
 		A8CP00022F816B35005797B3 /* CasePathsCore in Frameworks */ = {isa = PBXBuildFile; productRef = A8CP00012F816B35005797B3 /* CasePathsCore */; };
 		A8DP00022F816B35005797B3 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = A8DP00012F816B35005797B3 /* Dependencies */; };
+		A8E7306B2F85392500806034 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = A8E7306A2F85392500806034 /* MCP */; };
+		A8E731002F88B4B700806034 /* SwiftUINavigation in Frameworks */ = {isa = PBXBuildFile; productRef = A8E730FF2F88B4B700806034 /* SwiftUINavigation */; };
+		A8E731032F88B5CD00806034 /* SwiftNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = A8E731022F88B5CD00806034 /* SwiftNavigation */; };
 		A8GR00022F816B35005797B3 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A8GR00012F816B35005797B3 /* GRDB */; };
 		A8ID00022F816B35005797B3 /* IdentifiedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = A8ID00012F816B35005797B3 /* IdentifiedCollections */; };
 		A8PC00022F816B35005797B3 /* PerceptionCore in Frameworks */ = {isa = PBXBuildFile; productRef = A8PC00012F816B35005797B3 /* PerceptionCore */; };
@@ -33,15 +36,46 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		A8E7306E2F85395000806034 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		A869EEE02F816B35005797B3 /* Klausemeister.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Klausemeister.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A8E730702F85395000806034 /* klause-mcp-shim */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "klause-mcp-shim"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A8TE00012F816B35005797B3 /* KlausemeisterTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KlausemeisterTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A8E730802F853E1C00806034 /* Exceptions for "Klausemeister" folder in "klause-mcp-shim" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				MCP/HelloFrame.swift,
+			);
+			target = A8E7306F2F85395000806034 /* klause-mcp-shim */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A869EEE22F816B35005797B3 /* Klausemeister */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A8E730802F853E1C00806034 /* Exceptions for "Klausemeister" folder in "klause-mcp-shim" target */,
+			);
 			path = Klausemeister;
+			sourceTree = "<group>";
+		};
+		A8E730712F85395000806034 /* klause-mcp-shim */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "klause-mcp-shim";
 			sourceTree = "<group>";
 		};
 		A8TE00002F816B35005797B3 /* KlausemeisterTests */ = {
@@ -56,15 +90,25 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A8E7306B2F85392500806034 /* MCP in Frameworks */,
 				A869F53B2F817984005797B3 /* GhosttyTerminal in Frameworks */,
+				A8E731032F88B5CD00806034 /* SwiftNavigation in Frameworks */,
 				A869F53A2F817984005797B3 /* GhosttyKit in Frameworks */,
 				A8TCA0022F816B35005797B3 /* ComposableArchitecture in Frameworks */,
 				A8ID00022F816B35005797B3 /* IdentifiedCollections in Frameworks */,
 				A8CP00022F816B35005797B3 /* CasePathsCore in Frameworks */,
 				A8PC00022F816B35005797B3 /* PerceptionCore in Frameworks */,
 				A8DP00022F816B35005797B3 /* Dependencies in Frameworks */,
+				A8E731002F88B4B700806034 /* SwiftUINavigation in Frameworks */,
 				A8GR00022F816B35005797B3 /* GRDB in Frameworks */,
 				A8SN00022F816B35005797B3 /* SwiftNavigation in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A8E7306D2F85395000806034 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -88,6 +132,8 @@
 			children = (
 				A869EEE22F816B35005797B3 /* Klausemeister */,
 				A8TE00002F816B35005797B3 /* KlausemeisterTests */,
+				A8E730712F85395000806034 /* klause-mcp-shim */,
+				A8E731012F88B5CD00806034 /* Frameworks */,
 				A869EEE12F816B35005797B3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -97,8 +143,16 @@
 			children = (
 				A869EEE02F816B35005797B3 /* Klausemeister.app */,
 				A8TE00012F816B35005797B3 /* KlausemeisterTests.xctest */,
+				A8E730702F85395000806034 /* klause-mcp-shim */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A8E731012F88B5CD00806034 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -131,10 +185,34 @@
 				A8DP00012F816B35005797B3 /* Dependencies */,
 				A8GR00012F816B35005797B3 /* GRDB */,
 				A8SN00012F816B35005797B3 /* SwiftNavigation */,
+				A8E7306A2F85392500806034 /* MCP */,
+				A8E730FF2F88B4B700806034 /* SwiftUINavigation */,
 			);
 			productName = Klausemeister;
 			productReference = A869EEE02F816B35005797B3 /* Klausemeister.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A8E7306F2F85395000806034 /* klause-mcp-shim */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A8E730742F85395000806034 /* Build configuration list for PBXNativeTarget "klause-mcp-shim" */;
+			buildPhases = (
+				A8E7306C2F85395000806034 /* Sources */,
+				A8E7306D2F85395000806034 /* Frameworks */,
+				A8E7306E2F85395000806034 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A8E730712F85395000806034 /* klause-mcp-shim */,
+			);
+			name = "klause-mcp-shim";
+			packageProductDependencies = (
+			);
+			productName = "klause-mcp-shim";
+			productReference = A8E730702F85395000806034 /* klause-mcp-shim */;
+			productType = "com.apple.product-type.tool";
 		};
 		A8TE00052F816B35005797B3 /* KlausemeisterTests */ = {
 			isa = PBXNativeTarget;
@@ -177,6 +255,9 @@
 					A869EEDF2F816B35005797B3 = {
 						CreatedOnToolsVersion = 26.4;
 					};
+					A8E7306F2F85395000806034 = {
+						CreatedOnToolsVersion = 26.4;
+					};
 					A8TE00052F816B35005797B3 = {
 						CreatedOnToolsVersion = 26.4;
 						TestTargetID = A869EEDF2F816B35005797B3;
@@ -196,6 +277,8 @@
 				A8GHOST002F816B35005797B3 /* XCRemoteSwiftPackageReference "libghostty-spm" */,
 				A8TCA0002F816B35005797B3 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */,
 				A8GR00002F816B35005797B3 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+				A8E730692F85392500806034 /* XCRemoteSwiftPackageReference "swift-sdk" */,
+				A8E730FE2F88B4B700806034 /* XCRemoteSwiftPackageReference "swift-navigation" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A869EEE12F816B35005797B3 /* Products */;
@@ -204,6 +287,7 @@
 			targets = (
 				A869EEDF2F816B35005797B3 /* Klausemeister */,
 				A8TE00052F816B35005797B3 /* KlausemeisterTests */,
+				A8E7306F2F85395000806034 /* klause-mcp-shim */,
 			);
 		};
 /* End PBXProject section */
@@ -250,6 +334,13 @@
 
 /* Begin PBXSourcesBuildPhase section */
 		A869EEDC2F816B35005797B3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A8E7306C2F85395000806034 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -460,6 +551,32 @@
 			};
 			name = Release;
 		};
+		A8E730752F85395000806034 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 9QVJUYLZ2D;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A8E730762F85395000806034 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 9QVJUYLZ2D;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		A8TE00082F816B35005797B3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -521,6 +638,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		A8E730742F85395000806034 /* Build configuration list for PBXNativeTarget "klause-mcp-shim" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A8E730752F85395000806034 /* Debug */,
+				A8E730762F85395000806034 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A8TE000A2F816B35005797B3 /* Build configuration list for PBXNativeTarget "KlausemeisterTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -533,6 +659,22 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		A8E730692F85392500806034 /* XCRemoteSwiftPackageReference "swift-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/modelcontextprotocol/swift-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.12.0;
+			};
+		};
+		A8E730FE2F88B4B700806034 /* XCRemoteSwiftPackageReference "swift-navigation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pointfreeco/swift-navigation";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.8.0;
+			};
+		};
 		A8GHOST002F816B35005797B3 /* XCRemoteSwiftPackageReference "libghostty-spm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/Lakr233/libghostty-spm.git";
@@ -556,6 +698,8 @@
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.17.0;
 			};
+			traits = (
+			);
 		};
 /* End XCRemoteSwiftPackageReference section */
 
@@ -567,6 +711,21 @@
 		A8DP00012F816B35005797B3 /* Dependencies */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Dependencies;
+		};
+		A8E7306A2F85392500806034 /* MCP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A8E730692F85392500806034 /* XCRemoteSwiftPackageReference "swift-sdk" */;
+			productName = MCP;
+		};
+		A8E730FF2F88B4B700806034 /* SwiftUINavigation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A8E730FE2F88B4B700806034 /* XCRemoteSwiftPackageReference "swift-navigation" */;
+			productName = SwiftUINavigation;
+		};
+		A8E731022F88B5CD00806034 /* SwiftNavigation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A8E730FE2F88B4B700806034 /* XCRemoteSwiftPackageReference "swift-navigation" */;
+			productName = SwiftNavigation;
 		};
 		A8GHOST012F816B35005797B3 /* GhosttyKit */ = {
 			isa = XCSwiftPackageProductDependency;

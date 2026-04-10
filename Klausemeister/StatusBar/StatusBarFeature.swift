@@ -21,6 +21,7 @@ struct StatusBarFeature {
         case meister
         case worktree
         case linearAuth
+        case mcpServer
     }
 
     enum Action: Equatable {
