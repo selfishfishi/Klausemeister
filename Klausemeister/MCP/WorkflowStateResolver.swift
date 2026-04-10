@@ -10,8 +10,8 @@ import Foundation
 /// `DatabaseClient.fetchWorkflowStates()` holds every team's states; this resolver
 /// looks up the right one for a given `(teamId, name)` pair.
 ///
-/// Implemented as a free `nonisolated` function so it can be called from
-/// `nonisolated` MCP server contexts and tested directly via `withDependencies`.
+/// Implemented as a static function on a namespace enum and tested directly
+/// via `withDependencies`.
 enum WorkflowStateResolver {
     /// Look up a state UUID for a given team and case-insensitive state name.
     ///
@@ -20,7 +20,7 @@ enum WorkflowStateResolver {
     ///   - stateName: Human-readable state name as the master Claude Code knows it.
     /// - Returns: The state UUID, or `nil` if no matching state exists for the team.
     /// - Throws: Whatever `databaseClient.fetchWorkflowStates` throws.
-    nonisolated static func resolve(
+    static func resolve(
         teamId: String,
         stateName: String
     ) async throws -> String? {
