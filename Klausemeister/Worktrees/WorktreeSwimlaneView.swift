@@ -90,19 +90,45 @@ struct WorktreeSwimlaneView: View {
     }
 
     private func repoSection(repo: Repository) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let isCollapsed = store.collapsedRepoIds.contains(repo.id)
+        let repoWorktrees = store.worktrees.filter { $0.repoId == repo.id }
+
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "folder")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                Text(repo.name)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        _ = store.send(.repoCollapseToggled(repoId: repo.id))
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 8)
+                        Image(systemName: "folder")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Text(repo.name)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if isCollapsed {
+                            Text("\(repoWorktrees.count)")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(.fill.quaternary, in: Capsule())
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
                 Spacer()
-                AddWorktreeInlineButton { name in
-                    store.send(.createWorktreeTapped(
-                        repoId: repo.id, name: name, branchOverride: nil
-                    ))
+                if !isCollapsed {
+                    AddWorktreeInlineButton { name in
+                        store.send(.createWorktreeTapped(
+                            repoId: repo.id, name: name, branchOverride: nil
+                        ))
+                    }
                 }
                 Menu {
                     Button {
@@ -125,15 +151,16 @@ struct WorktreeSwimlaneView: View {
             }
             .padding(.horizontal, 4)
 
-            let repoWorktrees = store.worktrees.filter { $0.repoId == repo.id }
-            if repoWorktrees.isEmpty {
-                Text("No worktrees yet")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .padding(12)
-            } else {
-                ForEach(repoWorktrees) { worktree in
-                    swimlaneRow(worktree: worktree)
+            if !isCollapsed {
+                if repoWorktrees.isEmpty {
+                    Text("No worktrees yet")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(12)
+                } else {
+                    ForEach(repoWorktrees) { worktree in
+                        swimlaneRow(worktree: worktree)
+                    }
                 }
             }
         }

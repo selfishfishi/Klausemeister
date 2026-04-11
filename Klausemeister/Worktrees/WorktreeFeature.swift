@@ -87,6 +87,8 @@ struct WorktreeFeature {
         /// triggers `AppFeature` to flip `showMeister = false` and route away
         /// from Meister; expansion stays within Meister.
         var expandedWorktreeIdInMeister: String?
+        /// Which repo sections are collapsed in the swimlane view.
+        var collapsedRepoIds: Set<String> = []
         /// Presented create-worktree sheet state, or nil when the sheet is hidden.
         var createSheet: CreateWorktreeSheetState?
         @Presents var alert: AlertState<Action.Alert>?
@@ -127,6 +129,7 @@ struct WorktreeFeature {
         case worktreeSelected(String?)
         case meisterExpansionToggled(worktreeId: String)
         case meisterExpansionCleared
+        case repoCollapseToggled(repoId: String)
         case renameWorktreeTapped(worktreeId: String, newName: String)
         case worktreeRenamed(worktreeId: String, newName: String)
         case worktreeRenameFailed(worktreeId: String, previousName: String, error: String)
@@ -421,6 +424,14 @@ struct WorktreeFeature {
 
             case .meisterExpansionCleared:
                 state.expandedWorktreeIdInMeister = nil
+                return .none
+
+            case let .repoCollapseToggled(repoId):
+                if state.collapsedRepoIds.contains(repoId) {
+                    state.collapsedRepoIds.remove(repoId)
+                } else {
+                    state.collapsedRepoIds.insert(repoId)
+                }
                 return .none
 
             case let .renameWorktreeTapped(worktreeId, newName):
