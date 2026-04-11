@@ -8,7 +8,7 @@ struct GitClient {
         _ repoPath: String,
         _ worktreePath: String,
         _ branch: String,
-        _ baseRef: String
+        _ baseRef: String?
     ) async throws -> Void
     var removeWorktree: @Sendable (_ repoPath: String, _ worktreePath: String) async throws -> Void
     var switchBranch: @Sendable (_ worktreePath: String, _ branchName: String) async throws -> Void
@@ -97,9 +97,15 @@ extension GitClient: DependencyKey {
                 try shell(["-C", worktreePath, "rev-parse", "--abbrev-ref", "HEAD"])
             },
             addWorktree: { repoPath, worktreePath, branch, baseRef in
-                _ = try shell([
-                    "-C", repoPath, "worktree", "add", worktreePath, "-b", branch, baseRef
-                ])
+                if let baseRef {
+                    _ = try shell([
+                        "-C", repoPath, "worktree", "add", worktreePath, "-b", branch, baseRef
+                    ])
+                } else {
+                    _ = try shell([
+                        "-C", repoPath, "worktree", "add", worktreePath, branch
+                    ])
+                }
             },
             removeWorktree: { repoPath, worktreePath in
                 _ = try shell(["-C", repoPath, "worktree", "remove", worktreePath, "--force"])

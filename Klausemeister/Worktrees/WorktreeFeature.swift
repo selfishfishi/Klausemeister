@@ -301,13 +301,22 @@ struct WorktreeFeature {
                         basePath: basePath, repoRoot: repoPath, name: sanitized
                     )
                     do {
-                        let defaultBranch = try await gitClient.resolveDefaultBranch(repoPath)
-                        if defaultBranch.hasOrigin {
-                            try await gitClient.fetchBranch(repoPath, defaultBranch.name)
+                        // Authoritative collision check at submit time so we don't
+                        // race with the view-level existingBranches snapshot.
+                        let existing = try await gitClient.listBranches(repoPath)
+                        let baseRef: String?
+                        if existing.contains(sanitized) {
+                            // Reuse the existing branch — no fetch, no -b.
+                            baseRef = nil
+                        } else {
+                            let defaultBranch = try await gitClient.resolveDefaultBranch(repoPath)
+                            if defaultBranch.hasOrigin {
+                                try await gitClient.fetchBranch(repoPath, defaultBranch.name)
+                            }
+                            baseRef = defaultBranch.hasOrigin
+                                ? "origin/\(defaultBranch.name)"
+                                : defaultBranch.name
                         }
-                        let baseRef = defaultBranch.hasOrigin
-                            ? "origin/\(defaultBranch.name)"
-                            : defaultBranch.name
                         try await gitClient.addWorktree(
                             repoPath, worktreePath, sanitized, baseRef
                         )
