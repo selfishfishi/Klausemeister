@@ -34,36 +34,39 @@ struct MeisterView: View {
             .padding(.bottom, 6)
 
             // Kanban board
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 14) {
-                    ForEach(store.visibleColumns) { column in
-                        KanbanColumnView(
-                            column: column,
-                            worktrees: worktrees,
-                            repositories: repositories,
-                            assignedWorktreeNames: assignedWorktreeNames,
-                            onMoveToStatus: { issueId, target in
-                                store.send(.moveToStatusTapped(issueId: issueId, target: target))
-                            },
-                            onAssignToWorktree: { issue, worktreeId in
-                                store.send(.assignIssueToWorktree(issue: issue, worktreeId: worktreeId))
-                            },
-                            onRemove: { issueId in
-                                store.send(.removeIssueTapped(issueId: issueId))
-                            },
-                            onDrop: { issueId in
-                                store.send(.issueDropped(issueId: issueId, onColumn: column.id))
-                            }
-                        )
-                        .transition(
-                            .scale(scale: 0.85)
-                                .combined(with: .opacity)
-                        )
+            GeometryReader { proxy in
+                ScrollView(.horizontal) {
+                    HStack(alignment: .top, spacing: 14) {
+                        ForEach(store.visibleColumns) { column in
+                            KanbanColumnView(
+                                column: column,
+                                worktrees: worktrees,
+                                repositories: repositories,
+                                assignedWorktreeNames: assignedWorktreeNames,
+                                onMoveToStatus: { issueId, target in
+                                    store.send(.moveToStatusTapped(issueId: issueId, target: target))
+                                },
+                                onAssignToWorktree: { issue, worktreeId in
+                                    store.send(.assignIssueToWorktree(issue: issue, worktreeId: worktreeId))
+                                },
+                                onRemove: { issueId in
+                                    store.send(.removeIssueTapped(issueId: issueId))
+                                },
+                                onDrop: { issueId in
+                                    store.send(.issueDropped(issueId: issueId, onColumn: column.id))
+                                }
+                            )
+                            .transition(
+                                .scale(scale: 0.85)
+                                    .combined(with: .opacity)
+                            )
+                        }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
+                    .padding(.bottom, 16)
+                    .frame(minWidth: proxy.size.width, alignment: .center)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 6)
-                .padding(.bottom, 16)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -94,15 +97,13 @@ private struct SyncIndicatorMenu: View {
             }
         } label: {
             image
-                .imageScale(.small)
-                .frame(width: 18, height: 18)
+                .font(.system(size: 44, weight: .semibold))
         } primaryAction: {
             onRefresh()
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .glassEffect(.regular.interactive(), in: Capsule())
         .disabled(syncStatus == .syncing)
         .help(helpText)
     }
@@ -143,8 +144,6 @@ private struct FilterMenu: View {
     let hiddenStages: Set<MeisterState>
     let onToggle: (MeisterState) -> Void
 
-    @Environment(\.themeColors) private var themeColors
-
     var body: some View {
         Menu {
             ForEach(MeisterState.allCases) { stage in
@@ -159,18 +158,15 @@ private struct FilterMenu: View {
                 }
             }
         } label: {
-            Image(systemName: hiddenStages.isEmpty
-                ? "line.3.horizontal.decrease.circle"
-                : "line.3.horizontal.decrease.circle.fill"
-            )
-            .imageScale(.small)
-            .foregroundStyle(hiddenStages.isEmpty ? .secondary : themeColors.accentColor)
-            .frame(width: 18, height: 18)
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .symbolRenderingMode(.monochrome)
+                .font(.system(size: 44, weight: .semibold))
+                .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .glassEffect(.regular.interactive(), in: Capsule())
+        .tint(Color(nsColor: .secondaryLabelColor))
         .help("Filter visible columns")
     }
 }
