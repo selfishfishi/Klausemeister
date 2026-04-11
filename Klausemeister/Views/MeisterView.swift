@@ -13,9 +13,6 @@ struct MeisterView: View {
         VStack(spacing: 0) {
             // Header with sync button
             HStack(spacing: 8) {
-                Text("Meister")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
                 Spacer()
                 SyncIndicatorMenu(
                     syncStatus: store.syncStatus,

@@ -46,7 +46,7 @@ struct MeisterFeature {
         }
     }
 
-    nonisolated static let orderedColumnTypes = ["backlog", "unstarted", "started", "completed", "canceled"]
+    nonisolated static let orderedColumnTypes = ["backlog", "unstarted", "started", "completed"]
     nonisolated static let unknownColumnId = "unknown"
     nonisolated static let syncLabel = "klause"
 
