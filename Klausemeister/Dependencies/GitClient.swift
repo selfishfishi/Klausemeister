@@ -4,11 +4,18 @@ import Foundation
 struct GitClient {
     var repositoryRoot: @Sendable (_ fromPath: String) async throws -> String
     var currentBranch: @Sendable (_ worktreePath: String) async throws -> String
-    var addWorktree: @Sendable (_ repoPath: String, _ worktreePath: String, _ branch: String) async throws -> Void
+    var addWorktree: @Sendable (
+        _ repoPath: String,
+        _ worktreePath: String,
+        _ branch: String,
+        _ baseRef: String
+    ) async throws -> Void
     var removeWorktree: @Sendable (_ repoPath: String, _ worktreePath: String) async throws -> Void
     var switchBranch: @Sendable (_ worktreePath: String, _ branchName: String) async throws -> Void
     var listWorktrees: @Sendable (_ repoPath: String) async throws -> [WorktreeListEntry]
     var listBranches: @Sendable (_ repoPath: String) async throws -> [String]
+    var resolveDefaultBranch: @Sendable (_ repoPath: String) async throws -> DefaultBranch
+    var fetchBranch: @Sendable (_ repoPath: String, _ branch: String) async throws -> Void
 
     struct WorktreeListEntry: Equatable {
         let path: String
@@ -16,6 +23,14 @@ struct GitClient {
         let isMain: Bool
         let isLocked: Bool
         let isPrunable: Bool
+    }
+
+    /// Result of resolving a repository's default branch. `hasOrigin` tells the
+    /// caller whether to fetch from `origin` before creating a worktree and
+    /// whether to base the new branch on `origin/<name>` or the local branch.
+    struct DefaultBranch: Equatable {
+        let name: String
+        let hasOrigin: Bool
     }
 }
 
@@ -81,13 +96,10 @@ extension GitClient: DependencyKey {
             currentBranch: { worktreePath in
                 try shell(["-C", worktreePath, "rev-parse", "--abbrev-ref", "HEAD"])
             },
-            addWorktree: { repoPath, worktreePath, branch in
-                do {
-                    _ = try shell(["-C", repoPath, "worktree", "add", worktreePath, "-b", branch])
-                } catch {
-                    // Branch may already exist — try checking it out instead of creating
-                    _ = try shell(["-C", repoPath, "worktree", "add", worktreePath, branch])
-                }
+            addWorktree: { repoPath, worktreePath, branch, baseRef in
+                _ = try shell([
+                    "-C", repoPath, "worktree", "add", worktreePath, "-b", branch, baseRef
+                ])
             },
             removeWorktree: { repoPath, worktreePath in
                 _ = try shell(["-C", repoPath, "worktree", "remove", worktreePath, "--force"])
@@ -107,6 +119,40 @@ extension GitClient: DependencyKey {
                     .split(separator: "\n")
                     .map { $0.trimmingCharacters(in: .whitespaces) }
                     .filter { !$0.isEmpty }
+            },
+            resolveDefaultBranch: { repoPath in
+                // Preferred path: origin/HEAD is set. Returns something like
+                // "origin/main" — strip the remote prefix.
+                if let symbolic = try? shell([
+                    "-C", repoPath, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"
+                ]), symbolic.hasPrefix("origin/") {
+                    return GitClient.DefaultBranch(
+                        name: String(symbolic.dropFirst("origin/".count)),
+                        hasOrigin: true
+                    )
+                }
+                // Fallback: no origin/HEAD set. Check for origin remote first.
+                let remotes = (try? shell(["-C", repoPath, "remote"])) ?? ""
+                let hasOrigin = remotes
+                    .split(separator: "\n")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .contains("origin")
+                // Pick whichever of main/master exists locally.
+                for candidate in ["main", "master"]
+                    where (try? shell([
+                        "-C", repoPath, "rev-parse", "--verify", "--quiet", "refs/heads/\(candidate)"
+                    ])) != nil
+                {
+                    return GitClient.DefaultBranch(name: candidate, hasOrigin: hasOrigin)
+                }
+                throw GitClientError.commandFailed(
+                    command: "symbolic-ref",
+                    exitCode: 1,
+                    stderr: "Could not determine default branch: no origin/HEAD and neither main nor master exists locally."
+                )
+            },
+            fetchBranch: { repoPath, branch in
+                _ = try shell(["-C", repoPath, "fetch", "origin", branch])
             }
         )
     }()
@@ -118,7 +164,9 @@ extension GitClient: DependencyKey {
         removeWorktree: unimplemented("GitClient.removeWorktree"),
         switchBranch: unimplemented("GitClient.switchBranch"),
         listWorktrees: unimplemented("GitClient.listWorktrees"),
-        listBranches: unimplemented("GitClient.listBranches")
+        listBranches: unimplemented("GitClient.listBranches"),
+        resolveDefaultBranch: unimplemented("GitClient.resolveDefaultBranch"),
+        fetchBranch: unimplemented("GitClient.fetchBranch")
     )
 }
 

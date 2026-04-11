@@ -33,6 +33,7 @@ identifier_name:
 
 excluded:
   - .build
+  - .worktrees
   - DerivedData
   - Klausemeister.xcodeproj
   - Klausemeister/Assets.xcassets

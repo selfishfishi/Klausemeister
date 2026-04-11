@@ -26,11 +26,7 @@ struct KanbanColumnView: View {
             cards
         }
         .frame(minWidth: 240, idealWidth: 260)
-        .background(columnBackground)
-        .overlay(columnBorder)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: tint.opacity(0.18), radius: 20, y: 8)
-        .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
+        .glassPanel(tint: tint)
         .dropDestination(for: String.self) { items, _ in
             guard let issueId = items.first else { return false }
             onDrop(issueId)
@@ -104,40 +100,5 @@ struct KanbanColumnView: View {
             .padding(.top, 12)
             .padding(.bottom, 14)
         }
-    }
-
-    // MARK: - Background + border
-
-    private var columnBackground: some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .fill(.ultraThinMaterial)
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                tint.opacity(0.08),
-                                tint.opacity(0.02)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-            }
-    }
-
-    private var columnBorder: some View {
-        RoundedRectangle(cornerRadius: 18, style: .continuous)
-            .strokeBorder(
-                LinearGradient(
-                    colors: [
-                        tint.opacity(0.35),
-                        tint.opacity(0.1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ),
-                lineWidth: 0.75
-            )
     }
 }
