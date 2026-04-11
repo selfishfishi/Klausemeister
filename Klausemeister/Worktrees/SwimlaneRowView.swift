@@ -2,6 +2,11 @@ import SwiftUI
 
 struct SwimlaneRowView: View {
     let worktree: Worktree
+    /// Unique per-row tint resolved by the parent from the theme's swimlane
+    /// palette. Used as the glass container tint so each lane reads as its
+    /// own surface. The 30fps active pulse still uses `accentColor` so all
+    /// "work is happening" cues read the same across rows.
+    let tint: Color
     let onDelete: () -> Void
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
@@ -26,7 +31,7 @@ struct SwimlaneRowView: View {
 
             rowContent
                 .overlay {
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
                         .stroke(
                             themeColors.accentColor.opacity(
                                 worktree.isActive ? (0.3 + 0.5 * phase) * intensity : 0
@@ -45,15 +50,13 @@ struct SwimlaneRowView: View {
     }
 
     private var rowContent: some View {
-        HStack(alignment: .top, spacing: 0) {
+        HStack(alignment: .top, spacing: 10) {
             SwimlaneHeaderView(
                 worktree: worktree,
                 onDelete: onDelete,
                 isExpanded: isExpanded,
                 onToggleExpand: onToggleExpand
             )
-
-            Divider()
 
             SwimlaneQueueView(
                 role: .inbox,
@@ -80,8 +83,8 @@ struct SwimlaneRowView: View {
                 onDrop: onDropToOutbox
             )
         }
-        .background(.fill.quinary)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(10)
+        .glassPanel(tint: tint, cornerRadius: swimlaneGlassCornerRadius)
     }
 
     private func pulsePhase(date: Date, period: Double) -> Double {

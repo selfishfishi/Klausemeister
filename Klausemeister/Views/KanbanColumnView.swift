@@ -39,7 +39,7 @@ struct KanbanColumnView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text(column.name)
-                .font(.subheadline.weight(.semibold))
+                .font(.callout.weight(.semibold))
                 .foregroundStyle(tint)
                 .tracking(0.3)
             Spacer(minLength: 0)
@@ -52,7 +52,7 @@ struct KanbanColumnView: View {
 
     private var countBadge: some View {
         Text("\(column.issues.count)")
-            .font(.caption.weight(.semibold).monospacedDigit())
+            .font(.footnote.weight(.semibold).monospacedDigit())
             .foregroundStyle(tint)
             .padding(.horizontal, 8)
             .padding(.vertical, 2)

@@ -14,7 +14,7 @@ struct SwimlaneHeaderView: View {
                 if let onToggleExpand {
                     Button(action: onToggleExpand) {
                         Image(systemName: "chevron.right")
-                            .font(.caption2.weight(.semibold))
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
                             .frame(width: 12)
@@ -26,7 +26,7 @@ struct SwimlaneHeaderView: View {
                         .foregroundStyle(.secondary)
                 }
                 Text(worktree.name)
-                    .font(.callout)
+                    .font(.body)
                     .lineLimit(1)
                 Spacer()
                 Menu {
@@ -40,7 +40,7 @@ struct SwimlaneHeaderView: View {
 
             if let branch = worktree.currentBranch {
                 Text(branch)
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
@@ -55,7 +55,7 @@ struct SwimlaneHeaderView: View {
     private var statusPill: some View {
         let (label, tint) = statusLabelAndTint
         Text(label)
-            .font(.caption.weight(.semibold))
+            .font(.footnote.weight(.semibold))
             .foregroundStyle(tint)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)

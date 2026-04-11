@@ -4,6 +4,8 @@ import SwiftUI
 
 struct WorktreeSwimlaneView: View {
     @Bindable var store: StoreOf<WorktreeFeature>
+
+    @Environment(\.themeColors) private var themeColors
     @State private var isPanelVisible = false
 
     var body: some View {
@@ -38,9 +40,7 @@ struct WorktreeSwimlaneView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
-            Text("Worktrees")
-                .font(.headline)
+        HStack(spacing: 10) {
             Spacer()
             if store.isCreatingWorktree {
                 ProgressView()
@@ -50,7 +50,7 @@ struct WorktreeSwimlaneView: View {
                 store.send(.createSheetShown(prefilledRepoId: nil))
             } label: {
                 Label("New Worktree", systemImage: "plus")
-                    .font(.callout)
+                    .font(.body)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
             }
@@ -62,7 +62,7 @@ struct WorktreeSwimlaneView: View {
                 openRepoFolderPicker()
             } label: {
                 Label("Add Repo", systemImage: "folder.badge.plus")
-                    .font(.callout)
+                    .font(.body)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
             }
@@ -70,25 +70,30 @@ struct WorktreeSwimlaneView: View {
             .glassEffect(.regular.interactive(), in: Capsule())
             .help("Add Repository")
         }
-        .padding(12)
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 6)
     }
 
     private var swimlanes: some View {
-        ScrollView(.vertical) {
+        // Compute the per-render palette once so row tint lookups don't
+        // re-allocate the Set/Array for each worktree in the ForEach.
+        let tints = themeColors.swimlaneRowTints
+        return ScrollView(.vertical) {
             LazyVStack(spacing: 12) {
                 ForEach(store.repositories) { repo in
-                    repoSection(repo: repo)
+                    repoSection(repo: repo, tints: tints)
                 }
                 let ungrouped = store.worktrees.filter { $0.repoId == nil }
                 ForEach(ungrouped) { worktree in
-                    swimlaneRow(worktree: worktree)
+                    swimlaneRow(worktree: worktree, tints: tints)
                 }
             }
             .padding(12)
         }
     }
 
-    private func repoSection(repo: Repository) -> some View {
+    private func repoSection(repo: Repository, tints: [Color]) -> some View {
         let isCollapsed = store.collapsedRepoIds.contains(repo.id)
         let repoWorktrees = store.worktrees.filter { $0.repoId == repo.id }
 
@@ -99,22 +104,23 @@ struct WorktreeSwimlaneView: View {
                         _ = store.send(.repoCollapseToggled(repoId: repo.id))
                     }
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .frame(width: 8)
-                        Image(systemName: "folder")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                        Text(repo.name)
-                            .font(.caption)
+                            .font(.footnote.weight(.semibold))
                             .foregroundStyle(.secondary)
+                            .frame(width: 10)
+                        Image(systemName: "folder")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Text(repo.name)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .tracking(0.3)
                         if isCollapsed {
                             Text("\(repoWorktrees.count)")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                                .padding(.horizontal, 6)
+                                .font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 7)
                                 .padding(.vertical, 2)
                                 .background(.fill.quaternary, in: Capsule())
                         }
@@ -143,7 +149,7 @@ struct WorktreeSwimlaneView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
@@ -153,23 +159,36 @@ struct WorktreeSwimlaneView: View {
             if !isCollapsed {
                 if repoWorktrees.isEmpty {
                     Text("No worktrees yet")
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(.tertiary)
                         .padding(12)
                 } else {
                     ForEach(repoWorktrees) { worktree in
-                        swimlaneRow(worktree: worktree)
+                        swimlaneRow(worktree: worktree, tints: tints)
                     }
                 }
             }
         }
     }
 
-    private func swimlaneRow(worktree: Worktree) -> some View {
+    /// Stable per-worktree tint: a cheap unicode-scalar sum over the id
+    /// ensures the same worktree always lands on the same palette slot,
+    /// independent of `store.worktrees` ordering (which isn't guaranteed
+    /// stable across fetches, and we can't sort it here without touching
+    /// `WorktreeFeature`).
+    private func rowTint(for worktree: Worktree, palette: [Color]) -> Color {
+        guard !palette.isEmpty else { return themeColors.accentColor }
+        let sum = worktree.id.unicodeScalars.reduce(UInt(0)) { $0 &+ UInt($1.value) }
+        return palette[Int(sum % UInt(palette.count))]
+    }
+
+    private func swimlaneRow(worktree: Worktree, tints: [Color]) -> some View {
         let isExpanded = store.expandedWorktreeIdInMeister == worktree.id
+        let rowTint = rowTint(for: worktree, palette: tints)
         return VStack(alignment: .leading, spacing: 6) {
             SwimlaneRowView(
                 worktree: worktree,
+                tint: rowTint,
                 onDelete: {
                     store.send(.confirmDeleteTapped(worktreeId: worktree.id))
                 },
@@ -212,8 +231,7 @@ struct WorktreeSwimlaneView: View {
                         store.send(.confirmDeleteTapped(worktreeId: worktree.id))
                     }
                 )
-                .background(.fill.quinary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .glassPanel(tint: rowTint, cornerRadius: swimlaneGlassCornerRadius)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }

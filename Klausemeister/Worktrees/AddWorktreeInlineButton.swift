@@ -20,7 +20,7 @@ struct AddWorktreeInlineButton: View {
                     cancel()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
@@ -31,7 +31,7 @@ struct AddWorktreeInlineButton: View {
                 isEditing = true
             } label: {
                 Image(systemName: "plus")
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.tertiary)
             }
             .buttonStyle(.plain)
