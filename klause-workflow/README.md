@@ -5,6 +5,7 @@ A Claude Code plugin loaded by the **meister Claude Code** in every Klausemeiste
 - An MCP client wired to the local Klausemeister MCP server via a stdio shim (`klause-mcp-shim`) bridging to a Unix socket hosted by Klausemeister
 - Three placeholder slash commands (`/klause-spec`, `/klause-review`, `/klause-verify`) that will become the per-state workhorses
 - A meister-loop skill that auto-triggers when the session is a Klausemeister meister (env `KLAUSE_MEISTER=1`)
+- An `/open-pr` skill that runs the full PR lifecycle — detect format/lint tools, commit, rebase, push, create PR, poll via `/loop`, merge
 
 The canonical meister-loop instructions live in [`CLAUDE.md`](CLAUDE.md) at the plugin root.
 
@@ -23,7 +24,8 @@ klause-workflow/
 │   ├── klause-review.md            # placeholder → KLA-76
 │   └── klause-verify.md            # placeholder → KLA-77
 ├── skills/
-│   └── klause-workflow/SKILL.md    # meister-loop autoloader
+│   ├── klause-workflow/SKILL.md    # meister-loop autoloader
+│   └── open-pr/SKILL.md            # /open-pr full PR lifecycle
 ├── CLAUDE.md                       # meister loop instructions (source of truth)
 └── README.md
 ```
