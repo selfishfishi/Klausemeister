@@ -11,7 +11,7 @@ import Network
 ///   1. Installs the shim symlink so the plugin can find the helper.
 ///   2. Unlinks any stale socket file from a previous app run.
 ///   3. Binds an `NWListener` to the socket path and accepts connections.
-///   4. For each connection: reads the `HelloFrame`, validates the master
+///   4. For each connection: reads the `HelloFrame`, validates the meister
 ///      identity, then constructs a per-connection `SocketTransport` + MCP
 ///      `Server` with tool handlers closing over the worktree id.
 ///   5. Yields any errors encountered to `eventContinuation` so they reach
@@ -144,13 +144,17 @@ enum MCPSocketListener {
         _ connection: NWConnection,
         eventContinuation: AsyncStream<MCPServerEvent>.Continuation
     ) async {
+        var worktreeId: String?
         do {
             let (helloLine, _) = try await SocketTransport.readHelloLine(from: connection)
             let hello = try JSONDecoder().decode(HelloFrame.self, from: helloLine)
-            guard hello.isValidPrimary else {
+            guard hello.isValidMeister else {
                 connection.cancel()
                 return
             }
+            worktreeId = hello.klauseWorktreeId
+
+            eventContinuation.yield(.meisterHelloReceived(worktreeId: hello.klauseWorktreeId))
 
             let transport = SocketTransport(
                 connection: connection,
@@ -162,9 +166,16 @@ enum MCPSocketListener {
             )
             try await server.start(transport: transport)
             await server.waitUntilCompleted()
+
+            // Server exited cleanly — the meister's transport closed. Treat
+            // as a connection drop so `WorktreeFeature` flips state.
+            eventContinuation.yield(.meisterConnectionClosed(worktreeId: hello.klauseWorktreeId))
         } catch {
             connection.cancel()
             eventContinuation.yield(.errorOccurred(message: "MCP connection failed: \(error.localizedDescription)"))
+            if let worktreeId {
+                eventContinuation.yield(.meisterConnectionClosed(worktreeId: worktreeId))
+            }
         }
     }
 
@@ -262,7 +273,7 @@ private enum ToolCatalog {
         Tool(
             name: "getNextItem",
             // swiftlint:disable:next line_length
-            description: "Claim the next inbox item from the master's worktree queue. Marks the item as 'processing', sets the linked Linear issue to 'In Progress', and returns the full item details. Returns {\"item\":null} if the inbox is empty.",
+            description: "Claim the next inbox item from the meister's worktree queue. Marks the item as 'processing', sets the linked Linear issue to 'In Progress', and returns the full item details. Returns {\"item\":null} if the inbox is empty.",
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([:]),

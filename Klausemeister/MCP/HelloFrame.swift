@@ -10,15 +10,15 @@
 import Foundation
 
 struct HelloFrame: Codable, Equatable {
-    /// Must equal `"1"`. Set by Klausemeister when spawning the master Claude
+    /// Must equal `"1"`. Set by Klausemeister when spawning the meister Claude
     /// Code; inherited by the shim subprocess; forwarded here.
-    let klausePrimary: String
+    let klauseMeister: String
 
     /// Worktree UUID this connection is allowed to act on.
     let klauseWorktreeId: String
 
-    /// Validates the frame meets the minimum requirements to identify a master.
-    var isValidPrimary: Bool {
-        klausePrimary == "1" && !klauseWorktreeId.isEmpty
+    /// Validates the frame meets the minimum requirements to identify a meister.
+    var isValidMeister: Bool {
+        klauseMeister == "1" && !klauseWorktreeId.isEmpty
     }
 }

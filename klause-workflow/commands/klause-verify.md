@@ -9,7 +9,7 @@ argument-hint: [linear-ticket-id]
 
 ## Planned contract
 
-**Invoked when:** the master loop pulls a queue item whose linked Linear ticket is in `Testing`.
+**Invoked when:** the meister loop pulls a queue item whose linked Linear ticket is in `Testing`.
 
 **Input:** the queue item, plus any verification plan attached to the ticket from earlier stages.
 
@@ -24,4 +24,4 @@ argument-hint: [linear-ticket-id]
 
 ## What to do if invoked today
 
-This command is not implemented yet. If the master loop reaches a Testing item, explain the situation to the user and wait for direction. The real prompt will be added under KLA-77.
+This command is not implemented yet. If the meister loop reaches a Testing item, explain the situation to the user and wait for direction. The real prompt will be added under KLA-77.

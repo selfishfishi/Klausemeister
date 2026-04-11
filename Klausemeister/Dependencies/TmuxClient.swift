@@ -3,7 +3,12 @@ import Dependencies
 import Foundation
 
 struct TmuxClient {
-    var createSession: @Sendable (_ name: String, _ workingDirectory: String) async throws -> Void
+    var createSession: @Sendable (
+        _ name: String,
+        _ workingDirectory: String,
+        _ env: [String: String]
+    ) async throws -> Void
+    var sendKeys: @Sendable (_ target: String, _ keys: String) async throws -> Void
     var hasSession: @Sendable (_ name: String) async throws -> Bool
     var killSession: @Sendable (_ name: String) async throws -> Void
     var listSessions: @Sendable () async throws -> [String]
@@ -73,8 +78,22 @@ extension TmuxClient: DependencyKey {
         }
 
         return TmuxClient(
-            createSession: { name, workingDirectory in
-                _ = try shell(["new-session", "-d", "-s", name, "-c", workingDirectory])
+            createSession: { name, workingDirectory, env in
+                // Sorting keys keeps the command line stable for testing and
+                // log diffing. Empty env maps to zero `-e` flags, which is
+                // equivalent to the previous zero-env `new-session` shape.
+                var arguments = ["new-session", "-d", "-s", name, "-c", workingDirectory]
+                for (key, value) in env.sorted(by: { $0.key < $1.key }) {
+                    arguments.append("-e")
+                    arguments.append("\(key)=\(value)")
+                }
+                _ = try shell(arguments)
+            },
+            sendKeys: { target, keys in
+                // Two args: the key string and a literal `Enter` so the shell
+                // actually executes the command instead of leaving it on the
+                // prompt.
+                _ = try shell(["send-keys", "-t", target, keys, "Enter"])
             },
             hasSession: { name in
                 // tmux exits non-zero when the session does not exist OR when no
@@ -113,6 +132,7 @@ extension TmuxClient: DependencyKey {
 
     nonisolated static let testValue = TmuxClient(
         createSession: unimplemented("TmuxClient.createSession"),
+        sendKeys: unimplemented("TmuxClient.sendKeys"),
         hasSession: unimplemented("TmuxClient.hasSession"),
         killSession: unimplemented("TmuxClient.killSession"),
         listSessions: unimplemented("TmuxClient.listSessions")

@@ -14,4 +14,14 @@ enum MCPServerEvent: Equatable {
     /// A tool reported live progress. The text is opaque — `StatusBarFeature`
     /// (or, eventually, the per-session sidebar UI in KLA-80) decides how to render it.
     case progressReported(worktreeId: String, itemId: String, statusText: String)
+
+    /// The meister Claude Code for the given worktree completed its handshake
+    /// (shim sent a valid HelloFrame). `WorktreeFeature` uses this to flip
+    /// the worktree's `meisterStatus` to `.running`.
+    case meisterHelloReceived(worktreeId: String)
+
+    /// The meister's MCP connection terminated — either because `claude`
+    /// exited, the shim disconnected, or the transport errored. Flips the
+    /// worktree to `.disconnected`. KLA-74 spec forbids auto-respawn.
+    case meisterConnectionClosed(worktreeId: String)
 }
