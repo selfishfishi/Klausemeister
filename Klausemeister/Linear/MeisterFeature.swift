@@ -11,6 +11,12 @@ struct MeisterFeature {
         var workflowStatesByTeam: WorkflowStatesByTeam = [:]
         var workflowStatesLastFetched: Date?
         var syncStatus: SyncStatus = .idle
+        /// Stages the user has toggled off in the filter menu. The underlying
+        /// `columns` still contains every stage — the view reads `visibleColumns`
+        /// to apply this filter, so toggling a stage back on never loses data.
+        /// Defaults to hiding `.completed` since most users don't want finished
+        /// work cluttering the board.
+        var hiddenStages: Set<MeisterState> = [.completed]
     }
 
     nonisolated static let workflowStatesCacheTTL: TimeInterval = 15 * 60
@@ -30,24 +36,14 @@ struct MeisterFeature {
     }
 
     struct KanbanColumn: Equatable, Identifiable {
-        let id: String // statusType string
-        let name: String
+        let id: MeisterState
         var issues: [LinearIssue] = []
 
-        nonisolated static func displayName(forType type: String) -> String {
-            switch type {
-            case "backlog": "Backlog"
-            case "unstarted": "To Do"
-            case "started": "In Progress"
-            case "completed": "Done"
-            case "canceled": "Canceled"
-            default: "Unknown"
-            }
+        var name: String {
+            id.displayName
         }
     }
 
-    nonisolated static let orderedColumnTypes = ["backlog", "unstarted", "started", "completed"]
-    nonisolated static let unknownColumnId = "unknown"
     nonisolated static let syncLabel = "klause"
 
     enum Action: BindableAction, Equatable {
@@ -58,17 +54,18 @@ struct MeisterFeature {
         case workflowStatesLoadedFromCache(WorkflowStatesByTeam, Date?)
         case syncCompleted(TaskResult<SyncResult>)
         case syncIndicatorReset
-        case issueDropped(issueId: String, onColumnId: String)
-        case issueMoved(issueId: String, fromColumnId: String, toColumnId: String)
-        case moveToStatusTapped(issueId: String, targetStatusType: String)
+        case issueDropped(issueId: String, onColumn: MeisterState)
+        case issueMoved(issueId: String, source: MeisterState, target: MeisterState)
+        case moveToStatusTapped(issueId: String, target: MeisterState)
         case statusUpdateSucceeded(issueId: String)
-        case statusUpdateFailed(issueId: String, restoreToColumnId: String, originalIssue: LinearIssue)
+        case statusUpdateFailed(issueId: String, restoreTo: MeisterState, originalIssue: LinearIssue)
         case removeIssueTapped(issueId: String)
+        case stageVisibilityToggled(MeisterState)
         case assignIssueToWorktree(issue: LinearIssue, worktreeId: String)
         case issueReturnedFromWorktree(issue: LinearIssue)
         case removeIssueFromColumns(issueId: String)
-        case issueDroppedFromWorktree(issueId: String, onColumnId: String)
-        case issueDroppedFromWorktreeResolved(issue: LinearIssue, onColumnId: String)
+        case issueDroppedFromWorktree(issueId: String, onColumn: MeisterState)
+        case issueDroppedFromWorktreeResolved(issue: LinearIssue, onColumn: MeisterState)
         case delegate(Delegate)
 
         @CasePathable
@@ -251,70 +248,70 @@ struct MeisterFeature {
                 }
                 return .none
 
-            case let .issueMoved(issueId, fromColumnId, toColumnId):
-                guard let sourceColumn = state.columns[id: fromColumnId],
+            case let .issueMoved(issueId, source, target):
+                guard let sourceColumn = state.columns[id: source],
                       let issueIndex = sourceColumn.issues.firstIndex(where: { $0.id == issueId }),
-                      state.columns[id: toColumnId] != nil
+                      state.columns[id: target] != nil
                 else { return .none }
 
                 let originalIssue = sourceColumn.issues[issueIndex]
-                // Resolve the team-specific workflow state for the target type
+                // Resolve the team-specific workflow state for the target MeisterState.
                 guard let teamStates = state.workflowStatesByTeam[originalIssue.teamId],
-                      let targetState = teamStates.first(where: { $0.type == toColumnId })
+                      let targetLinearState = target.linearState(in: teamStates)
                 else {
                     // No matching workflow state for this team — cannot move
                     return .none
                 }
 
                 let movedIssue = originalIssue.withUpdatedStatus(
-                    status: targetState.name,
-                    statusId: targetState.id,
-                    statusType: toColumnId
+                    status: targetLinearState.name,
+                    statusId: targetLinearState.id,
+                    statusType: targetLinearState.type
                 )
 
                 // Optimistic update
-                state.columns[id: fromColumnId]?.issues.remove(at: issueIndex)
-                state.columns[id: toColumnId]?.issues.append(movedIssue)
+                state.columns[id: source]?.issues.remove(at: issueIndex)
+                state.columns[id: target]?.issues.append(movedIssue)
 
                 return .run { send in
-                    try await linearAPIClient.updateIssueStatus(issueId, targetState.id)
+                    try await linearAPIClient.updateIssueStatus(issueId, targetLinearState.id)
                     try await databaseClient.updateIssueStatus(
-                        issueId, targetState.name, targetState.id, toColumnId
+                        issueId, targetLinearState.name, targetLinearState.id, targetLinearState.type
                     )
                     await send(.statusUpdateSucceeded(issueId: issueId))
                 } catch: { _, send in
                     await send(.statusUpdateFailed(
                         issueId: issueId,
-                        restoreToColumnId: fromColumnId,
+                        restoreTo: source,
                         originalIssue: originalIssue
                     ))
                 }
 
-            case let .issueDropped(issueId, onColumnId):
+            case let .issueDropped(issueId, onColumn):
                 if let fromColumn = state.columnContainingIssue(issueId) {
                     return .send(.issueMoved(
                         issueId: issueId,
-                        fromColumnId: fromColumn.id,
-                        toColumnId: onColumnId
+                        source: fromColumn.id,
+                        target: onColumn
                     ))
                 }
                 // Issue not in any column — coming from a worktree
-                return .send(.issueDroppedFromWorktree(issueId: issueId, onColumnId: onColumnId))
+                return .send(.issueDroppedFromWorktree(issueId: issueId, onColumn: onColumn))
 
-            case let .moveToStatusTapped(issueId, targetStatusType):
+            case let .moveToStatusTapped(issueId, target):
                 guard let fromColumn = state.columnContainingIssue(issueId) else { return .none }
                 return .send(.issueMoved(
                     issueId: issueId,
-                    fromColumnId: fromColumn.id,
-                    toColumnId: targetStatusType
+                    source: fromColumn.id,
+                    target: target
                 ))
 
             case .statusUpdateSucceeded:
                 return .none
 
-            case let .statusUpdateFailed(_, restoreToColumnId, originalIssue):
+            case let .statusUpdateFailed(_, restoreTo, originalIssue):
                 state.removeIssueFromAllColumns(originalIssue.id)
-                state.columns[id: restoreToColumnId]?.issues.append(originalIssue)
+                state.columns[id: restoreTo]?.issues.append(originalIssue)
                 return .send(.delegate(.errorOccurred(message: "Failed to update issue status")))
 
             case let .removeIssueTapped(issueId):
@@ -322,6 +319,14 @@ struct MeisterFeature {
                 return .run { _ in
                     try await databaseClient.deleteImportedIssue(issueId)
                 }
+
+            case let .stageVisibilityToggled(stage):
+                if state.hiddenStages.contains(stage) {
+                    state.hiddenStages.remove(stage)
+                } else {
+                    state.hiddenStages.insert(stage)
+                }
+                return .none
 
             case let .removeIssueFromColumns(issueId):
                 state.removeIssueFromAllColumns(issueId)
@@ -335,33 +340,29 @@ struct MeisterFeature {
                 guard !state.columns.isEmpty else { return .none }
                 let alreadyPresent = state.columns.contains { $0.issues.contains { $0.id == issue.id } }
                 guard !alreadyPresent else { return .none }
-                let targetColumnId = MeisterFeature.columnId(forType: issue.statusType)
-                if state.columns[id: targetColumnId] != nil {
-                    state.columns[id: targetColumnId]?.issues.append(issue)
+                if let targetState = issue.meisterState, state.columns[id: targetState] != nil {
+                    state.columns[id: targetState]?.issues.append(issue)
                 } else if let firstColumn = state.columns.first {
                     state.columns[id: firstColumn.id]?.issues.append(issue)
                 }
                 return .none
 
-            case let .issueDroppedFromWorktree(issueId, onColumnId):
+            case let .issueDroppedFromWorktree(issueId, onColumn):
                 return .run { send in
                     guard let record = try await databaseClient.fetchImportedIssue(issueId) else { return }
                     let issue = LinearIssue(from: record)
-                    await send(.issueDroppedFromWorktreeResolved(issue: issue, onColumnId: onColumnId))
+                    await send(.issueDroppedFromWorktreeResolved(issue: issue, onColumn: onColumn))
                 }
 
-            case let .issueDroppedFromWorktreeResolved(issue, onColumnId):
+            case let .issueDroppedFromWorktreeResolved(issue, onColumn):
                 let alreadyPresent = state.columns.contains { $0.issues.contains { $0.id == issue.id } }
                 guard !alreadyPresent else { return .none }
-                if state.columns[id: onColumnId] != nil {
-                    state.columns[id: onColumnId]?.issues.append(issue)
-                } else {
-                    let typeColumnId = MeisterFeature.columnId(forType: issue.statusType)
-                    if state.columns[id: typeColumnId] != nil {
-                        state.columns[id: typeColumnId]?.issues.append(issue)
-                    } else if let firstColumn = state.columns.first {
-                        state.columns[id: firstColumn.id]?.issues.append(issue)
-                    }
+                if state.columns[id: onColumn] != nil {
+                    state.columns[id: onColumn]?.issues.append(issue)
+                } else if let targetState = issue.meisterState, state.columns[id: targetState] != nil {
+                    state.columns[id: targetState]?.issues.append(issue)
+                } else if let firstColumn = state.columns.first {
+                    state.columns[id: firstColumn.id]?.issues.append(issue)
                 }
                 return .send(.delegate(.issueReturnedFromWorktreeByDrop(issueId: issue.id)))
 
@@ -389,25 +390,14 @@ struct MeisterFeature {
 
     // MARK: - Column helpers
 
-    nonisolated static func columnId(forType type: String) -> String {
-        orderedColumnTypes.contains(type) ? type : unknownColumnId
-    }
-
     static func rebuildColumns(from issues: [LinearIssue]) -> IdentifiedArrayOf<KanbanColumn> {
-        let grouped = Dictionary(grouping: issues, by: { columnId(forType: $0.statusType) })
-        var columns: [KanbanColumn] = orderedColumnTypes.map { type in
-            KanbanColumn(
-                id: type,
-                name: KanbanColumn.displayName(forType: type),
-                issues: grouped[type] ?? []
-            )
+        var bucketed: [MeisterState: [LinearIssue]] = [:]
+        for issue in issues {
+            guard let state = issue.meisterState else { continue }
+            bucketed[state, default: []].append(issue)
         }
-        if let unknownIssues = grouped[unknownColumnId], !unknownIssues.isEmpty {
-            columns.append(KanbanColumn(
-                id: unknownColumnId,
-                name: KanbanColumn.displayName(forType: unknownColumnId),
-                issues: unknownIssues
-            ))
+        let columns = MeisterState.allCases.map { state in
+            KanbanColumn(id: state, issues: bucketed[state] ?? [])
         }
         return IdentifiedArrayOf(uniqueElements: columns)
     }
@@ -460,6 +450,13 @@ nonisolated private func performSync(
 // MARK: - State Helpers
 
 extension MeisterFeature.State {
+    /// Columns the user has chosen to see. Purely view-layer filtering —
+    /// `columns` still holds every stage, so toggling a stage back on reveals
+    /// its existing issues without resyncing.
+    var visibleColumns: IdentifiedArrayOf<MeisterFeature.KanbanColumn> {
+        columns.filter { !hiddenStages.contains($0.id) }
+    }
+
     func columnContainingIssue(_ issueId: String) -> MeisterFeature.KanbanColumn? {
         columns.first { $0.issues.contains { $0.id == issueId } }
     }

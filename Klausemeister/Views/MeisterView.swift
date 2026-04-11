@@ -11,30 +11,39 @@ struct MeisterView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header with sync button
-            HStack(spacing: 8) {
+            // Header with filter + sync
+            HStack(spacing: 10) {
                 Spacer()
+                FilterMenu(
+                    hiddenStages: store.hiddenStages,
+                    onToggle: { stage in
+                        store.send(
+                            .stageVisibilityToggled(stage),
+                            animation: .smooth(duration: 0.2)
+                        )
+                    }
+                )
                 SyncIndicatorMenu(
                     syncStatus: store.syncStatus,
                     onRefresh: { store.send(.refreshTapped) },
                     onReloadMetadata: { store.send(.refreshLinearMetadataTapped) }
                 )
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 6)
 
             // Kanban board
             ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 10) {
-                    ForEach(store.columns) { column in
+                HStack(alignment: .top, spacing: 14) {
+                    ForEach(store.visibleColumns) { column in
                         KanbanColumnView(
                             column: column,
-                            workflowStatesByTeam: store.workflowStatesByTeam,
                             worktrees: worktrees,
                             repositories: repositories,
                             assignedWorktreeNames: assignedWorktreeNames,
-                            onMoveToStatus: { issueId, statusType in
-                                store.send(.moveToStatusTapped(issueId: issueId, targetStatusType: statusType))
+                            onMoveToStatus: { issueId, target in
+                                store.send(.moveToStatusTapped(issueId: issueId, target: target))
                             },
                             onAssignToWorktree: { issue, worktreeId in
                                 store.send(.assignIssueToWorktree(issue: issue, worktreeId: worktreeId))
@@ -43,12 +52,18 @@ struct MeisterView: View {
                                 store.send(.removeIssueTapped(issueId: issueId))
                             },
                             onDrop: { issueId in
-                                store.send(.issueDropped(issueId: issueId, onColumnId: column.id))
+                                store.send(.issueDropped(issueId: issueId, onColumn: column.id))
                             }
+                        )
+                        .transition(
+                            .scale(scale: 0.85)
+                                .combined(with: .opacity)
                         )
                     }
                 }
-                .padding(12)
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+                .padding(.bottom, 16)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -87,6 +102,7 @@ private struct SyncIndicatorMenu: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .glassEffect(.regular.interactive(), in: Capsule())
         .disabled(syncStatus == .syncing)
         .help(helpText)
     }
@@ -114,5 +130,47 @@ private struct SyncIndicatorMenu: View {
         case .syncing: "Syncing..."
         case .succeeded: "Sync complete"
         }
+    }
+}
+
+// MARK: - Filter Menu (Liquid Glass)
+
+/// Dropdown menu letting the user toggle individual `MeisterState` columns
+/// on and off. Wrapped in `.glassEffect` to match the Liquid Glass look used
+/// for other floating controls in the app. Pure presentation — takes the
+/// current hidden set and a toggle callback, no store dependency.
+private struct FilterMenu: View {
+    let hiddenStages: Set<MeisterState>
+    let onToggle: (MeisterState) -> Void
+
+    @Environment(\.themeColors) private var themeColors
+
+    var body: some View {
+        Menu {
+            ForEach(MeisterState.allCases) { stage in
+                Button {
+                    onToggle(stage)
+                } label: {
+                    if hiddenStages.contains(stage) {
+                        Text(stage.displayName)
+                    } else {
+                        Label(stage.displayName, systemImage: "checkmark")
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: hiddenStages.isEmpty
+                ? "line.3.horizontal.decrease.circle"
+                : "line.3.horizontal.decrease.circle.fill"
+            )
+            .imageScale(.small)
+            .foregroundStyle(hiddenStages.isEmpty ? .secondary : themeColors.accentColor)
+            .frame(width: 18, height: 18)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .help("Filter visible columns")
     }
 }

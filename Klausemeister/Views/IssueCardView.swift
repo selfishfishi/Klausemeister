@@ -1,50 +1,110 @@
 import SwiftUI
 
+/// Glass-style issue card with a tinted left accent bar.
+///
+/// `tint` is optional: callers inside the kanban (where the column's tint
+/// should dominate even during an optimistic drag) pass it explicitly;
+/// callers outside the kanban (worktree swimlanes, etc.) leave it `nil`
+/// and the card derives its tint from `issue.meisterState`, falling back
+/// to the theme accent if the mapping returns nil.
 struct IssueCardView: View {
     let issue: LinearIssue
+    var tint: Color?
     var worktreeName: String?
 
     @Environment(\.themeColors) private var themeColors
 
+    private var resolvedTint: Color {
+        tint ?? issue.meisterState?.tint ?? themeColors.accentColor
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Text(issue.identifier)
-                    .font(.caption)
-                    .foregroundStyle(themeColors.accentColor.opacity(0.8))
-                if issue.isOrphaned {
-                    Image(systemName: "exclamationmark.circle")
-                        .font(.caption2)
-                        .foregroundStyle(themeColors.warningColor)
-                        .help("This issue no longer has the klause label in Linear")
+        HStack(spacing: 0) {
+            accentBar
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Text(issue.identifier)
+                        .font(.system(.caption, design: .monospaced).weight(.semibold))
+                        .foregroundStyle(resolvedTint)
+                    if issue.isOrphaned {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(themeColors.warningColor)
+                            .help("This issue no longer has the klause label in Linear")
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                Text(issue.title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if issue.projectName != nil || worktreeName != nil {
+                    HStack(spacing: 6) {
+                        if let projectName = issue.projectName {
+                            chip(text: projectName, icon: nil)
+                        }
+                        if let worktreeName {
+                            chip(text: worktreeName, icon: "arrow.triangle.branch")
+                        }
+                    }
                 }
             }
-            Text(issue.title)
-                .font(.callout)
-                .lineLimit(2)
-            if let projectName = issue.projectName {
-                Text(projectName)
-                    .font(.caption2)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.fill.tertiary)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-            }
-            if let worktreeName {
-                Label(worktreeName, systemImage: "arrow.triangle.branch")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.fill.tertiary)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(.fill.quaternary)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(cardBackground)
+        .overlay(cardBorder)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
         .opacity(issue.isOrphaned ? 0.55 : 1.0)
+    }
+
+    // MARK: - Pieces
+
+    private var accentBar: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [resolvedTint, resolvedTint.opacity(0.55)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .frame(width: 3)
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(resolvedTint.opacity(0.04))
+            }
+    }
+
+    private var cardBorder: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(resolvedTint.opacity(0.18), lineWidth: 0.5)
+    }
+
+    private func chip(text: String, icon: String?) -> some View {
+        HStack(spacing: 4) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.caption2)
+            }
+            Text(text)
+                .font(.caption2.weight(.medium))
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2)
+        .background(.fill.tertiary, in: Capsule())
     }
 }
 
@@ -52,33 +112,31 @@ struct IssueCardView: View {
 
 struct KanbanIssueCardView: View {
     let issue: LinearIssue
-    let workflowStatesByTeam: WorkflowStatesByTeam
+    let tint: Color
     let worktrees: [Worktree]
     let repositories: [Repository]
     var worktreeName: String?
-    let onMoveToStatus: (_ issueId: String, _ statusType: String) -> Void
+    let onMoveToStatus: (_ issueId: String, _ target: MeisterState) -> Void
     let onAssignToWorktree: (_ issue: LinearIssue, _ worktreeId: String) -> Void
     let onRemove: (_ issueId: String) -> Void
 
-    /// Deduplicate workflow states for this issue's team by type.
-    /// The "Move to..." menu shows one entry per status type.
-    private var movableStates: [LinearWorkflowState] {
-        let teamStates = workflowStatesByTeam[issue.teamId] ?? []
-        return Dictionary(grouping: teamStates, by: \.type)
-            .values
-            .compactMap { $0.min(by: { $0.position < $1.position }) }
-            .filter { $0.type != issue.statusType }
-            .sorted { $0.position < $1.position }
+    /// Destinations for the "Move to..." menu — every canonical stage except
+    /// the one the issue is already in.
+    private var movableStates: [MeisterState] {
+        let current = issue.meisterState
+        return MeisterState.allCases.filter { $0 != current }
     }
 
     var body: some View {
-        IssueCardView(issue: issue, worktreeName: worktreeName)
+        IssueCardView(issue: issue, tint: tint, worktreeName: worktreeName)
             .draggable(issue.id)
             .contextMenu {
                 Menu("Move to...") {
-                    ForEach(movableStates, id: \.type) { state in
-                        Button(state.name) {
-                            onMoveToStatus(issue.id, state.type)
+                    ForEach(movableStates) { state in
+                        Button {
+                            onMoveToStatus(issue.id, state)
+                        } label: {
+                            Label(state.displayName, systemImage: "arrow.right.circle")
                         }
                     }
                 }
