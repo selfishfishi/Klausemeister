@@ -24,6 +24,15 @@ enum SwimlaneQueueRole {
         case .outbox: "None completed"
         }
     }
+
+    /// Stage tint for the zone, mirroring the Meister kanban's per-stage
+    /// colors: inbox carries Todo's gold, outbox carries In Review's pink.
+    var tint: Color {
+        switch self {
+        case .inbox: MeisterState.todo.tint
+        case .outbox: MeisterState.inReview.tint
+        }
+    }
 }
 
 struct SwimlaneQueueView: View {
@@ -35,10 +44,11 @@ struct SwimlaneQueueView: View {
     @State private var isTargeted = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SwimlaneZoneHeader(icon: role.icon, title: role.title, count: issues.count)
+        let tint = role.tint
+        VStack(alignment: .leading, spacing: 8) {
+            SwimlaneZoneHeader(icon: role.icon, title: role.title, count: issues.count, tint: tint)
             if issues.isEmpty {
-                SwimlaneEmptyPlaceholder(label: role.emptyLabel)
+                SwimlaneEmptyPlaceholder(label: role.emptyLabel, tint: tint)
             } else {
                 VStack(spacing: 6) {
                     ForEach(issues, id: \.id) { issue in
@@ -55,10 +65,13 @@ struct SwimlaneQueueView: View {
                 }
             }
         }
-        .padding(8)
+        .padding(10)
         .frame(minWidth: 160, idealWidth: 200, alignment: .topLeading)
-        .background(isTargeted ? Color.accentColor.opacity(0.08) : .clear)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .glassPanel(tint: tint, cornerRadius: swimlaneGlassCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
+                .stroke(tint.opacity(isTargeted ? 0.7 : 0), lineWidth: 2)
+        )
         .animation(.easeInOut(duration: 0.15), value: isTargeted)
         .dropDestination(for: String.self) { items, _ in
             guard let issueId = items.first, let onDrop else { return false }

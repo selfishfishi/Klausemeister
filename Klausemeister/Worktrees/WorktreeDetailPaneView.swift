@@ -35,13 +35,13 @@ struct WorktreeDetailPaneView: View {
                     }
                     if let branch = worktree.currentBranch {
                         Text(branch)
-                            .font(.caption)
+                            .font(.footnote)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
                     if let repoName = worktree.repoName {
                         Text(repoName)
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
                 }

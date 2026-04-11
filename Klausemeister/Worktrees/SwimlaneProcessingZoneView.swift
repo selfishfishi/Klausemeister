@@ -6,22 +6,31 @@ struct SwimlaneProcessingZoneView: View {
     var onReturnToMeister: ((_ issueId: String) -> Void)?
     var onDrop: ((_ issueId: String) -> Void)?
 
-    @Environment(\.themeColors) private var themeColors
+    private let stageTint: Color = MeisterState.inProgress.tint
+
     @State private var isTargeted = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SwimlaneZoneHeader(icon: "gearshape", title: "PROCESSING", count: issue != nil ? 1 : 0)
+        VStack(alignment: .leading, spacing: 8) {
+            SwimlaneZoneHeader(
+                icon: "gearshape",
+                title: "PROCESSING",
+                count: issue != nil ? 1 : 0,
+                tint: stageTint
+            )
             if let issue {
                 activeCard(issue)
             } else {
-                SwimlaneEmptyPlaceholder(label: "Nothing in progress")
+                SwimlaneEmptyPlaceholder(label: "Nothing in progress", tint: stageTint)
             }
         }
-        .padding(8)
+        .padding(10)
         .frame(minWidth: 160, idealWidth: 200, alignment: .topLeading)
-        .background(isTargeted ? Color.accentColor.opacity(0.08) : .clear)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .glassPanel(tint: stageTint, cornerRadius: swimlaneGlassCornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
+                .stroke(stageTint.opacity(isTargeted ? 0.7 : 0), lineWidth: 2)
+        )
         .animation(.easeInOut(duration: 0.15), value: isTargeted)
         .dropDestination(for: String.self) { items, _ in
             guard issue == nil, let issueId = items.first, let onDrop else { return false }
@@ -34,13 +43,13 @@ struct SwimlaneProcessingZoneView: View {
 
     private var accentBar: some View {
         RoundedRectangle(cornerRadius: 2)
-            .fill(themeColors.accentColor)
+            .fill(stageTint)
             .frame(width: 3)
             .padding(.vertical, 4)
     }
 
     private func activeCard(_ issue: LinearIssue) -> some View {
-        ShimmerCard(accentColor: themeColors.accentColor, glowIntensity: themeColors.glowIntensity) {
+        ShimmerCard(accentColor: stageTint) {
             HStack(spacing: 0) {
                 accentBar
                 IssueCardView(issue: issue)
@@ -64,9 +73,9 @@ struct SwimlaneProcessingZoneView: View {
 
 private struct ShimmerCard<Content: View>: View {
     let accentColor: Color
-    let glowIntensity: Double
     @ViewBuilder let content: Content
 
+    @Environment(\.themeColors) private var themeColors
     @Environment(\.swimlaneAnimating) private var isAnimating
 
     var body: some View {
@@ -88,8 +97,8 @@ private struct ShimmerCard<Content: View>: View {
     }
 
     private func shimmerGradient(position: Double) -> some View {
-        let peak = 0.22 * glowIntensity
-        let edge = 0.12 * glowIntensity
+        let peak = 0.22 * themeColors.glowIntensity
+        let edge = 0.12 * themeColors.glowIntensity
         return LinearGradient(
             stops: [
                 .init(color: .clear, location: max(0, position - 0.18)),

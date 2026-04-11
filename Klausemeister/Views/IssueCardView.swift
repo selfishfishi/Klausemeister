@@ -25,11 +25,11 @@ struct IssueCardView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     Text(issue.identifier)
-                        .font(.system(.caption, design: .monospaced).weight(.semibold))
+                        .font(.system(.footnote, design: .monospaced).weight(.semibold))
                         .foregroundStyle(resolvedTint)
                     if issue.isOrphaned {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundStyle(themeColors.warningColor)
                             .help("This issue no longer has the klause label in Linear")
                     }
@@ -37,7 +37,7 @@ struct IssueCardView: View {
                 }
 
                 Text(issue.title)
-                    .font(.subheadline.weight(.medium))
+                    .font(.callout.weight(.medium))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -96,10 +96,10 @@ struct IssueCardView: View {
         HStack(spacing: 4) {
             if let icon {
                 Image(systemName: icon)
-                    .font(.caption2)
+                    .font(.caption)
             }
             Text(text)
-                .font(.caption2.weight(.medium))
+                .font(.caption.weight(.medium))
         }
         .foregroundStyle(.secondary)
         .padding(.horizontal, 7)
