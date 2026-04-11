@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Glass-style issue card with a tinted left accent bar.
+/// Glass-style issue card.
 ///
 /// `tint` is optional: callers inside the kanban (where the column's tint
 /// should dominate even during an optimistic drag) pass it explicitly;
@@ -19,44 +19,40 @@ struct IssueCardView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            accentBar
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text(issue.identifier)
-                        .font(.system(.footnote, design: .monospaced).weight(.semibold))
-                        .foregroundStyle(resolvedTint)
-                    if issue.isOrphaned {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundStyle(themeColors.warningColor)
-                            .help("This issue no longer has the klause label in Linear")
-                    }
-                    Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(issue.identifier)
+                    .font(.system(.footnote, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(resolvedTint)
+                if issue.isOrphaned {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(themeColors.warningColor)
+                        .help("This issue no longer has the klause label in Linear")
                 }
+                Spacer(minLength: 0)
+            }
 
-                Text(issue.title)
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+            Text(issue.title)
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
-                if issue.projectName != nil || worktreeName != nil {
-                    HStack(spacing: 6) {
-                        if let projectName = issue.projectName {
-                            chip(text: projectName, icon: nil)
-                        }
-                        if let worktreeName {
-                            chip(text: worktreeName, icon: "arrow.triangle.branch")
-                        }
+            if issue.projectName != nil || worktreeName != nil {
+                HStack(spacing: 6) {
+                    if let projectName = issue.projectName {
+                        chip(text: projectName, icon: nil)
+                    }
+                    if let worktreeName {
+                        chip(text: worktreeName, icon: "arrow.triangle.branch")
                     }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardBackground)
         .overlay(cardBorder)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -65,18 +61,6 @@ struct IssueCardView: View {
     }
 
     // MARK: - Pieces
-
-    private var accentBar: some View {
-        Rectangle()
-            .fill(
-                LinearGradient(
-                    colors: [resolvedTint, resolvedTint.opacity(0.55)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .frame(width: 3)
-    }
 
     private var cardBackground: some View {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -89,7 +73,7 @@ struct IssueCardView: View {
 
     private var cardBorder: some View {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(resolvedTint.opacity(0.18), lineWidth: 0.5)
+            .strokeBorder(resolvedTint.opacity(0.4), lineWidth: 0.5)
     }
 
     private func chip(text: String, icon: String?) -> some View {

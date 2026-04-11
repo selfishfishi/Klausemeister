@@ -26,7 +26,10 @@ struct KanbanColumnView: View {
             cards
         }
         .frame(minWidth: 240, idealWidth: 260)
-        .glassPanel(tint: tint)
+        .glassEffect(
+            .regular.tint(tint.opacity(0.015)),
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
         .dropDestination(for: String.self) { items, _ in
             guard let issueId = items.first else { return false }
             onDrop(issueId)
