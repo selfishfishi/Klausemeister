@@ -30,7 +30,6 @@ struct WorktreeSwimlaneView: View {
                     sheetState: sheetState,
                     onRepoChanged: { store.send(.createSheetRepoChanged(repoId: $0)) },
                     onNameChanged: { store.send(.createSheetNameChanged($0)) },
-                    onBranchChoiceChanged: { store.send(.createSheetBranchChoiceChanged($0)) },
                     onSubmit: { store.send(.createSheetSubmitted) },
                     onCancel: { store.send(.createSheetDismissed) }
                 )
@@ -126,7 +125,7 @@ struct WorktreeSwimlaneView: View {
                 if !isCollapsed {
                     AddWorktreeInlineButton { name in
                         store.send(.createWorktreeTapped(
-                            repoId: repo.id, name: name, branchOverride: nil
+                            repoId: repo.id, name: name
                         ))
                     }
                 }

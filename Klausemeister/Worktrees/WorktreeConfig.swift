@@ -5,7 +5,7 @@ enum WorktreeConfig {
     nonisolated static let userDefaultsBasePathKey = "worktreeBasePath"
 
     nonisolated static func branchName(fromIdentifier identifier: String) -> String {
-        identifier.lowercased()
+        WorktreeNameSanitizer.sanitize(identifier).value
     }
 
     /// Tmux session name bound 1:1 to a worktree. Lowercased for stability and
@@ -24,10 +24,11 @@ enum WorktreeConfig {
     }
 
     nonisolated static func worktreePath(basePath: String, repoRoot: String, name: String) -> String {
+        let sanitized = WorktreeNameSanitizer.sanitize(name).value
         if basePath.hasPrefix("/") {
-            return "\(basePath)/\(name.lowercased())"
+            return "\(basePath)/\(sanitized)"
         }
-        return "\(repoRoot)/\(basePath)/\(name.lowercased())"
+        return "\(repoRoot)/\(basePath)/\(sanitized)"
     }
 
     /// Extracts a Linear-style issue identifier (e.g., "KLA-47") from a branch name.
