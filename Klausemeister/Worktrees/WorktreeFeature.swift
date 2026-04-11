@@ -55,6 +55,14 @@ enum MeisterStatus: Equatable {
     case disconnected
 }
 
+/// Which sub-tab of the worktree detail pane is currently active.
+/// Persisted to UserDefaults so selection survives relaunch — future KLA-87
+/// will move this into per-window state.
+enum WorktreeDetailTab: String, Equatable {
+    case queue
+    case terminal
+}
+
 /// State for the Create Worktree sheet presented from the Meister swimlane
 /// header. Holds the repo pick, the free-form name, and the set of existing
 /// local branches for the selected repo (used for the inline collision check).
@@ -78,6 +86,14 @@ struct WorktreeFeature {
         var worktrees: IdentifiedArrayOf<Worktree> = []
         var isCreatingWorktree: Bool = false
         var selectedWorktreeId: String?
+        /// Which tab (Queue or Terminal) the detail pane is currently showing.
+        /// Single shared value across worktrees — the last-selected tab wins.
+        /// Initialised from UserDefaults once at store construction so visits
+        /// to the Meister tab (which re-fire `onAppear`) do not clobber in-
+        /// memory edits. Writes happen inside `detailTabSelected`'s effect.
+        var activeDetailTab: WorktreeDetailTab = UserDefaults.standard.string(forKey: WorktreeFeature.activeDetailTabUserDefaultsKey)
+            .flatMap(WorktreeDetailTab.init(rawValue:)) ?? .queue
+
         /// Which swimlane row is currently expanded inline inside the Meister
         /// tab. **Kept separate from `selectedWorktreeId`** because the latter
         /// triggers `AppFeature` to flip `showMeister = false` and route away
@@ -117,6 +133,7 @@ struct WorktreeFeature {
         case worktreeDeleted(worktreeId: String)
         case worktreeDeleteFailed(worktree: Worktree)
         case worktreeSelected(String?)
+        case detailTabSelected(WorktreeDetailTab)
         case meisterExpansionToggled(worktreeId: String)
         case meisterExpansionCleared
         case repoCollapseToggled(repoId: String)
@@ -194,11 +211,14 @@ struct WorktreeFeature {
     /// during startup or the shell rc files blocked the send-keys input.
     nonisolated private static let meisterHelloGracePeriod: Duration = .seconds(8)
 
+    nonisolated fileprivate static let activeDetailTabUserDefaultsKey = "activeDetailTab"
+
     @Dependency(\.worktreeClient) var worktreeClient
     @Dependency(\.databaseClient) var databaseClient
     @Dependency(\.gitClient) var gitClient
     @Dependency(\.tmuxClient) var tmuxClient
     @Dependency(\.meisterClient) var meisterClient
+    @Dependency(\.surfaceManager) var surfaceManager
     @Dependency(\.continuousClock) var clock
 
     /// Effect that loads the set of local branches for the given repo into the
@@ -257,6 +277,64 @@ struct WorktreeFeature {
                 await send(.meisterSpawnFailed(worktreeId: worktreeId))
             } catch is CancellationError {
                 // Cancelled by .meisterHelloReceived — nothing to do.
+            } catch {
+                await send(.meisterSpawnFailed(worktreeId: worktreeId))
+            }
+        }
+        .cancellable(id: CancelID.meisterSpawn(worktreeId), cancelInFlight: true)
+    }
+
+    /// Activate the Terminal tab for `worktree`: ensure its meister tmux
+    /// session exists, create the libghostty surface whose PTY attaches to
+    /// that session, and (when we kicked the spawn ourselves) arm the
+    /// grace-period fallback.
+    ///
+    /// Sequencing matters. The surface's PTY runs `tmux attach-session -t
+    /// =klause-<name>`, which fails if the session does not yet exist, so we
+    /// `await meisterClient.ensureRunning(...)` first. Doing this in a single
+    /// `.run` block (rather than `.concatenate(ensureMeisterEffect,
+    /// createSurfaceEffect)`) is load-bearing: the latter shape gets the
+    /// downstream surface-create cancelled when `meisterHelloReceived`
+    /// dispatches `.cancel(id: meisterSpawn)`, leaving the Terminal tab
+    /// permanently blank on the happy path.
+    ///
+    /// When the meister is already running (or spawning from an earlier
+    /// issue-assignment path), we skip the spawn entirely and just create the
+    /// surface — that effect is non-cancellable so it does not interfere with
+    /// the in-flight `ensureMeisterEffect` managing the meister lifecycle.
+    private func terminalActivationEffect(
+        state: inout State,
+        worktree: Worktree
+    ) -> Effect<Action> {
+        let worktreeId = worktree.id
+        let workingDirectory = worktree.gitWorktreePath
+        let sessionName = WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name)
+        let command = "tmux attach-session -t =\(sessionName)"
+        let needsSpawn = state.worktrees[id: worktreeId]?.meisterStatus == .none
+
+        guard needsSpawn else {
+            return .run { [surfaceManager] _ in
+                await MainActor.run {
+                    _ = surfaceManager.createSurface(worktreeId, workingDirectory, command)
+                }
+            }
+        }
+
+        guard !workingDirectory.isEmpty else { return .none }
+        state.worktrees[id: worktreeId]?.meisterStatus = .spawning
+        return .run { [meisterClient, surfaceManager, clock] send in
+            do {
+                try await meisterClient.ensureRunning(
+                    worktreeId, workingDirectory, sessionName
+                )
+                await MainActor.run {
+                    _ = surfaceManager.createSurface(worktreeId, workingDirectory, command)
+                }
+                try await clock.sleep(for: Self.meisterHelloGracePeriod)
+                await send(.meisterSpawnFailed(worktreeId: worktreeId))
+            } catch is CancellationError {
+                // Cancelled by .meisterHelloReceived — surface is already
+                // created at this point if ensureRunning succeeded.
             } catch {
                 await send(.meisterSpawnFailed(worktreeId: worktreeId))
             }
@@ -481,7 +559,14 @@ struct WorktreeFeature {
                 let repoPath = worktree.repoId.flatMap { state.repositories[id: $0]?.path }
                 let tmuxSessionName = WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name)
                 state.worktrees.remove(id: worktreeId)
-                return .run { send in
+                return .run { [surfaceManager] send in
+                    // Destroy the libghostty surface FIRST. If the DB delete
+                    // throws and we restore the worktree row, the stale
+                    // SurfaceStore record would otherwise satisfy `create`'s
+                    // idempotency guard and the Terminal tab would be blank
+                    // forever. Dropping it first means the next visit to a
+                    // restored row builds a fresh surface.
+                    await MainActor.run { surfaceManager.destroySurface(worktreeId) }
                     try await worktreeClient.deleteWorktree(worktreeId)
                     if let repoPath, !worktreePath.isEmpty {
                         try? await gitClient.removeWorktree(repoPath, worktreePath)
@@ -508,7 +593,31 @@ struct WorktreeFeature {
 
             case let .worktreeSelected(worktreeId):
                 state.selectedWorktreeId = worktreeId
+                if let worktreeId,
+                   state.activeDetailTab == .terminal,
+                   let worktree = state.worktrees[id: worktreeId]
+                {
+                    return terminalActivationEffect(state: &state, worktree: worktree)
+                }
                 return .none
+
+            case let .detailTabSelected(tab):
+                state.activeDetailTab = tab
+                let persistTab = Effect<Action>.run { _ in
+                    UserDefaults.standard.set(
+                        tab.rawValue, forKey: Self.activeDetailTabUserDefaultsKey
+                    )
+                }
+                guard tab == .terminal,
+                      let worktreeId = state.selectedWorktreeId,
+                      let worktree = state.worktrees[id: worktreeId]
+                else {
+                    return persistTab
+                }
+                return .merge(
+                    persistTab,
+                    terminalActivationEffect(state: &state, worktree: worktree)
+                )
 
             case let .meisterExpansionToggled(worktreeId):
                 if state.expandedWorktreeIdInMeister == worktreeId {
@@ -969,7 +1078,7 @@ struct WorktreeFeature {
                     state.expandedWorktreeIdInMeister = nil
                 }
                 let repoPath = repo.path
-                return .run { _ in
+                return .run { [surfaceManager] _ in
                     for path in worktreePaths where !path.isEmpty {
                         try? await gitClient.removeWorktree(repoPath, path)
                     }
@@ -977,6 +1086,11 @@ struct WorktreeFeature {
                         try? await tmuxClient.killSession(sessionName)
                     }
                     try await worktreeClient.removeRepository(repoId)
+                    await MainActor.run {
+                        for id in worktreeIds {
+                            surfaceManager.destroySurface(id)
+                        }
+                    }
                 } catch: { _, send in
                     await send(.onAppear)
                 }

@@ -3,28 +3,50 @@ import GhosttyKit
 
 @Observable
 final class SurfaceStore {
-    private(set) var surfaces: [UUID: SurfaceView] = [:]
+    struct Record {
+        let view: SurfaceView
+        let workingDirectory: String
+        let command: String?
+    }
 
-    func create(id: UUID, app: ghostty_app_t) -> Bool {
+    private(set) var records: [String: Record] = [:]
+
+    func create(
+        id: String,
+        app: ghostty_app_t,
+        workingDirectory: String,
+        command: String?
+    ) -> Bool {
+        if let existing = records[id], existing.view.surface != nil {
+            return true
+        }
         let view = SurfaceView(frame: .zero)
-        view.initializeSurface(app: app, workingDirectory: NSHomeDirectory())
+        view.initializeSurface(
+            app: app,
+            workingDirectory: workingDirectory,
+            command: command
+        )
         guard view.surface != nil else { return false }
-        surfaces[id] = view
+        records[id] = Record(
+            view: view,
+            workingDirectory: workingDirectory,
+            command: command
+        )
         return true
     }
 
-    func destroy(id: UUID) {
-        surfaces.removeValue(forKey: id)
+    func destroy(id: String) {
+        records.removeValue(forKey: id)
     }
 
-    func surface(for id: UUID) -> SurfaceView? {
-        surfaces[id]
+    func surface(for id: String) -> SurfaceView? {
+        records[id]?.view
     }
 
-    func focus(_ id: UUID) async -> Bool {
-        guard let view = surfaces[id] else { return false }
+    func focus(_ id: String) async -> Bool {
+        guard let record = records[id] else { return false }
         for _ in 0 ..< 50 {
-            if let window = view.window, window.makeFirstResponder(view) {
+            if let window = record.view.window, window.makeFirstResponder(record.view) {
                 return true
             }
             try? await Task.sleep(for: .milliseconds(10))
@@ -32,23 +54,28 @@ final class SurfaceStore {
         return false
     }
 
-    func unfocus(_ id: UUID) {
-        guard let view = surfaces[id],
-              let surface = view.surface else { return }
+    func unfocus(_ id: String) {
+        guard let record = records[id], let surface = record.view.surface else { return }
         ghostty_surface_set_focus(surface, false)
     }
 
     func destroyAll() {
-        surfaces.removeAll()
+        records.removeAll()
     }
 
-    func recreateAll(ids: [UUID], app: ghostty_app_t) {
-        for id in ids {
-            let view = SurfaceView(frame: .zero)
-            view.initializeSurface(app: app, workingDirectory: NSHomeDirectory())
-            if view.surface != nil {
-                surfaces[id] = view
-            }
+    /// Recreate all surfaces in place using their stored config. Used after
+    /// theme rebuilds, which invalidate the underlying ghostty_app_t and
+    /// require fresh surfaces bound to the new app handle.
+    func recreateAll(app: ghostty_app_t) {
+        let snapshots = records
+        records.removeAll()
+        for (id, record) in snapshots {
+            _ = create(
+                id: id,
+                app: app,
+                workingDirectory: record.workingDirectory,
+                command: record.command
+            )
         }
     }
 }

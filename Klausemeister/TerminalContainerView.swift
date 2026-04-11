@@ -28,18 +28,11 @@ struct TerminalContainerView: View {
                     authStatus: store.linearAuth.status,
                     onConnect: { store.send(.linearAuth(.loginButtonTapped)) }
                 )
-            } else if store.worktree.selectedWorktreeId != nil {
-                WorktreeDetailView(store: store.scope(state: \.worktree, action: \.worktree))
             } else {
-                TerminalContentView(
-                    surfaceView: store.activeTabID.flatMap { surfaceStore.surface(for: $0) },
-                    activeTabID: store.activeTabID
+                WorktreeDetailView(
+                    store: store.scope(state: \.worktree, action: \.worktree),
+                    surfaceStore: surfaceStore
                 )
-                .ignoresSafeArea(edges: [.bottom, .horizontal])
-                .background {
-                    Color(hexString: themeColors.background)
-                        .ignoresSafeArea()
-                }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {

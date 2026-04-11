@@ -37,7 +37,11 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
         fatalError()
     }
 
-    func initializeSurface(app: ghostty_app_t, workingDirectory: String? = nil) {
+    func initializeSurface(
+        app: ghostty_app_t,
+        workingDirectory: String? = nil,
+        command: String? = nil
+    ) {
         var config = ghostty_surface_config_new()
         config.platform_tag = GHOSTTY_PLATFORM_MACOS
         config.platform.macos = ghostty_platform_macos_s(
@@ -47,14 +51,31 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
         config.backend = GHOSTTY_SURFACE_IO_BACKEND_EXEC
         config.scale_factor = Double(metalLayer.contentsScale)
 
-        // swiftlint:disable:next identifier_name
-        if let wd = workingDirectory {
-            wd.withCString { ptr in
+        // C-string lifetimes for `working_directory` and `command` must span
+        // the `ghostty_surface_new` call. Nested `withCString` keeps the
+        // bytes alive on the stack for the duration of the call.
+        let doCreate: () -> Void = { self.surface = ghostty_surface_new(app, &config) }
+        switch (workingDirectory, command) {
+        case (nil, nil):
+            doCreate()
+        case let (dir?, nil):
+            dir.withCString { ptr in
                 config.working_directory = ptr
-                self.surface = ghostty_surface_new(app, &config)
+                doCreate()
             }
-        } else {
-            surface = ghostty_surface_new(app, &config)
+        case let (nil, cmd?):
+            cmd.withCString { ptr in
+                config.command = ptr
+                doCreate()
+            }
+        case let (dir?, cmd?):
+            dir.withCString { dirPtr in
+                cmd.withCString { cmdPtr in
+                    config.working_directory = dirPtr
+                    config.command = cmdPtr
+                    doCreate()
+                }
+            }
         }
 
         guard surface != nil else { return }

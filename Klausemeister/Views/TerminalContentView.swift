@@ -3,7 +3,7 @@ import SwiftUI
 
 struct TerminalContentView: NSViewRepresentable {
     let surfaceView: SurfaceView?
-    let activeTabID: UUID?
+    let activeID: String?
 
     func makeNSView(context: Context) -> NSView {
         let container = NSView(frame: .zero)
@@ -11,15 +11,15 @@ struct TerminalContentView: NSViewRepresentable {
         if let surfaceView {
             embed(surfaceView, in: container)
         }
-        context.coordinator.currentTabID = activeTabID
+        context.coordinator.currentID = activeID
         context.coordinator.currentSurface = surfaceView
         return container
     }
 
     func updateNSView(_ container: NSView, context: Context) {
-        guard activeTabID != context.coordinator.currentTabID
+        guard activeID != context.coordinator.currentID
             || surfaceView !== context.coordinator.currentSurface else { return }
-        context.coordinator.currentTabID = activeTabID
+        context.coordinator.currentID = activeID
         context.coordinator.currentSurface = surfaceView
 
         for subview in container.subviews {
@@ -46,7 +46,7 @@ struct TerminalContentView: NSViewRepresentable {
     }
 
     final class Coordinator {
-        var currentTabID: UUID?
+        var currentID: String?
         weak var currentSurface: SurfaceView?
     }
 }

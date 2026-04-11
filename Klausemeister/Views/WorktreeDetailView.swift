@@ -4,6 +4,7 @@ import SwiftUI
 
 struct WorktreeDetailView: View {
     @Bindable var store: StoreOf<WorktreeFeature>
+    let surfaceStore: SurfaceStore
 
     var body: some View {
         Group {
@@ -12,6 +13,11 @@ struct WorktreeDetailView: View {
             {
                 WorktreeDetailPaneView(
                     worktree: worktree,
+                    activeTab: store.activeDetailTab,
+                    surfaceView: surfaceStore.surface(for: worktreeId),
+                    onTabChange: { tab in
+                        store.send(.detailTabSelected(tab))
+                    },
                     onRename: { newName in
                         store.send(.renameWorktreeTapped(worktreeId: worktreeId, newName: newName))
                     },
