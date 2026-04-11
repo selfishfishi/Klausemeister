@@ -4,7 +4,10 @@ import Foundation
 /// `wasTransformed` is what the Create sheet uses to decide whether to render
 /// the `→ <sanitized>` preview under the Name field: when the raw input is
 /// already a legal ref, there is nothing to preview.
-struct SanitizedBranchName: Equatable {
+///
+/// Marked `nonisolated` so it can flow through pure helpers in `WorktreeConfig`
+/// under the project's main-actor-default isolation.
+nonisolated struct SanitizedBranchName: Equatable {
     let value: String
     let wasTransformed: Bool
 
@@ -13,7 +16,7 @@ struct SanitizedBranchName: Equatable {
     }
 }
 
-enum WorktreeNameSanitizer {
+nonisolated enum WorktreeNameSanitizer {
     /// Sanitize a free-form worktree name into a git-ref-safe branch name.
     ///
     /// Rules:
@@ -23,7 +26,7 @@ enum WorktreeNameSanitizer {
     ///   becomes a dash.
     /// - Runs of dashes collapse to one.
     /// - Leading and trailing dashes are trimmed.
-    static func sanitize(_ input: String) -> SanitizedBranchName {
+    nonisolated static func sanitize(_ input: String) -> SanitizedBranchName {
         let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let allowed: Set<Character> = Set(
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
@@ -37,7 +40,7 @@ enum WorktreeNameSanitizer {
         )
     }
 
-    private static func collapseDashes(_ string: String) -> String {
+    nonisolated private static func collapseDashes(_ string: String) -> String {
         var result = ""
         var lastWasDash = false
         for character in string {
