@@ -309,7 +309,12 @@ struct WorktreeFeature {
         let worktreeId = worktree.id
         let workingDirectory = worktree.gitWorktreePath
         let sessionName = WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name)
-        let command = "tmux attach-session -t =\(sessionName)"
+        // libghostty wraps the surface command in `/bin/bash --noprofile
+        // --norc`, which strips the user's PATH. A bare `tmux` would fail to
+        // resolve on systems where tmux lives under `/opt/homebrew/bin` etc.
+        // Use the absolute path probed by `TmuxClient` at construction time.
+        let tmuxPath = tmuxClient.resolvedTmuxPath() ?? "tmux"
+        let command = "\(tmuxPath) attach-session -t =\(sessionName)"
         let needsSpawn = state.worktrees[id: worktreeId]?.meisterStatus == .none
 
         guard needsSpawn else {

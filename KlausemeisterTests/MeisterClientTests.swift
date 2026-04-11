@@ -20,7 +20,8 @@ import Testing
             return true
         },
         killSession: { _ in },
-        listSessions: { [] }
+        listSessions: { [] },
+        resolvedTmuxPath: { "/opt/homebrew/bin/tmux" }
     )
     let client = MeisterClient.live(tmux: tmux)
     try await client.ensureRunning("wt-1", "/tmp/worktree", "klause-example")
@@ -47,7 +48,8 @@ import Testing
         },
         hasSession: { _ in false },
         killSession: { _ in },
-        listSessions: { [] }
+        listSessions: { [] },
+        resolvedTmuxPath: { "/opt/homebrew/bin/tmux" }
     )
     let client = MeisterClient.live(tmux: tmux)
     try await client.ensureRunning("wt-1", "/tmp/worktree", "klause-example")
@@ -70,7 +72,8 @@ import Testing
         sendKeys: { _, _ in },
         hasSession: { _ in false },
         killSession: { name in killed.setValue(name) },
-        listSessions: { [] }
+        listSessions: { [] },
+        resolvedTmuxPath: { "/opt/homebrew/bin/tmux" }
     )
     let client = MeisterClient.live(tmux: tmux)
     try await client.teardown("klause-example")

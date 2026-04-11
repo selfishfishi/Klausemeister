@@ -12,6 +12,13 @@ struct TmuxClient {
     var hasSession: @Sendable (_ name: String) async throws -> Bool
     var killSession: @Sendable (_ name: String) async throws -> Void
     var listSessions: @Sendable () async throws -> [String]
+    /// Absolute path to the tmux binary probed at client construction, or
+    /// nil if no known install location exists. Callers that hand tmux
+    /// invocations to a PATH-stripped process (e.g. libghostty's
+    /// `GHOSTTY_SURFACE_IO_BACKEND_EXEC` login shell, which runs the
+    /// command under `/bin/bash --noprofile --norc`) must use this path
+    /// instead of a bare `tmux` name.
+    var resolvedTmuxPath: @Sendable () -> String?
 }
 
 enum TmuxClientError: Error, Equatable, LocalizedError {
@@ -126,7 +133,8 @@ extension TmuxClient: DependencyKey {
                 } catch TmuxClientError.commandFailed {
                     return []
                 }
-            }
+            },
+            resolvedTmuxPath: { tmuxPath }
         )
     }()
 
@@ -135,7 +143,8 @@ extension TmuxClient: DependencyKey {
         sendKeys: unimplemented("TmuxClient.sendKeys"),
         hasSession: unimplemented("TmuxClient.hasSession"),
         killSession: unimplemented("TmuxClient.killSession"),
-        listSessions: unimplemented("TmuxClient.listSessions")
+        listSessions: unimplemented("TmuxClient.listSessions"),
+        resolvedTmuxPath: unimplemented("TmuxClient.resolvedTmuxPath")
     )
 }
 
