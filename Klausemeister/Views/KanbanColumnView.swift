@@ -1,62 +1,143 @@
 import SwiftUI
 
+/// Glass-style kanban column with per-stage Everforest tint. The column's
+/// `id` (a `MeisterState`) drives the tint applied to the header, count
+/// badge, accent line, container border, and propagated to each card.
 struct KanbanColumnView: View {
     let column: MeisterFeature.KanbanColumn
-    let workflowStatesByTeam: WorkflowStatesByTeam
     let worktrees: [Worktree]
     let repositories: [Repository]
     var assignedWorktreeNames: [String: String] = [:]
-    let onMoveToStatus: (_ issueId: String, _ statusType: String) -> Void
+    let onMoveToStatus: (_ issueId: String, _ target: MeisterState) -> Void
     let onAssignToWorktree: (_ issue: LinearIssue, _ worktreeId: String) -> Void
     let onRemove: (_ issueId: String) -> Void
     let onDrop: (_ issueId: String) -> Void
 
     @Environment(\.themeColors) private var themeColors
 
+    private var tint: Color {
+        column.id.tint
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(column.name.uppercased())
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(column.issues.count)")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(.fill.quaternary, in: Capsule())
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-
-            ScrollView(.vertical) {
-                LazyVStack(spacing: 6) {
-                    ForEach(column.issues, id: \.id) { issue in
-                        KanbanIssueCardView(
-                            issue: issue,
-                            workflowStatesByTeam: workflowStatesByTeam,
-                            worktrees: worktrees,
-                            repositories: repositories,
-                            worktreeName: assignedWorktreeNames[issue.id],
-                            onMoveToStatus: onMoveToStatus,
-                            onAssignToWorktree: onAssignToWorktree,
-                            onRemove: onRemove
-                        )
-                    }
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
-            }
+            header
+            accentLine
+            cards
         }
-        .frame(minWidth: 200, idealWidth: 240)
-        .background(.fill.quinary)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .frame(minWidth: 240, idealWidth: 260)
+        .background(columnBackground)
+        .overlay(columnBorder)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: tint.opacity(0.18), radius: 20, y: 8)
+        .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
         .dropDestination(for: String.self) { items, _ in
             guard let issueId = items.first else { return false }
             onDrop(issueId)
             return true
         }
+    }
+
+    // MARK: - Sections
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Text(column.name)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(tint)
+                .tracking(0.3)
+            Spacer(minLength: 0)
+            countBadge
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
+    }
+
+    private var countBadge: some View {
+        Text("\(column.issues.count)")
+            .font(.caption.weight(.semibold).monospacedDigit())
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(tint.opacity(0.15), in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(tint.opacity(0.35), lineWidth: 0.5)
+            )
+    }
+
+    private var accentLine: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [
+                        tint.opacity(0.7),
+                        tint.opacity(0.2),
+                        tint.opacity(0.0)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .frame(height: 1)
+            .padding(.horizontal, 14)
+    }
+
+    private var cards: some View {
+        ScrollView(.vertical) {
+            LazyVStack(spacing: 10) {
+                ForEach(column.issues, id: \.id) { issue in
+                    KanbanIssueCardView(
+                        issue: issue,
+                        tint: tint,
+                        worktrees: worktrees,
+                        repositories: repositories,
+                        worktreeName: assignedWorktreeNames[issue.id],
+                        onMoveToStatus: onMoveToStatus,
+                        onAssignToWorktree: onAssignToWorktree,
+                        onRemove: onRemove
+                    )
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 12)
+            .padding(.bottom, 14)
+        }
+    }
+
+    // MARK: - Background + border
+
+    private var columnBackground: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                tint.opacity(0.08),
+                                tint.opacity(0.02)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            }
+    }
+
+    private var columnBorder: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .strokeBorder(
+                LinearGradient(
+                    colors: [
+                        tint.opacity(0.35),
+                        tint.opacity(0.1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                lineWidth: 0.75
+            )
     }
 }

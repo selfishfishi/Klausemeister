@@ -6,9 +6,9 @@ import Testing
 
 // MARK: - Test Helpers
 
-private let todoColumn = MeisterFeature.KanbanColumn(id: "unstarted", name: "To Do")
-private let inProgressColumn = MeisterFeature.KanbanColumn(id: "started", name: "In Progress")
-private let doneColumn = MeisterFeature.KanbanColumn(id: "completed", name: "Done")
+private let todoColumn = MeisterFeature.KanbanColumn(id: .todo)
+private let inProgressColumn = MeisterFeature.KanbanColumn(id: .inProgress)
+private let doneColumn = MeisterFeature.KanbanColumn(id: .completed)
 
 private let sampleIssue = LinearIssue(
     id: "issue-1",
@@ -185,11 +185,11 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
 
     await store.send(.issueMoved(
         issueId: sampleIssue.id,
-        fromColumnId: "unstarted",
-        toColumnId: "started"
+        source: .todo,
+        target: .inProgress
     )) {
-        $0.columns[id: "unstarted"]?.issues = []
-        $0.columns[id: "started"]?.issues = [movedIssue]
+        $0.columns[id: .todo]?.issues = []
+        $0.columns[id: .inProgress]?.issues = [movedIssue]
     }
 
     await store.receive(\.statusUpdateSucceeded)
@@ -220,19 +220,58 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
 
     await store.send(.issueMoved(
         issueId: sampleIssue.id,
-        fromColumnId: "unstarted",
-        toColumnId: "started"
+        source: .todo,
+        target: .inProgress
     )) {
-        $0.columns[id: "unstarted"]?.issues = []
-        $0.columns[id: "started"]?.issues = [movedIssue]
+        $0.columns[id: .todo]?.issues = []
+        $0.columns[id: .inProgress]?.issues = [movedIssue]
     }
 
     await store.receive(\.statusUpdateFailed) {
-        $0.columns[id: "started"]?.issues = []
-        $0.columns[id: "unstarted"]?.issues = [sampleIssue]
+        $0.columns[id: .inProgress]?.issues = []
+        $0.columns[id: .todo]?.issues = [sampleIssue]
     }
     await store.receive(\.delegate.errorOccurred)
 }
+
+// MARK: - Filter Tests
+
+@Test func `completed stage is hidden by default`() {
+    let state = MeisterFeature.State()
+    #expect(state.hiddenStages == [.completed])
+}
+
+@Test func `visibleColumns excludes hidden stages`() {
+    var state = MeisterFeature.State()
+    state.columns = MeisterFeature.rebuildColumns(from: [])
+    // Default: completed hidden
+    #expect(state.visibleColumns.count == 5)
+    #expect(state.visibleColumns[id: .completed] == nil)
+    #expect(state.visibleColumns[id: .backlog] != nil)
+}
+
+@Test func `toggling a visible stage hides it and toggling again reveals it`() async {
+    let store = TestStore(initialState: MeisterFeature.State()) {
+        MeisterFeature()
+    }
+
+    // .backlog starts visible → hide it
+    await store.send(.stageVisibilityToggled(.backlog)) {
+        $0.hiddenStages = [.completed, .backlog]
+    }
+
+    // Toggle .completed back on
+    await store.send(.stageVisibilityToggled(.completed)) {
+        $0.hiddenStages = [.backlog]
+    }
+
+    // Toggle .backlog back on → back to empty
+    await store.send(.stageVisibilityToggled(.backlog)) {
+        $0.hiddenStages = []
+    }
+}
+
+// MARK: - Remove Tests
 
 @Test func `remove issue`() async {
     var todoWithIssue = todoColumn
@@ -249,6 +288,6 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
     }
 
     await store.send(.removeIssueTapped(issueId: sampleIssue.id)) {
-        $0.columns[id: "unstarted"]?.issues = []
+        $0.columns[id: .todo]?.issues = []
     }
 }
