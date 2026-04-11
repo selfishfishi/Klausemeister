@@ -9,7 +9,7 @@ argument-hint: [linear-ticket-id]
 
 ## Planned contract
 
-**Invoked when:** the master loop pulls a queue item whose linked Linear ticket is in `In Review`.
+**Invoked when:** the meister loop pulls a queue item whose linked Linear ticket is in `In Review`.
 
 **Input:** the queue item (Linear ticket reference + PR URL if available).
 
@@ -24,4 +24,4 @@ argument-hint: [linear-ticket-id]
 
 ## What to do if invoked today
 
-This command is not implemented yet. If the master loop reaches an In Review item, explain the situation to the user and wait for direction. The real prompt will be added under KLA-76.
+This command is not implemented yet. If the meister loop reaches an In Review item, explain the situation to the user and wait for direction. The real prompt will be added under KLA-76.

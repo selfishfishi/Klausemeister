@@ -1,14 +1,14 @@
 // KlauseMCPShim/main.swift
 //
-// Tiny stdio↔Unix-socket bridge between the master Claude Code and
-// Klausemeister.app. The plugin's `mcp.json` invokes this binary; the master
+// Tiny stdio↔Unix-socket bridge between the meister Claude Code and
+// Klausemeister.app. The plugin's `mcp.json` invokes this binary; the meister
 // Claude Code's MCP client speaks newline-delimited JSON over stdio (the
 // stock MCP `StdioTransport`), and we forward bytes 1:1 to a Unix socket
 // hosted by the running Klausemeister app.
 //
-// Klausemeister sets two env vars on the master process; we inherit them
+// Klausemeister sets two env vars on the meister process; we inherit them
 // here and forward them as a single newline-terminated JSON "hello frame"
-// before any MCP traffic, so the app can validate the master's identity
+// before any MCP traffic, so the app can validate the meister's identity
 // and scope subsequent calls to the right worktree.
 //
 // IMPORTANT: This file is the entry point of a separate Xcode target
@@ -21,8 +21,8 @@ import Foundation
 
 let env = ProcessInfo.processInfo.environment
 
-guard env["KLAUSE_PRIMARY"] == "1" else {
-    FileHandle.standardError.write(Data("klause-mcp-shim: KLAUSE_PRIMARY must be \"1\"\n".utf8))
+guard env["KLAUSE_MEISTER"] == "1" else {
+    FileHandle.standardError.write(Data("klause-mcp-shim: KLAUSE_MEISTER must be \"1\"\n".utf8))
     exit(2)
 }
 
@@ -34,7 +34,7 @@ guard let worktreeId = env["KLAUSE_WORKTREE_ID"], !worktreeId.isEmpty else {
 // MARK: - Socket path
 
 // Prefer KLAUSE_SOCKET_PATH env var (set by Klausemeister when spawning the
-// master) so the app is the single source of truth for the socket location.
+// meister) so the app is the single source of truth for the socket location.
 // Fall back to the conventional path for manual testing.
 
 let socketPath: String = env["KLAUSE_SOCKET_PATH"] ?? {
@@ -93,7 +93,7 @@ _ = fcntl(STDOUT_FILENO, F_SETFL, fcntl(STDOUT_FILENO, F_GETFL) | O_NONBLOCK)
 
 // MARK: - Hello frame
 
-let hello = HelloFrame(klausePrimary: "1", klauseWorktreeId: worktreeId)
+let hello = HelloFrame(klauseMeister: "1", klauseWorktreeId: worktreeId)
 guard var helloData = try? JSONEncoder().encode(hello) else {
     FileHandle.standardError.write(Data("klause-mcp-shim: failed to encode hello frame\n".utf8))
     close(socketFD)

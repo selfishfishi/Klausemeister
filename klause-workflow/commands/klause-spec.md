@@ -9,7 +9,7 @@ argument-hint: [linear-ticket-id]
 
 ## Planned contract
 
-**Invoked when:** the master loop pulls a queue item whose linked Linear ticket is in `Backlog`.
+**Invoked when:** the meister loop pulls a queue item whose linked Linear ticket is in `Backlog`.
 
 **Input:** the queue item returned by `getNextItem` (includes the Linear ticket reference).
 
@@ -24,4 +24,4 @@ argument-hint: [linear-ticket-id]
 
 ## What to do if invoked today
 
-This command is not implemented yet. If the master loop reaches a Backlog item, explain the situation to the user and wait for direction rather than guessing. The real prompt will be added under KLA-75.
+This command is not implemented yet. If the meister loop reaches a Backlog item, explain the situation to the user and wait for direction rather than guessing. The real prompt will be added under KLA-75.

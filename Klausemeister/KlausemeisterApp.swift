@@ -24,6 +24,7 @@ struct KlausemeisterApp: App {
                 surfaceStore: surfaceStore,
                 ghosttyApp: $0.ghosttyApp
             )
+            $0.meisterClient = .live(tmux: $0.tmuxClient)
         }
     }
 

@@ -1,7 +1,7 @@
 {
   "name": "klause-workflow",
   "version": "0.0.1",
-  "description": "Master-loop workflow plugin for Klausemeister sessions. Provides placeholder slash commands and a master-loop skill loaded by the master Claude Code in each Klausemeister session.",
+  "description": "Meister-loop workflow plugin for Klausemeister sessions. Provides placeholder slash commands and a meister-loop skill loaded by the meister Claude Code in each Klausemeister session.",
   "author": {
     "name": "Ali Fathalian"
   },

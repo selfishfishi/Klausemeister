@@ -20,6 +20,7 @@ struct Worktree: Equatable, Identifiable {
     var repoName: String?
     var currentBranch: String?
     var tmuxSessionStatus: TmuxSessionStatus = .unknown
+    var meisterStatus: MeisterStatus = .none
     var inbox: [LinearIssue] = []
     var processing: LinearIssue?
     var outbox: [LinearIssue] = []
@@ -41,6 +42,17 @@ enum TmuxSessionStatus: Equatable {
     case unknown
     case sessionExists
     case needsCreation
+}
+
+/// Lifecycle of the meister Claude Code process inside a worktree's tmux
+/// session. In-memory only — not persisted across app launches — because the
+/// tmux session itself is the source of truth and the meister inside it
+/// re-handshakes over MCP on reconnect.
+enum MeisterStatus: Equatable {
+    case none
+    case spawning
+    case running
+    case disconnected
 }
 
 /// State for the Create Worktree sheet presented from the Meister swimlane
@@ -145,6 +157,12 @@ struct WorktreeFeature {
         // Tmux session reconciliation
         case reconcileTmuxSessions
         case tmuxSessionsReconciled([String: TmuxSessionStatus])
+
+        // Meister Claude Code lifecycle (KLA-74)
+        case meisterSpawnFailed(worktreeId: String)
+        case meisterHelloReceived(worktreeId: String)
+        case meisterConnectionClosed(worktreeId: String)
+
         case alert(PresentationAction<Alert>)
         case delegate(Delegate)
 
@@ -167,12 +185,21 @@ struct WorktreeFeature {
         case load
         case syncRepo(String)
         case reconcileTmux
+        case meisterSpawn(String)
     }
+
+    /// How long to wait for the meister's MCP HelloFrame after a spawn before
+    /// declaring the meister disconnected. A real hello from the shim normally
+    /// arrives well inside this window; if it does not, either `claude` died
+    /// during startup or the shell rc files blocked the send-keys input.
+    nonisolated private static let meisterHelloGracePeriod: Duration = .seconds(8)
 
     @Dependency(\.worktreeClient) var worktreeClient
     @Dependency(\.databaseClient) var databaseClient
     @Dependency(\.gitClient) var gitClient
     @Dependency(\.tmuxClient) var tmuxClient
+    @Dependency(\.meisterClient) var meisterClient
+    @Dependency(\.continuousClock) var clock
 
     /// Effect that loads the set of local branches for the given repo into the
     /// Create sheet's collision-check cache. Shared by `createSheetShown` and
@@ -190,6 +217,51 @@ struct WorktreeFeature {
                 ))
             }
         }
+    }
+
+    /// Transitions a worktree to `meisterStatus = .spawning` and returns the
+    /// effect that spawns (or reattaches to) its meister tmux session. Called
+    /// from every issue-assignment path so the first ticket landing in an
+    /// empty worktree boots its meister. Idempotent at both the state level
+    /// (guard on `.none`) and the tmux level (`MeisterClient.ensureRunning`
+    /// short-circuits if the session already exists).
+    ///
+    /// The effect runs the spawn then sleeps for a grace period. If an MCP
+    /// HelloFrame arrives meanwhile, `.meisterHelloReceived` cancels this
+    /// effect via `CancelID.meisterSpawn`. If the sleep completes, we flip
+    /// the worktree to `.disconnected` — either `claude` crashed during
+    /// startup or something (e.g. a blocking shell rc prompt) consumed the
+    /// send-keys input before `claude` got to run.
+    private func ensureMeisterEffect(
+        state: inout State,
+        worktreeId: String
+    ) -> Effect<Action> {
+        guard let wtIndex = state.worktrees.index(id: worktreeId) else {
+            return .none
+        }
+        guard state.worktrees[wtIndex].meisterStatus == .none else {
+            return .none
+        }
+        let workingDirectory = state.worktrees[wtIndex].gitWorktreePath
+        guard !workingDirectory.isEmpty else { return .none }
+        let sessionName = WorktreeConfig.tmuxSessionName(
+            forWorktreeName: state.worktrees[wtIndex].name
+        )
+        state.worktrees[wtIndex].meisterStatus = .spawning
+        return .run { [meisterClient, clock] send in
+            do {
+                try await meisterClient.ensureRunning(
+                    worktreeId, workingDirectory, sessionName
+                )
+                try await clock.sleep(for: Self.meisterHelloGracePeriod)
+                await send(.meisterSpawnFailed(worktreeId: worktreeId))
+            } catch is CancellationError {
+                // Cancelled by .meisterHelloReceived — nothing to do.
+            } catch {
+                await send(.meisterSpawnFailed(worktreeId: worktreeId))
+            }
+        }
+        .cancellable(id: CancelID.meisterSpawn(worktreeId), cancelInFlight: true)
     }
 
     var body: some Reducer<State, Action> {
@@ -554,6 +626,7 @@ struct WorktreeFeature {
                     }
                 }
                 let worktreePath = state.worktrees[id: worktreeId]?.gitWorktreePath
+                let meisterEffect = ensureMeisterEffect(state: &state, worktreeId: worktreeId)
                 return .merge(
                     .run { [issueId = issue.id] _ in
                         try await worktreeClient.assignIssueToWorktree(issueId, worktreeId)
@@ -569,7 +642,8 @@ struct WorktreeFeature {
                         } catch {
                             Self.log.warning("Branch switch failed for \(worktreeId): \(error.localizedDescription)")
                         }
-                    }
+                    },
+                    meisterEffect
                 )
 
             case let .markAsCompleteTapped(worktreeId):
@@ -687,13 +761,19 @@ struct WorktreeFeature {
                                 state.worktrees[wtIndex].inbox.append(issue)
                             }
                             let sourceId = worktree.id
-                            return .run { _ in
-                                try await worktreeClient.removeFromQueueByIssueId(issueId, sourceId)
-                                try await worktreeClient.assignIssueToWorktree(issueId, worktreeId)
-                            } catch: { _, send in
-                                // Rollback: remove from target, restore to source
-                                await send(.assignFailed(worktreeId: worktreeId, issueId: issueId))
-                            }
+                            let meisterEffect = ensureMeisterEffect(
+                                state: &state, worktreeId: worktreeId
+                            )
+                            return .merge(
+                                .run { _ in
+                                    try await worktreeClient.removeFromQueueByIssueId(issueId, sourceId)
+                                    try await worktreeClient.assignIssueToWorktree(issueId, worktreeId)
+                                } catch: { _, send in
+                                    // Rollback: remove from target, restore to source
+                                    await send(.assignFailed(worktreeId: worktreeId, issueId: issueId))
+                                },
+                                meisterEffect
+                            )
                         }
                     }
                 }
@@ -714,13 +794,15 @@ struct WorktreeFeature {
                         state.worktrees[wtIndex].inbox.append(issue)
                     }
                 }
+                let meisterEffect = ensureMeisterEffect(state: &state, worktreeId: worktreeId)
                 return .merge(
                     .run { [issueId = issue.id] _ in
                         try await worktreeClient.assignIssueToWorktree(issueId, worktreeId)
                     } catch: { _, send in
                         await send(.assignFailed(worktreeId: worktreeId, issueId: issue.id))
                     },
-                    .send(.delegate(.issueRemovedFromKanban(issueId: issue.id)))
+                    .send(.delegate(.issueRemovedFromKanban(issueId: issue.id))),
+                    meisterEffect
                 )
 
             case let .issueDroppedOnProcessing(issueId, worktreeId):
@@ -1013,6 +1095,24 @@ struct WorktreeFeature {
                 for (worktreeId, status) in statuses {
                     state.worktrees[id: worktreeId]?.tmuxSessionStatus = status
                 }
+                return .none
+
+            // MARK: - Meister Claude Code lifecycle (KLA-74)
+
+            case let .meisterSpawnFailed(worktreeId):
+                state.worktrees[id: worktreeId]?.meisterStatus = .disconnected
+                return .none
+
+            case let .meisterHelloReceived(worktreeId):
+                state.worktrees[id: worktreeId]?.meisterStatus = .running
+                // Cancel the grace-period fallback — we now have proof the
+                // meister is alive and reachable.
+                return .cancel(id: CancelID.meisterSpawn(worktreeId))
+
+            case let .meisterConnectionClosed(worktreeId):
+                // No auto-respawn (spec FR #7). Flip to disconnected; user
+                // action required to restart.
+                state.worktrees[id: worktreeId]?.meisterStatus = .disconnected
                 return .none
 
             case .delegate:

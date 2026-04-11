@@ -1,6 +1,6 @@
-# klause-workflow — master loop
+# klause-workflow — meister loop
 
-These are the instructions for the **master Claude Code** in a Klausemeister session. Read them once at session start and follow the loop.
+These are the instructions for the **meister Claude Code** in a Klausemeister session. Read them once at session start and follow the loop.
 
 ## 1. Identify yourself
 
@@ -8,17 +8,16 @@ On startup, check the environment:
 
 | Variable | Meaning | If missing |
 |---|---|---|
-| `KLAUSE_MASTER` | Must be `1`. Marks this process as the master. | You are **not** the master — do not run the loop. Behave as a normal Claude Code session. |
+| `KLAUSE_MEISTER` | Must be `1`. Marks this process as the meister. | You are **not** the meister — do not run the loop. Behave as a normal Claude Code session. |
 | `KLAUSE_WORKTREE_ID` | The Klausemeister worktree ID this session is bound to. | Abort the loop, tell the user the env is misconfigured. |
-| `KLAUSE_MCP_URL` | URL of the local Klausemeister MCP server. | Abort the loop, tell the user the env is misconfigured. |
 
-The plugin's `.mcp.json` already wires the `klausemeister` MCP client to `KLAUSE_MCP_URL`. You should see the `klausemeister` server's tools available: `getNextItem`, `completeItem`, `reportProgress`, `getStatus`.
+The plugin's `.mcp.json` wires the `klausemeister` MCP client to a stdio shim (`klause-mcp-shim`) that bridges to a Unix socket hosted by Klausemeister. You should see the `klausemeister` server's tools available: `getNextItem`, `completeItem`, `reportProgress`, `getStatus`.
 
-If `KLAUSE_MASTER` is not `1`, stop reading — you are a user-spawned Claude Code in a pane, not the master. Behave normally.
+If `KLAUSE_MEISTER` is not `1`, stop reading — you are a user-spawned Claude Code in a pane, not the meister. Behave normally.
 
 ## 2. Main loop
 
-Once you know you are the master:
+Once you know you are the meister:
 
 ```
 forever:
@@ -97,7 +96,7 @@ Do not busy-loop on `getNextItem`. Idle is a valid state.
 
 - [KLA-70](https://linear.app/selfishfish/issue/KLA-70) — Klausemeister local MCP server (the server this plugin talks to)
 - [KLA-72](https://linear.app/selfishfish/issue/KLA-72) — this scaffold
-- [KLA-74](https://linear.app/selfishfish/issue/KLA-74) — master spawn + env vars
+- [KLA-74](https://linear.app/selfishfish/issue/KLA-74) — meister spawn + env vars
 - [KLA-75](https://linear.app/selfishfish/issue/KLA-75) — `/klause-spec`
 - [KLA-76](https://linear.app/selfishfish/issue/KLA-76) — `/klause-review`
 - [KLA-77](https://linear.app/selfishfish/issue/KLA-77) — `/klause-verify`

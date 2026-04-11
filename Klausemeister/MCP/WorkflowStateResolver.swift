@@ -17,7 +17,7 @@ enum WorkflowStateResolver {
     ///
     /// - Parameters:
     ///   - teamId: Linear team UUID (from `ImportedIssueRecord.teamId`).
-    ///   - stateName: Human-readable state name as the master Claude Code knows it.
+    ///   - stateName: Human-readable state name as the meister Claude Code knows it.
     /// - Returns: The state UUID, or `nil` if no matching state exists for the team.
     /// - Throws: Whatever `databaseClient.fetchWorkflowStates` throws.
     static func resolve(

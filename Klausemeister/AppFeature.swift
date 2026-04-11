@@ -255,8 +255,14 @@ struct AppFeature {
             case .mcpServerEvent(.progressReported):
                 // KLA-80 will route per-session progress into the sidebar.
                 // For v1, we accept the event and surface nothing — the
-                // master sees its own status, and errors take a different path.
+                // meister sees its own status, and errors take a different path.
                 return .none
+
+            case let .mcpServerEvent(.meisterHelloReceived(worktreeId)):
+                return .send(.worktree(.meisterHelloReceived(worktreeId: worktreeId)))
+
+            case let .mcpServerEvent(.meisterConnectionClosed(worktreeId)):
+                return .send(.worktree(.meisterConnectionClosed(worktreeId: worktreeId)))
             }
         }
     }

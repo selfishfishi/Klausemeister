@@ -8,14 +8,14 @@ import Network
 ///
 /// The wire format is newline-delimited JSON-RPC, matching how
 /// `StdioTransport` frames messages. This works with our shim binary, which
-/// reads stdin/stdout from the master Claude Code (also newline-framed) and
+/// reads stdin/stdout from the meister Claude Code (also newline-framed) and
 /// forwards bytes 1:1 to the socket.
 ///
 /// One `SocketTransport` is created per accepted connection. The
 /// `MCPSocketListener` parses and validates the leading "hello" frame from
 /// the connection BEFORE constructing the transport, so by the time
 /// `connect()` is called the next bytes from the underlying NWConnection are
-/// the master's first MCP request.
+/// the meister's first MCP request.
 actor SocketTransport: Transport {
     nonisolated let logger: Logger
 
