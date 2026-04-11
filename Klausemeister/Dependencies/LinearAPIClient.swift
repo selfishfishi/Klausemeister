@@ -169,11 +169,13 @@ extension LinearAPIClient: DependencyKey {
                 var allIssues: [LinearIssue] = []
                 var seenIds = Set<String>()
 
+                let excludeCanceled: [String: Any] = ["type": ["neq": "canceled"]]
+
                 // Fetch issues with the direct label
                 try await fetchPaginatedIssues(
                     token: token,
                     query: directQuery,
-                    filter: ["labels": ["name": ["eq": label]]],
+                    filter: ["labels": ["name": ["eq": label]], "state": excludeCanceled],
                     into: &allIssues,
                     seenIds: &seenIds
                 )
@@ -182,7 +184,10 @@ extension LinearAPIClient: DependencyKey {
                 try await fetchPaginatedIssues(
                     token: token,
                     query: projectQuery,
-                    filter: ["project": ["labels": ["name": ["eq": label]]]],
+                    filter: [
+                        "project": ["labels": ["name": ["eq": label]]],
+                        "state": excludeCanceled
+                    ],
                     into: &allIssues,
                     seenIds: &seenIds
                 )
