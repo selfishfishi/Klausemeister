@@ -53,7 +53,7 @@ Call `reportProgress` liberally — once per meaningful sub-step of each command
 | `Testing` | `/klause-verify` | `Done` |
 | *(any other state)* | No `klause-*` command exists yet. Do the work directly — use `/feature-dev` or plain conversation. | Whatever state the work advanced to. |
 
-`/klause-define` is implemented and uses the `getProductState` / `transition` MCP tools for state validation. `/klause-review` and `/klause-verify` are still placeholders (KLA-76, KLA-77). See `commands/` for details.
+`/klause-define` and `/klause-pull` are implemented and use the `getProductState` / `transition` MCP tools for state validation. `/klause-pull` is not state-dispatched — it is invoked explicitly or by `/klause:next` when the queue position is `inbox`. `/klause-review` and `/klause-verify` are still placeholders (KLA-76, KLA-77). See `commands/` for details.
 
 For states without a dedicated command — `Definition`, `Todo`, `Spec`, `In Progress` — pick the best tool for the work and report back. Typical fits:
 
