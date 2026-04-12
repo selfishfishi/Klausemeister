@@ -30,15 +30,16 @@ enum MCPSocketListener {
         return appSupport.appendingPathComponent("klause.sock").path
     }()
 
-    /// Where the shim helper is symlinked on first launch so the plugin's
-    /// `mcp.json` can reference it without knowing where the .app is installed.
+    /// Where the shim helper is symlinked on first launch. The path must
+    /// be **space-free** because Claude Code's MCP launcher splits the
+    /// `command` string on whitespace before spawning — a path like
+    /// `~/Library/Application Support/…` silently breaks into a wrong
+    /// executable + spurious argument. `~/.klausemeister/bin/` avoids this.
     static let shimSymlinkPath: String = {
-        let appSupport = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first!
-            .appendingPathComponent("Klausemeister")
-            .appendingPathComponent("bin")
-        return appSupport.appendingPathComponent("klause-mcp-shim").path
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return home
+            .appendingPathComponent(".klausemeister/bin/klause-mcp-shim")
+            .path
     }()
 
     private static let logger = Logger(label: "klausemeister.mcp.listener")
@@ -77,25 +78,68 @@ enum MCPSocketListener {
         }
     }
 
-    /// Symlinks `Klausemeister.app/Contents/Helpers/klause-mcp-shim` to a
-    /// stable location so the workflow plugin's `mcp.json` can refer to a
-    /// fixed path. No-op if the symlink already exists and points anywhere.
+    /// Symlinks `Klausemeister.app/Contents/MacOS/klause-mcp-shim` to a
+    /// stable location and registers it as an MCP server in Claude Code's
+    /// user config so every `claude` instance (including meisters spawned
+    /// inside tmux) knows how to reach us.
+    ///
+    /// Two things happen here:
+    ///   1. A symlink at `~/Library/Application Support/Klausemeister/bin/
+    ///      klause-mcp-shim` is created pointing to the binary inside the
+    ///      app bundle. No-op if it already exists.
+    ///   2. The `klausemeister` MCP server entry is upserted into
+    ///      `~/.claude/.mcp.json` with the fully resolved shim path.
+    ///      Claude Code's MCP loader does NOT expand `${HOME}` or `~` in
+    ///      command strings (they're passed directly to `spawn()`), so the
+    ///      app must write the real absolute path. The shim itself is safe
+    ///      to register globally — it exits immediately with code 2 when
+    ///      `KLAUSE_MEISTER` is not set, so non-meister claude sessions
+    ///      are unaffected.
     private static func installShimSymlink() {
         let fileManager = FileManager.default
         let symlinkURL = URL(fileURLWithPath: shimSymlinkPath)
-        guard !fileManager.fileExists(atPath: symlinkURL.path) else { return }
-        guard let helperURL = Bundle.main.url(forAuxiliaryExecutable: "klause-mcp-shim") else {
-            logger.warning("klause-mcp-shim helper not found in app bundle; symlink skipped")
-            return
+        if !fileManager.fileExists(atPath: symlinkURL.path) {
+            guard let helperURL = Bundle.main.url(forAuxiliaryExecutable: "klause-mcp-shim") else {
+                logger.warning("klause-mcp-shim helper not found in app bundle; symlink skipped")
+                return
+            }
+            do {
+                try fileManager.createDirectory(
+                    at: symlinkURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try fileManager.createSymbolicLink(at: symlinkURL, withDestinationURL: helperURL)
+            } catch {
+                logger.warning("Failed to create shim symlink: \(error.localizedDescription)")
+                return
+            }
         }
+        registerMCPServer()
+    }
+
+    /// Upsert the `klausemeister` MCP server into `~/.claude/.mcp.json`.
+    private static func registerMCPServer() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let mcpConfigURL = home.appendingPathComponent(".claude/.mcp.json")
+        var root: [String: Any] = if let data = try? Data(contentsOf: mcpConfigURL),
+                                     let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        {
+            parsed
+        } else {
+            [:]
+        }
+        var servers = root["mcpServers"] as? [String: Any] ?? [:]
+        let entry: [String: Any] = ["command": shimSymlinkPath]
+        servers["klausemeister"] = entry
+        root["mcpServers"] = servers
         do {
-            try fileManager.createDirectory(
-                at: symlinkURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
+            let data = try JSONSerialization.data(
+                withJSONObject: root,
+                options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
             )
-            try fileManager.createSymbolicLink(at: symlinkURL, withDestinationURL: helperURL)
+            try data.write(to: mcpConfigURL, options: .atomic)
         } catch {
-            logger.warning("Failed to create shim symlink: \(error.localizedDescription)")
+            logger.warning("Failed to register MCP server in ~/.claude/.mcp.json: \(error.localizedDescription)")
         }
     }
 

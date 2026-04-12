@@ -24,6 +24,7 @@
 		A8TE00112F816B35005797B3 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE00102F816B35005797B3 /* Dependencies */; };
 		A8TE00142F816B35005797B3 /* Clocks in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE00132F816B35005797B3 /* Clocks */; };
 		A8TE00162F816B35005797B3 /* ConcurrencyExtras in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE00152F816B35005797B3 /* ConcurrencyExtras */; };
+		A8FX00042FA9000100806034 /* klause-mcp-shim in Embed Helpers */ = {isa = PBXBuildFile; fileRef = A8E730702F85395000806034 /* klause-mcp-shim */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -33,6 +34,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = A869EEDF2F816B35005797B3;
 			remoteInfo = Klausemeister;
+		};
+		A8FX00012FA9000100806034 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A869EED82F816B35005797B3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A8E7306F2F85395000806034;
+			remoteInfo = "klause-mcp-shim";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -45,6 +53,16 @@
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 1;
+		};
+		A8FX00032FA9000100806034 /* Embed Helpers */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 6;
+			files = (
+				A8FX00042FA9000100806034 /* klause-mcp-shim in Embed Helpers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
@@ -166,10 +184,12 @@
 				A869EEDD2F816B35005797B3 /* Frameworks */,
 				A869EEDE2F816B35005797B3 /* Resources */,
 				A8AAAA012F816B35005797B3 /* SwiftLint */,
+				A8FX00032FA9000100806034 /* Embed Helpers */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A8FX00022FA9000100806034 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A869EEE22F816B35005797B3 /* Klausemeister */,
@@ -361,6 +381,11 @@
 			isa = PBXTargetDependency;
 			target = A869EEDF2F816B35005797B3 /* Klausemeister */;
 			targetProxy = A8TE00072F816B35005797B3 /* PBXContainerItemProxy */;
+		};
+		A8FX00022FA9000100806034 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A8E7306F2F85395000806034 /* klause-mcp-shim */;
+			targetProxy = A8FX00012FA9000100806034 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
