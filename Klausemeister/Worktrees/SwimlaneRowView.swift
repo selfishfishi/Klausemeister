@@ -48,39 +48,26 @@ struct SwimlaneRowView: View {
     }
 
     private var rowContent: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
             SwimlaneHeaderView(
                 worktree: worktree,
                 onDelete: onDelete
             )
 
-            SwimlaneQueueView(
-                role: .inbox,
-                issues: worktree.inbox,
-                onReturnToMeister: onReturnToMeister,
-                onDrop: onDropToInbox
-            )
-
-            SwimlaneConnectorShape(isActive: worktree.isActive)
-
-            SwimlaneProcessingZoneView(
-                issue: worktree.processing,
+            SwimlaneBarRow(
+                worktree: worktree,
                 onMarkComplete: onMarkComplete,
                 onReturnToMeister: onReturnToMeister,
-                onDrop: onDropToProcessing
-            )
-
-            SwimlaneConnectorShape(isActive: worktree.isActive)
-
-            SwimlaneQueueView(
-                role: .outbox,
-                issues: worktree.outbox,
-                onReturnToMeister: onReturnToMeister,
-                onDrop: onDropToOutbox
+                onDropToInbox: onDropToInbox,
+                onDropToProcessing: onDropToProcessing,
+                onDropToOutbox: onDropToOutbox
             )
         }
         .padding(10)
-        .glassPanel(tint: tint, cornerRadius: swimlaneGlassCornerRadius)
+        .glassEffect(
+            .regular.tint(tint.opacity(0.04)),
+            in: RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
+        )
     }
 
     private func pulsePhase(date: Date, period: Double) -> Double {
