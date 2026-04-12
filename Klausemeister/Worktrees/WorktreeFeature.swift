@@ -94,11 +94,6 @@ struct WorktreeFeature {
         var activeDetailTab: WorktreeDetailTab = UserDefaults.standard.string(forKey: WorktreeFeature.activeDetailTabUserDefaultsKey)
             .flatMap(WorktreeDetailTab.init(rawValue:)) ?? .queue
 
-        /// Which swimlane row is currently expanded inline inside the Meister
-        /// tab. **Kept separate from `selectedWorktreeId`** because the latter
-        /// triggers `AppFeature` to flip `showMeister = false` and route away
-        /// from Meister; expansion stays within Meister.
-        var expandedWorktreeIdInMeister: String?
         /// Which repo sections are collapsed in the swimlane view.
         var collapsedRepoIds: Set<String> = []
         /// Presented create-worktree sheet state, or nil when the sheet is hidden.
@@ -134,8 +129,6 @@ struct WorktreeFeature {
         case worktreeDeleteFailed(worktree: Worktree)
         case worktreeSelected(String?)
         case detailTabSelected(WorktreeDetailTab)
-        case meisterExpansionToggled(worktreeId: String)
-        case meisterExpansionCleared
         case repoCollapseToggled(repoId: String)
         case renameWorktreeTapped(worktreeId: String, newName: String)
         case worktreeRenamed(worktreeId: String, newName: String)
@@ -571,9 +564,6 @@ struct WorktreeFeature {
                 if state.selectedWorktreeId == worktreeId {
                     state.selectedWorktreeId = nil
                 }
-                if state.expandedWorktreeIdInMeister == worktreeId {
-                    state.expandedWorktreeIdInMeister = nil
-                }
                 let worktreePath = worktree.gitWorktreePath
                 let repoPath = worktree.repoId.flatMap { state.repositories[id: $0]?.path }
                 let tmuxSessionName = WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name)
@@ -637,18 +627,6 @@ struct WorktreeFeature {
                     persistTab,
                     terminalActivationEffect(state: &state, worktree: worktree)
                 )
-
-            case let .meisterExpansionToggled(worktreeId):
-                if state.expandedWorktreeIdInMeister == worktreeId {
-                    state.expandedWorktreeIdInMeister = nil
-                } else {
-                    state.expandedWorktreeIdInMeister = worktreeId
-                }
-                return .none
-
-            case .meisterExpansionCleared:
-                state.expandedWorktreeIdInMeister = nil
-                return .none
 
             case let .repoCollapseToggled(repoId):
                 if state.collapsedRepoIds.contains(repoId) {
@@ -1091,11 +1069,6 @@ struct WorktreeFeature {
                 if let selectedWt = state.selectedWorktreeId, worktreeIds.contains(selectedWt) {
                     state.selectedWorktreeId = nil
                 }
-                if let expandedWt = state.expandedWorktreeIdInMeister,
-                   worktreeIds.contains(expandedWt)
-                {
-                    state.expandedWorktreeIdInMeister = nil
-                }
                 let repoPath = repo.path
                 return .run { [surfaceManager] _ in
                     for path in worktreePaths where !path.isEmpty {
@@ -1150,9 +1123,6 @@ struct WorktreeFeature {
                     state.worktrees.remove(id: worktreeId)
                     if state.selectedWorktreeId == worktreeId {
                         state.selectedWorktreeId = nil
-                    }
-                    if state.expandedWorktreeIdInMeister == worktreeId {
-                        state.expandedWorktreeIdInMeister = nil
                     }
                 }
                 if !result.deletedWorktreeIds.isEmpty {

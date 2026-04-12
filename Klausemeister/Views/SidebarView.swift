@@ -18,12 +18,14 @@ struct SidebarView: View {
                         .lineLimit(1)
                     Spacer()
                 }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .padding(.vertical, 4)
             .listRowBackground(
                 store.showMeister
-                    ? RoundedRectangle(cornerRadius: 6).fill(.selection)
+                    ? RoundedRectangle(cornerRadius: 6)
+                    .fill(themeColors.accentColor.opacity(0.18))
                     : nil
             )
 
@@ -60,6 +62,7 @@ struct SidebarWorktreeRow: View {
     let onSelect: () -> Void
     let onDelete: () -> Void
 
+    @Environment(\.themeColors) private var themeColors
     @State private var isHovering = false
 
     var body: some View {
@@ -104,12 +107,14 @@ struct SidebarWorktreeRow: View {
                     .buttonStyle(.plain)
                 }
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .padding(.vertical, 4)
         .listRowBackground(
             isSelected
-                ? RoundedRectangle(cornerRadius: 6).fill(.selection)
+                ? RoundedRectangle(cornerRadius: 6)
+                .fill(themeColors.accentColor.opacity(0.18))
                 : nil
         )
         .onHover { hovering in isHovering = hovering }

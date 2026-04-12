@@ -183,59 +183,29 @@ struct WorktreeSwimlaneView: View {
     }
 
     private func swimlaneRow(worktree: Worktree, tints: [Color]) -> some View {
-        let isExpanded = store.expandedWorktreeIdInMeister == worktree.id
         let rowTint = rowTint(for: worktree, palette: tints)
-        return VStack(alignment: .leading, spacing: 6) {
-            SwimlaneRowView(
-                worktree: worktree,
-                tint: rowTint,
-                onDelete: {
-                    store.send(.confirmDeleteTapped(worktreeId: worktree.id))
-                },
-                onMarkComplete: {
-                    store.send(.markAsCompleteTapped(worktreeId: worktree.id))
-                },
-                onReturnToMeister: { issueId in
-                    store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktree.id))
-                },
-                onDropToInbox: { issueId in
-                    store.send(.issueDroppedOnInbox(issueId: issueId, worktreeId: worktree.id))
-                },
-                onDropToProcessing: { issueId in
-                    store.send(.issueDroppedOnProcessing(issueId: issueId, worktreeId: worktree.id))
-                },
-                onDropToOutbox: { issueId in
-                    store.send(.issueDroppedOnOutbox(issueId: issueId, worktreeId: worktree.id))
-                },
-                isExpanded: isExpanded,
-                onToggleExpand: {
-                    store.send(.meisterExpansionToggled(worktreeId: worktree.id))
-                }
-            )
-
-            if isExpanded {
-                WorktreeDetailPaneView(
-                    worktree: worktree,
-                    onRename: { newName in
-                        store.send(.renameWorktreeTapped(
-                            worktreeId: worktree.id, newName: newName
-                        ))
-                    },
-                    onMarkComplete: {
-                        store.send(.markAsCompleteTapped(worktreeId: worktree.id))
-                    },
-                    onReturnToMeister: { issueId in
-                        store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktree.id))
-                    },
-                    onDelete: {
-                        store.send(.confirmDeleteTapped(worktreeId: worktree.id))
-                    }
-                )
-                .glassPanel(tint: rowTint, cornerRadius: swimlaneGlassCornerRadius)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+        return SwimlaneRowView(
+            worktree: worktree,
+            tint: rowTint,
+            onDelete: {
+                store.send(.confirmDeleteTapped(worktreeId: worktree.id))
+            },
+            onMarkComplete: {
+                store.send(.markAsCompleteTapped(worktreeId: worktree.id))
+            },
+            onReturnToMeister: { issueId in
+                store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktree.id))
+            },
+            onDropToInbox: { issueId in
+                store.send(.issueDroppedOnInbox(issueId: issueId, worktreeId: worktree.id))
+            },
+            onDropToProcessing: { issueId in
+                store.send(.issueDroppedOnProcessing(issueId: issueId, worktreeId: worktree.id))
+            },
+            onDropToOutbox: { issueId in
+                store.send(.issueDroppedOnOutbox(issueId: issueId, worktreeId: worktree.id))
             }
-        }
-        .animation(.easeInOut(duration: 0.2), value: isExpanded)
+        )
     }
 
     private func openRepoFolderPicker() {
