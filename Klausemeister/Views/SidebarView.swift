@@ -86,6 +86,9 @@ struct SidebarWorktreeRow: View {
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
+                    if let stats = worktree.gitStats, !stats.isEmpty {
+                        GitStatsLineView(stats: stats)
+                    }
                 }
                 Spacer()
                 if worktree.totalIssueCount > 0 {
