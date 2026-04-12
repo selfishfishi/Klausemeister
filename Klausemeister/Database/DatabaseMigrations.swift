@@ -133,5 +133,11 @@ enum DatabaseMigrations {
                 t.primaryKey(["teamId", "linearStateId"])
             }
         }
+
+        migrator.registerMigration("v12-hidden-projects") { db in
+            try db.create(table: "hidden_projects") { t in
+                t.column("projectName", .text).primaryKey()
+            }
+        }
     }
 }

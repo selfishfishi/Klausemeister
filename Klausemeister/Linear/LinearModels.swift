@@ -24,6 +24,9 @@ enum OAuthError: Error, Equatable {
 }
 
 struct LinearIssue: Equatable, Codable {
+    /// Canonical name used for issues with no Linear project in filter lookups.
+    nonisolated static let noProjectName = ""
+
     let id: String
     let identifier: String
     let title: String

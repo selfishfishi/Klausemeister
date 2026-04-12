@@ -18,6 +18,7 @@ struct MeisterFeature {
         /// work cluttering the board.
         var hiddenStages: Set<MeisterState> = [.completed]
         var teams: [LinearTeam] = []
+        var hiddenProjectNames: Set<String> = []
         var stateMappings: StateMappingTable = [:]
         @Presents var stateMappingEditor: StateMappingFeature.State?
     }
@@ -73,6 +74,8 @@ struct MeisterFeature {
         case issueDroppedFromWorktreeResolved(issue: LinearIssue, onColumn: MeisterState)
         case teamsConfirmed([LinearTeam])
         case teamFilterToggled(teamId: String)
+        case projectFilterToggled(projectName: String)
+        case hiddenProjectsLoaded(Set<String>)
         case stateMappingsLoaded(StateMappingTable)
         case stateMappingButtonTapped
         case stateMappingEditor(PresentationAction<StateMappingFeature.Action>)
@@ -116,10 +119,14 @@ struct MeisterFeature {
     /// where in-memory state is empty and we always fetch fresh.
     private func onAppearEffect(enabledTeams: [LinearTeam] = []) -> Effect<Action> {
         .run { [linearAPIClient, databaseClient, stateMappingClient, currentNow = date.now] send in
-            // 0. Load persisted state mappings
+            // 0. Load persisted filters and state mappings
             let mappingRecords = await (try? stateMappingClient.fetchAll()) ?? []
             if !mappingRecords.isEmpty {
                 await send(.stateMappingsLoaded(StateMappingTable.from(mappingRecords)))
+            }
+            let hiddenProjects = await (try? databaseClient.fetchHiddenProjects()) ?? []
+            if !hiddenProjects.isEmpty {
+                await send(.hiddenProjectsLoaded(hiddenProjects))
             }
 
             // 1. Load persisted cache (if any)
@@ -470,6 +477,21 @@ struct MeisterFeature {
                     try? await databaseClient.updateTeamFilterVisibility(teamId, isNowHidden)
                 }
 
+            case let .projectFilterToggled(projectName):
+                if state.hiddenProjectNames.contains(projectName) {
+                    state.hiddenProjectNames.remove(projectName)
+                } else {
+                    state.hiddenProjectNames.insert(projectName)
+                }
+                let isNowHidden = state.hiddenProjectNames.contains(projectName)
+                return .run { [databaseClient] _ in
+                    try? await databaseClient.setProjectHidden(projectName, isNowHidden)
+                }
+
+            case let .hiddenProjectsLoaded(names):
+                state.hiddenProjectNames = names
+                return .none
+
             case let .stateMappingsLoaded(table):
                 state.stateMappings = table
                 // Rebuild columns with updated mappings
@@ -675,17 +697,35 @@ extension MeisterFeature.State {
 
     /// Columns the user has chosen to see. Purely view-layer filtering —
     /// `columns` still holds every stage, so toggling a stage back on reveals
-    /// its existing issues without resyncing. Team filter hides issues from
-    /// deselected teams while preserving column structure.
+    /// its existing issues without resyncing. Team and project filters hide
+    /// issues while preserving column structure.
     var visibleColumns: IdentifiedArrayOf<MeisterFeature.KanbanColumn> {
-        let stageFiltered = columns.filter { !hiddenStages.contains($0.id) }
-        guard !hiddenTeamIds.isEmpty else { return stageFiltered }
-        let teamFiltered = stageFiltered.map { column in
-            var col = column
-            col.issues = column.issues.filter { !hiddenTeamIds.contains($0.teamId) }
-            return col
+        var filtered = columns.filter { !hiddenStages.contains($0.id) }
+        if !hiddenTeamIds.isEmpty {
+            filtered = IdentifiedArrayOf(uniqueElements: filtered.map { column in
+                var col = column
+                col.issues = column.issues.filter { !hiddenTeamIds.contains($0.teamId) }
+                return col
+            })
         }
-        return IdentifiedArrayOf(uniqueElements: teamFiltered)
+        if !hiddenProjectNames.isEmpty {
+            filtered = IdentifiedArrayOf(uniqueElements: filtered.map { column in
+                var col = column
+                col.issues = column.issues.filter { issue in
+                    let name = issue.projectName ?? LinearIssue.noProjectName
+                    return !hiddenProjectNames.contains(name)
+                }
+                return col
+            })
+        }
+        return filtered
+    }
+
+    /// All distinct project names across currently loaded issues.
+    /// Uses `""` for issues with no project (displayed as "(No project)" in UI).
+    var allProjectNames: [String] {
+        let names = columns.flatMap(\.issues).map { $0.projectName ?? LinearIssue.noProjectName }
+        return Array(Set(names)).sorted()
     }
 
     func columnContainingIssue(_ issueId: String) -> MeisterFeature.KanbanColumn? {
