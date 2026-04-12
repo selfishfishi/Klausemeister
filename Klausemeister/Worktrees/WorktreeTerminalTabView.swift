@@ -1,9 +1,10 @@
-import AppKit
 import SwiftUI
 
 struct WorktreeTerminalTabView: View {
     let worktree: Worktree
     let surfaceView: SurfaceView?
+
+    @Environment(\.themeColors) private var themeColors
 
     var body: some View {
         ZStack {
@@ -11,7 +12,7 @@ struct WorktreeTerminalTabView: View {
                 TerminalContentView(surfaceView: surfaceView, activeID: worktree.id)
                     .opacity(overlayMessage != nil ? 0.4 : 1.0)
             } else {
-                Color(NSColor.windowBackgroundColor)
+                Color(hexString: themeColors.background)
             }
 
             if let overlayMessage {
@@ -29,6 +30,10 @@ struct WorktreeTerminalTabView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            Color(hexString: themeColors.background)
+                .ignoresSafeArea()
+        }
     }
 
     private var overlayMessage: String? {
