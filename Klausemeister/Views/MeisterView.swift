@@ -28,6 +28,16 @@ struct MeisterView: View {
                         }
                     )
                 }
+                Button {
+                    store.send(.stateMappingButtonTapped)
+                } label: {
+                    Image(systemName: "arrow.left.arrow.right.circle")
+                        .symbolRenderingMode(.monochrome)
+                        .font(.system(size: 44, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Configure stage mappings")
                 StageFilterMenu(
                     hiddenStages: store.hiddenStages,
                     onToggle: { stage in
@@ -86,6 +96,9 @@ struct MeisterView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { store.send(.onAppear) }
+        .sheet(item: $store.scope(state: \.stateMappingEditor, action: \.stateMappingEditor)) { editorStore in
+            StateMappingView(store: editorStore)
+        }
     }
 }
 

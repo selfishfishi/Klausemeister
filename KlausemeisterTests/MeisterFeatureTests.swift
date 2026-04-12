@@ -345,6 +345,8 @@ private let mobileIssue = LinearIssue(
         $0.databaseClient.fetchUnqueuedImportedIssues = { [] }
         $0.databaseClient.saveWorkflowStates = { _ in }
         $0.databaseClient.batchSaveImportedIssues = { _ in }
+        $0.stateMappingClient.fetchAll = { [] }
+        $0.stateMappingClient.seedMappings = { _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
         $0.continuousClock = testClock
     }
@@ -363,6 +365,7 @@ private let mobileIssue = LinearIssue(
         $0.syncStatus = .succeeded
     }
     await store.receive(\.delegate.syncSucceeded)
+    await store.receive(\.stateMappingsLoaded)
 
     await testClock.advance(by: .seconds(2))
     await store.receive(\.syncIndicatorReset) {
@@ -372,6 +375,68 @@ private let mobileIssue = LinearIssue(
     #expect(fetchLabeledCalled)
     #expect(fetchAllCalled)
 }
+
+// MARK: - State Mapping Tests
+
+@Test func `computeSeedRecords seeds new states and skips existing`() {
+    let existing = [
+        StateMappingRecord(
+            teamId: "team-1", linearStateId: "state-todo",
+            linearStateName: "Todo", meisterState: "todo"
+        )
+    ]
+    let fresh: [LinearWorkflowState] = [
+        LinearWorkflowState(id: "state-todo", name: "Todo", type: "unstarted", position: 1, teamId: "team-1"),
+        LinearWorkflowState(id: "state-ip", name: "In Progress", type: "started", position: 2, teamId: "team-1"),
+        LinearWorkflowState(id: "state-canceled", name: "Canceled", type: "canceled", position: 5, teamId: "team-1")
+    ]
+
+    let seeds = StateMappingClient.computeSeedRecords(
+        freshStates: fresh, existingMappings: existing
+    )
+
+    // state-todo already exists → skipped
+    // state-canceled has type "canceled" → defaultMapping returns nil → skipped
+    // state-ip is new → seeded
+    #expect(seeds.count == 1)
+    #expect(seeds.first?.linearStateId == "state-ip")
+    #expect(seeds.first?.meisterState == "inProgress")
+}
+
+@Test func `rebuildColumns uses mapping table over heuristic`() {
+    let issue = LinearIssue(
+        id: "issue-1", identifier: "KLA-1", title: "Test",
+        status: "Spec", statusId: "state-spec", statusType: "started",
+        teamId: "team-1", projectName: nil, labels: [],
+        description: nil, url: "", updatedAt: "", isOrphaned: false
+    )
+
+    // Without mapping: "Spec" has type "started" → heuristic maps to .inProgress
+    let withoutMapping = MeisterFeature.rebuildColumns(from: [issue])
+    #expect(withoutMapping[id: .inProgress]?.issues.count == 1)
+    #expect(withoutMapping[id: .inReview]?.issues.count == 0)
+
+    // With mapping: "state-spec" explicitly mapped to .inReview
+    let mappings: StateMappingTable = ["team-1": ["state-spec": .inReview]]
+    let withMapping = MeisterFeature.rebuildColumns(from: [issue], mappings: mappings)
+    #expect(withMapping[id: .inProgress]?.issues.count == 0)
+    #expect(withMapping[id: .inReview]?.issues.count == 1)
+}
+
+@Test func `defaultMapping heuristic — name match beats type fallback`() {
+    let testingState = LinearWorkflowState(
+        id: "s1", name: "Testing", type: "started", position: 1, teamId: "t1"
+    )
+    // Name "Testing" matches .testing despite type "started" which would give .inProgress
+    #expect(MeisterState.defaultMapping(for: testingState) == .testing)
+
+    let canceledState = LinearWorkflowState(
+        id: "s2", name: "Canceled", type: "canceled", position: 2, teamId: "t1"
+    )
+    #expect(MeisterState.defaultMapping(for: canceledState) == nil)
+}
+
+// MARK: - Ingestion Strategy + Partial Failure Tests
 
 @Test func `sync partial failure reports error for failed teams`() async {
     let testClock = TestClock()
@@ -387,6 +452,8 @@ private let mobileIssue = LinearIssue(
         $0.databaseClient.fetchUnqueuedImportedIssues = { [] }
         $0.databaseClient.saveWorkflowStates = { _ in }
         $0.databaseClient.batchSaveImportedIssues = { _ in }
+        $0.stateMappingClient.fetchAll = { [] }
+        $0.stateMappingClient.seedMappings = { _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
         $0.continuousClock = testClock
     }
@@ -407,6 +474,7 @@ private let mobileIssue = LinearIssue(
     }
     await store.receive(\.delegate.syncSucceeded)
     await store.receive(\.delegate.errorOccurred)
+    await store.receive(\.stateMappingsLoaded)
 
     await testClock.advance(by: .seconds(2))
     await store.receive(\.syncIndicatorReset) {
