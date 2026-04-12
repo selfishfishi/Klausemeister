@@ -156,8 +156,9 @@ struct WorktreeFeature {
         case branchesLoaded([String: String])
         case addRepoFolderSelected(URL)
         case repoAdded(TaskResult<RepositoryRecord>)
-        case confirmDeleteRepoTapped(repoId: String)
-        case deleteRepoConfirmed(repoId: String)
+        case removeRepoTapped(repoId: String)
+        case removeRepoConfirmed(repoId: String)
+        case removeRepoAndKillTmuxConfirmed(repoId: String)
 
         // Discovery / sync
         case syncRepo(repoId: String)
@@ -180,7 +181,8 @@ struct WorktreeFeature {
         // swiftlint:disable:next nesting
         enum Alert: Equatable {
             case confirmDelete(worktreeId: String)
-            case confirmDeleteRepo(repoId: String)
+            case confirmRemoveRepo(repoId: String)
+            case confirmRemoveRepoAndKillTmux(repoId: String)
         }
 
         // swiftlint:disable:next nesting
@@ -230,6 +232,51 @@ struct WorktreeFeature {
                 ))
             }
         }
+    }
+
+    /// Removes a repository and all its worktrees from state and the database.
+    /// Non-destructive: no files are deleted from disk. Optionally kills the
+    /// associated tmux sessions when `killTmux` is true.
+    private func removeRepoEffect(
+        state: inout State,
+        repoId: String,
+        killTmux: Bool
+    ) -> Effect<Action> {
+        guard state.repositories[id: repoId] != nil else { return .none }
+        let worktreesForRepo = state.worktrees.filter { $0.repoId == repoId }
+        let worktreeIds = worktreesForRepo.map(\.id)
+        let tmuxSessionNames = worktreesForRepo.map { worktree in
+            WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name)
+        }
+        for id in worktreeIds {
+            state.worktrees.remove(id: id)
+        }
+        state.repositories.remove(id: repoId)
+        state.collapsedRepoIds.remove(repoId)
+        if let selectedWt = state.selectedWorktreeId, worktreeIds.contains(selectedWt) {
+            state.selectedWorktreeId = nil
+        }
+        return .merge(
+            .cancel(id: CancelID.syncRepo(repoId)),
+            .merge(worktreeIds.map { .cancel(id: CancelID.meisterSpawn($0)) }),
+            .run { [surfaceManager, worktreeClient, tmuxClient] _ in
+                if killTmux {
+                    for sessionName in tmuxSessionNames {
+                        try? await tmuxClient.killSession(sessionName)
+                    }
+                }
+                try await worktreeClient.removeRepository(repoId)
+                // Destroy surfaces only after the DB write succeeds so a
+                // failure + .onAppear reload doesn't leave blank terminals.
+                await MainActor.run {
+                    for id in worktreeIds {
+                        surfaceManager.destroySurface(id)
+                    }
+                }
+            } catch: { _, send in
+                await send(.onAppear)
+            }
+        )
     }
 
     /// Transitions a worktree to `meisterStatus = .spawning` and returns the
@@ -542,8 +589,11 @@ struct WorktreeFeature {
             case let .alert(.presented(.confirmDelete(worktreeId))):
                 return .send(.deleteWorktreeTapped(worktreeId: worktreeId))
 
-            case let .alert(.presented(.confirmDeleteRepo(repoId))):
-                return .send(.deleteRepoConfirmed(repoId: repoId))
+            case let .alert(.presented(.confirmRemoveRepo(repoId))):
+                return .send(.removeRepoConfirmed(repoId: repoId))
+
+            case let .alert(.presented(.confirmRemoveRepoAndKillTmux(repoId))):
+                return .send(.removeRepoAndKillTmuxConfirmed(repoId: repoId))
 
             case .alert:
                 return .none
@@ -1025,56 +1075,48 @@ struct WorktreeFeature {
                 }
                 return .none
 
-            case let .confirmDeleteRepoTapped(repoId):
+            case let .removeRepoTapped(repoId):
                 guard let repo = state.repositories[id: repoId] else { return .none }
                 let worktreeCount = state.worktrees.count(where: { $0.repoId == repoId })
                 if worktreeCount == 0 {
-                    return .send(.deleteRepoConfirmed(repoId: repoId))
+                    state.alert = AlertState {
+                        TextState("Remove \(repo.name)?")
+                    } actions: {
+                        ButtonState(role: .destructive, action: .confirmRemoveRepo(repoId: repoId)) {
+                            TextState("Remove")
+                        }
+                        ButtonState(role: .cancel) { TextState("Cancel") }
+                    } message: {
+                        TextState("\"\(repo.name)\" will be removed from Klausemeister. The folder on disk is not affected.")
+                    }
+                    return .none
                 }
                 state.alert = AlertState {
                     TextState("Remove \(repo.name)?")
                 } actions: {
-                    ButtonState(role: .destructive, action: .confirmDeleteRepo(repoId: repoId)) {
+                    ButtonState(role: .destructive, action: .confirmRemoveRepo(repoId: repoId)) {
                         TextState("Remove")
+                    }
+                    ButtonState(
+                        role: .destructive,
+                        action: .confirmRemoveRepoAndKillTmux(repoId: repoId)
+                    ) {
+                        TextState("Remove & Close Tmux")
                     }
                     ButtonState(role: .cancel) { TextState("Cancel") }
                 } message: {
-                    TextState("\(worktreeCount) worktree(s) will also be removed.")
+                    TextState(
+                        "\"\(repo.name)\" and its \(worktreeCount) worktree(s) remain on disk. " +
+                            "\"Remove & Close Tmux\" also closes associated terminal sessions."
+                    )
                 }
                 return .none
 
-            case let .deleteRepoConfirmed(repoId):
-                guard let repo = state.repositories[id: repoId] else { return .none }
-                let worktreesForRepo = state.worktrees.filter { $0.repoId == repoId }
-                let worktreePaths = worktreesForRepo.map(\.gitWorktreePath)
-                let worktreeIds = worktreesForRepo.map(\.id)
-                let tmuxSessionNames = worktreesForRepo.map { worktree in
-                    WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name)
-                }
-                for id in worktreeIds {
-                    state.worktrees.remove(id: id)
-                }
-                state.repositories.remove(id: repoId)
-                if let selectedWt = state.selectedWorktreeId, worktreeIds.contains(selectedWt) {
-                    state.selectedWorktreeId = nil
-                }
-                let repoPath = repo.path
-                return .run { [surfaceManager] _ in
-                    for path in worktreePaths where !path.isEmpty {
-                        try? await gitClient.removeWorktree(repoPath, path)
-                    }
-                    for sessionName in tmuxSessionNames {
-                        try? await tmuxClient.killSession(sessionName)
-                    }
-                    try await worktreeClient.removeRepository(repoId)
-                    await MainActor.run {
-                        for id in worktreeIds {
-                            surfaceManager.destroySurface(id)
-                        }
-                    }
-                } catch: { _, send in
-                    await send(.onAppear)
-                }
+            case let .removeRepoConfirmed(repoId):
+                return removeRepoEffect(state: &state, repoId: repoId, killTmux: false)
+
+            case let .removeRepoAndKillTmuxConfirmed(repoId):
+                return removeRepoEffect(state: &state, repoId: repoId, killTmux: true)
 
             // MARK: - Discovery / sync handlers
 
@@ -1096,6 +1138,8 @@ struct WorktreeFeature {
                 .cancellable(id: CancelID.syncRepo(repoId), cancelInFlight: true)
 
             case let .repoSynced(repoId, .success(result)):
+                // Repo may have been removed while sync was in flight.
+                guard state.repositories[id: repoId] != nil else { return .none }
                 let repoName = state.repositories[id: repoId]?.name
                 // Apply diff to in-memory state
                 for record in result.inserted {
