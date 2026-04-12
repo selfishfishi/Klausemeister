@@ -189,7 +189,7 @@ private func clearStoredTokens(_ keychainClient: KeychainClient) async {
 // MARK: - Record Conversions
 
 extension LinearTeam {
-    init(from record: LinearTeamRecord) {
+    nonisolated init(from record: LinearTeamRecord) {
         self.init(
             id: record.id,
             key: record.key,
@@ -203,7 +203,7 @@ extension LinearTeam {
 }
 
 extension LinearTeamRecord {
-    init(from team: LinearTeam) {
+    nonisolated init(from team: LinearTeam) {
         self.init(
             id: team.id,
             key: team.key,
