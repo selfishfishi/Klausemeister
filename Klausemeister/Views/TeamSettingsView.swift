@@ -14,7 +14,7 @@ struct TeamSettingsView: View {
             Divider().padding(.horizontal, 16)
             footerSection
         }
-        .frame(width: 380, height: 420)
+        .frame(width: 380, height: 480)
         .background {
             Color(hexString: themeColors.background)
                 .ignoresSafeArea()
@@ -88,47 +88,63 @@ struct TeamSettingsView: View {
         let isRemoved = store.teamsToRemove.contains(team.id)
         let tint = themeColors.teamTint(colorIndex: team.colorIndex)
 
-        return HStack(spacing: 10) {
-            Circle()
-                .fill(tint)
-                .frame(width: 8, height: 8)
-            Text(team.key)
-                .font(.system(.callout, design: .monospaced).weight(.semibold))
-                .foregroundStyle(tint)
-                .frame(width: 48, alignment: .leading)
-            Text(team.name)
-                .font(.callout)
-                .foregroundStyle(isRemoved ? .tertiary : .primary)
-                .strikethrough(isRemoved)
-            Spacer(minLength: 0)
-            if isRemoved {
-                Text("Removed")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            } else {
-                if isEnabled {
+        return VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 8, height: 8)
+                Text(team.key)
+                    .font(.system(.callout, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 48, alignment: .leading)
+                Text(team.name)
+                    .font(.callout)
+                    .foregroundStyle(isRemoved ? .tertiary : .primary)
+                    .strikethrough(isRemoved)
+                Spacer(minLength: 0)
+                if isRemoved {
+                    Text("Removed")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    if isEnabled {
+                        Button {
+                            store.send(.removeTeamTapped(teamId: team.id))
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Remove team and delete its issues")
+                    }
                     Button {
-                        store.send(.removeTeamTapped(teamId: team.id))
+                        store.send(.enableTeamToggled(teamId: team.id))
                     } label: {
-                        Image(systemName: "trash")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
+                            .font(.body)
+                            .foregroundStyle(isEnabled ? tint : .secondary)
                     }
                     .buttonStyle(.plain)
-                    .help("Remove team and delete its issues")
                 }
-                Button {
-                    store.send(.enableTeamToggled(teamId: team.id))
-                } label: {
-                    Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
-                        .font(.body)
-                        .foregroundStyle(isEnabled ? tint : .secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            if isEnabled, !isRemoved {
+                Picker("", selection: Binding(
+                    get: { team.ingestionStrategy },
+                    set: { store.send(.ingestionStrategyChanged(teamId: team.id, strategy: $0)) }
+                )) {
+                    Text("Label only").tag(IngestionStrategy.labelFiltered)
+                    Text("All issues").tag(IngestionStrategy.allIssues)
                 }
-                .buttonStyle(.plain)
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isEnabled && !isRemoved ? tint.opacity(0.08) : .clear)
@@ -163,6 +179,14 @@ struct TeamSettingsView: View {
         let originalEnabled = Set(
             store.allTeams.filter(\.isEnabled).map(\.id)
         )
-        return store.enabledTeamIds != originalEnabled || !store.teamsToRemove.isEmpty
+        if store.enabledTeamIds != originalEnabled || !store.teamsToRemove.isEmpty {
+            return true
+        }
+        return store.allTeams.contains { team in
+            guard let original = store.originalStrategies[team.id] else {
+                return true // New team not in original set
+            }
+            return team.ingestionStrategy != original
+        }
     }
 }

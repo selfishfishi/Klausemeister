@@ -291,3 +291,125 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
         $0.columns[id: .todo]?.issues = []
     }
 }
+
+// MARK: - Ingestion Strategy Tests
+
+private let teamLabelFiltered = LinearTeam(
+    id: "team-1", key: "KLA", name: "Klausemeister",
+    colorIndex: 0, isEnabled: true, isHiddenFromBoard: false,
+    ingestionStrategy: .labelFiltered
+)
+
+private let teamAllIssues = LinearTeam(
+    id: "team-2", key: "MOB", name: "Mobile",
+    colorIndex: 1, isEnabled: true, isHiddenFromBoard: false,
+    ingestionStrategy: .allIssues
+)
+
+private let mobileIssue = LinearIssue(
+    id: "issue-mob-1",
+    identifier: "MOB-1",
+    title: "Mobile issue",
+    status: "Todo",
+    statusId: "state-todo",
+    statusType: "unstarted",
+    teamId: "team-2",
+    projectName: nil,
+    labels: [],
+    description: nil,
+    url: "https://linear.app/selfishfish/issue/MOB-1",
+    updatedAt: "2026-04-12",
+    isOrphaned: false
+)
+
+@Test func `teamsConfirmed dispatches by ingestion strategy`() async {
+    let testClock = TestClock()
+    var fetchLabeledCalled = false
+    var fetchAllCalled = false
+
+    let store = TestStore(initialState: MeisterFeature.State()) {
+        MeisterFeature()
+    } withDependencies: {
+        $0.linearAPIClient.fetchLabeledIssues = { label, teamId in
+            #expect(label == MeisterFeature.syncLabel)
+            #expect(teamId == "team-1")
+            fetchLabeledCalled = true
+            return [sampleIssue]
+        }
+        $0.linearAPIClient.fetchAllTeamIssues = { teamId in
+            #expect(teamId == "team-2")
+            fetchAllCalled = true
+            return [mobileIssue]
+        }
+        $0.linearAPIClient.fetchWorkflowStatesByTeam = { sampleWorkflowStates }
+        $0.databaseClient.fetchUnqueuedImportedIssues = { [] }
+        $0.databaseClient.saveWorkflowStates = { _ in }
+        $0.databaseClient.batchSaveImportedIssues = { _ in }
+        $0.date = .constant(Date(timeIntervalSince1970: 0))
+        $0.continuousClock = testClock
+    }
+
+    let teams = [teamLabelFiltered, teamAllIssues]
+    await store.send(.teamsConfirmed(teams)) {
+        $0.teams = teams
+        $0.syncStatus = .syncing
+    }
+    await store.receive(\.delegate.syncStarted)
+
+    await store.receive(\.syncCompleted.success) {
+        $0.workflowStatesByTeam = sampleWorkflowStates
+        $0.workflowStatesLastFetched = Date(timeIntervalSince1970: 0)
+        $0.columns = MeisterFeature.rebuildColumns(from: [sampleIssue, mobileIssue])
+        $0.syncStatus = .succeeded
+    }
+    await store.receive(\.delegate.syncSucceeded)
+
+    await testClock.advance(by: .seconds(2))
+    await store.receive(\.syncIndicatorReset) {
+        $0.syncStatus = .idle
+    }
+
+    #expect(fetchLabeledCalled)
+    #expect(fetchAllCalled)
+}
+
+@Test func `sync partial failure reports error for failed teams`() async {
+    let testClock = TestClock()
+
+    let store = TestStore(initialState: MeisterFeature.State()) {
+        MeisterFeature()
+    } withDependencies: {
+        $0.linearAPIClient.fetchLabeledIssues = { _, _ in [sampleIssue] }
+        $0.linearAPIClient.fetchAllTeamIssues = { _ in
+            throw LinearAPIError.rateLimited
+        }
+        $0.linearAPIClient.fetchWorkflowStatesByTeam = { sampleWorkflowStates }
+        $0.databaseClient.fetchUnqueuedImportedIssues = { [] }
+        $0.databaseClient.saveWorkflowStates = { _ in }
+        $0.databaseClient.batchSaveImportedIssues = { _ in }
+        $0.date = .constant(Date(timeIntervalSince1970: 0))
+        $0.continuousClock = testClock
+    }
+
+    let teams = [teamLabelFiltered, teamAllIssues]
+    await store.send(.teamsConfirmed(teams)) {
+        $0.teams = teams
+        $0.syncStatus = .syncing
+    }
+    await store.receive(\.delegate.syncStarted)
+
+    // Sync succeeds overall but team-2 failed
+    await store.receive(\.syncCompleted.success) {
+        $0.workflowStatesByTeam = sampleWorkflowStates
+        $0.workflowStatesLastFetched = Date(timeIntervalSince1970: 0)
+        $0.columns = MeisterFeature.rebuildColumns(from: [sampleIssue])
+        $0.syncStatus = .succeeded
+    }
+    await store.receive(\.delegate.syncSucceeded)
+    await store.receive(\.delegate.errorOccurred)
+
+    await testClock.advance(by: .seconds(2))
+    await store.receive(\.syncIndicatorReset) {
+        $0.syncStatus = .idle
+    }
+}

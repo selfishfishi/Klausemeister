@@ -9,6 +9,7 @@ struct LinearAuthFeature {
         var user: LinearUser?
         var availableTeams: [LinearTeam] = []
         var selectedTeamIds: Set<String> = []
+        var teamStrategies: [String: IngestionStrategy] = [:]
     }
 
     enum AuthStatus: Equatable {
@@ -26,6 +27,7 @@ struct LinearAuthFeature {
         case meLoaded(TaskResult<LinearUser>)
         case teamsLoaded(TaskResult<[LinearTeam]>)
         case teamToggled(id: String)
+        case teamStrategyChanged(teamId: String, strategy: IngestionStrategy)
         case teamSelectionConfirmed
         case logoutButtonTapped
         case delegate(Delegate)
@@ -114,6 +116,9 @@ struct LinearAuthFeature {
                 state.status = .teamSelection
                 state.availableTeams = teams
                 state.selectedTeamIds = Set(teams.map(\.id))
+                state.teamStrategies = Dictionary(
+                    uniqueKeysWithValues: teams.map { ($0.id, IngestionStrategy.labelFiltered) }
+                )
                 return .none
 
             case let .teamsLoaded(.failure(error)):
@@ -132,13 +137,19 @@ struct LinearAuthFeature {
                 }
                 return .none
 
+            case let .teamStrategyChanged(teamId, strategy):
+                state.teamStrategies[teamId] = strategy
+                return .none
+
             case .teamSelectionConfirmed:
                 guard !state.selectedTeamIds.isEmpty else { return .none }
+                let strategies = state.teamStrategies
                 let confirmedTeams = state.availableTeams
                     .filter { state.selectedTeamIds.contains($0.id) }
                     .map { team in
                         var team = team
                         team.isEnabled = true
+                        team.ingestionStrategy = strategies[team.id] ?? .labelFiltered
                         return team
                     }
                 return .run { [databaseClient] send in
@@ -185,7 +196,8 @@ extension LinearTeam {
             name: record.name,
             colorIndex: record.colorIndex,
             isEnabled: record.isEnabled,
-            isHiddenFromBoard: record.isHiddenFromBoard
+            isHiddenFromBoard: record.isHiddenFromBoard,
+            ingestionStrategy: record.ingestionStrategy
         )
     }
 }
@@ -198,7 +210,8 @@ extension LinearTeamRecord {
             name: team.name,
             colorIndex: team.colorIndex,
             isEnabled: team.isEnabled,
-            isHiddenFromBoard: team.isHiddenFromBoard
+            isHiddenFromBoard: team.isHiddenFromBoard,
+            ingestionStrategy: team.ingestionStrategy
         )
     }
 }

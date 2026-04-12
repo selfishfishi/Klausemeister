@@ -101,7 +101,15 @@ enum DatabaseMigrations {
             }
         }
 
-        migrator.registerMigration("v8-ignored-worktree-paths") { db in
+        migrator.registerMigration("v8-team-ingestion-strategy") { db in
+            try db.alter(table: "linear_teams") { t in
+                t.add(column: "ingestionStrategy", .text)
+                    .notNull()
+                    .defaults(to: IngestionStrategy.labelFiltered.rawValue)
+            }
+        }
+
+        migrator.registerMigration("v9-ignored-worktree-paths") { db in
             try db.create(table: "ignored_worktree_paths") { t in
                 t.column("path", .text).primaryKey()
                 t.column("repoId", .text).notNull()

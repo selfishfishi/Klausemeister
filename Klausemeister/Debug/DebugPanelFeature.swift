@@ -78,6 +78,10 @@ struct DebugPanelFeature {
             "Hello received [\(worktreeId.prefix(8))]"
         case let .meisterConnectionClosed(worktreeId):
             "Connection closed [\(worktreeId.prefix(8))]"
+        case let .itemMovedToProcessing(worktreeId, issueLinearId):
+            "Item → processing [\(worktreeId.prefix(8))]: \(issueLinearId)"
+        case let .itemMovedToOutbox(worktreeId, issueLinearId):
+            "Item → outbox [\(worktreeId.prefix(8))]: \(issueLinearId)"
         }
     }
 }

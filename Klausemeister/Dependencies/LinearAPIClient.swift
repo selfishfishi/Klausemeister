@@ -5,6 +5,7 @@ struct LinearAPIClient {
     // swiftlint:disable:next identifier_name
     var me: @Sendable () async throws -> LinearUser
     var fetchLabeledIssues: @Sendable (_ label: String, _ teamId: String?) async throws -> [LinearIssue]
+    var fetchAllTeamIssues: @Sendable (_ teamId: String) async throws -> [LinearIssue]
     var fetchTeams: @Sendable () async throws -> [LinearTeam]
     var fetchWorkflowStatesByTeam: @Sendable () async throws -> WorkflowStatesByTeam
     var updateIssueStatus: @Sendable (_ issueId: String, _ statusId: String) async throws -> Void
@@ -80,6 +81,16 @@ nonisolated private func fetchPaginatedIssues(
     }
 }
 
+// MARK: - Shared issue fields
+
+nonisolated private let issueFields = """
+      id identifier title url description updatedAt
+      state { id name type }
+      team { id }
+      project { name }
+      labels { nodes { name } }
+"""
+
 // MARK: - Token loading helper
 
 nonisolated private func loadToken(
@@ -146,14 +157,6 @@ extension LinearAPIClient: DependencyKey {
                 // avoids the "Query too complex" error that the combined query
                 // triggers on larger workspaces.
 
-                let issueFields = """
-                      id identifier title url description updatedAt
-                      state { id name type }
-                      team { id }
-                      project { name }
-                      labels { nodes { name } }
-                """
-
                 // Query 1: issues directly labeled with `label`
                 let directQuery = """
                 query($filter: IssueFilter!, $after: String) {
@@ -199,6 +202,37 @@ extension LinearAPIClient: DependencyKey {
                     token: token,
                     query: projectQuery,
                     filter: projectFilter,
+                    into: &allIssues,
+                    seenIds: &seenIds
+                )
+
+                return allIssues
+            },
+
+            fetchAllTeamIssues: { teamId in
+                let token = try await loadToken(keychainClient: keychainClient)
+
+                let query = """
+                query($filter: IssueFilter!, $after: String) {
+                  issues(filter: $filter, first: 50, after: $after) {
+                    nodes { \(issueFields) }
+                    pageInfo { hasNextPage endCursor }
+                  }
+                }
+                """
+
+                var allIssues: [LinearIssue] = []
+                var seenIds = Set<String>()
+
+                let filter: [String: Any] = [
+                    "team": ["id": ["eq": teamId]],
+                    "state": ["type": ["neq": "canceled"]]
+                ]
+
+                try await fetchPaginatedIssues(
+                    token: token,
+                    query: query,
+                    filter: filter,
                     into: &allIssues,
                     seenIds: &seenIds
                 )
@@ -342,6 +376,7 @@ extension LinearAPIClient: DependencyKey {
     nonisolated static let testValue = LinearAPIClient(
         me: unimplemented("LinearAPIClient.me"),
         fetchLabeledIssues: unimplemented("LinearAPIClient.fetchLabeledIssues"),
+        fetchAllTeamIssues: unimplemented("LinearAPIClient.fetchAllTeamIssues"),
         fetchTeams: unimplemented("LinearAPIClient.fetchTeams"),
         fetchWorkflowStatesByTeam: unimplemented("LinearAPIClient.fetchWorkflowStatesByTeam"),
         updateIssueStatus: unimplemented("LinearAPIClient.updateIssueStatus")

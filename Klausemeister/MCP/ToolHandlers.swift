@@ -30,7 +30,10 @@ enum ToolHandlers {
     /// Claim the next inbox item for a worktree, set its Linear status to
     /// "In Progress", and return its details. Returns a `success` result with
     /// `{"item":null}` if the inbox is empty.
-    static func getNextItem(worktreeId: String) async throws -> ToolResult {
+    static func getNextItem(
+        worktreeId: String,
+        eventContinuation: AsyncStream<MCPServerEvent>.Continuation
+    ) async throws -> ToolResult {
         @Dependency(\.worktreeClient) var worktreeClient
         @Dependency(\.databaseClient) var databaseClient
         @Dependency(\.linearAPIClient) var linearAPIClient
@@ -51,6 +54,9 @@ enum ToolHandlers {
         // Move to processing first; rollback Linear status update is not feasible,
         // so we order so the local move happens before the (less reliable) network call.
         try await worktreeClient.moveToProcessingByIssueId(issue.linearId, worktreeId)
+        eventContinuation.yield(.itemMovedToProcessing(
+            worktreeId: worktreeId, issueLinearId: issue.linearId
+        ))
 
         // Best-effort Linear status update — log on failure but do not fail the tool,
         // because the queue side has already advanced.
@@ -83,7 +89,8 @@ enum ToolHandlers {
     static func completeItem(
         issueLinearId: String,
         worktreeId: String,
-        nextLinearState: String
+        nextLinearState: String,
+        eventContinuation: AsyncStream<MCPServerEvent>.Continuation
     ) async throws -> ToolResult {
         @Dependency(\.worktreeClient) var worktreeClient
         @Dependency(\.databaseClient) var databaseClient
@@ -103,6 +110,9 @@ enum ToolHandlers {
         }
 
         try await worktreeClient.moveToOutboxByIssueId(issueLinearId, worktreeId)
+        eventContinuation.yield(.itemMovedToOutbox(
+            worktreeId: worktreeId, issueLinearId: issueLinearId
+        ))
 
         // Best-effort Linear status update — the local queue has already advanced,
         // so we log on failure but don't fail the tool. This mirrors getNextItem's
@@ -175,7 +185,8 @@ enum ToolHandlers {
     /// transition against the state machine before applying side effects.
     static func transition(
         commandName: String,
-        worktreeId: String
+        worktreeId: String,
+        eventContinuation: AsyncStream<MCPServerEvent>.Continuation
     ) async throws -> ToolResult {
         @Dependency(\.worktreeClient) var worktreeClient
         @Dependency(\.databaseClient) var databaseClient
@@ -214,6 +225,21 @@ enum ToolHandlers {
             teamId: issueRecord.teamId,
             worktreeId: worktreeId
         )
+
+        if newState.queue != currentState.queue {
+            switch newState.queue {
+            case .processing:
+                eventContinuation.yield(.itemMovedToProcessing(
+                    worktreeId: worktreeId, issueLinearId: target.issueLinearId
+                ))
+            case .outbox:
+                eventContinuation.yield(.itemMovedToOutbox(
+                    worktreeId: worktreeId, issueLinearId: target.issueLinearId
+                ))
+            case .inbox:
+                break
+            }
+        }
 
         let payload = makePayload(state: newState, issue: issue)
         return try .success(Self.encodeJSON(["state": payload]))

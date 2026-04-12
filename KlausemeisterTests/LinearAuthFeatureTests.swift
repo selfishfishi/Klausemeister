@@ -37,6 +37,9 @@ private let testTeams = [
         $0.status = .teamSelection
         $0.availableTeams = testTeams
         $0.selectedTeamIds = Set(testTeams.map(\.id))
+        $0.teamStrategies = Dictionary(
+            uniqueKeysWithValues: testTeams.map { ($0.id, IngestionStrategy.labelFiltered) }
+        )
     }
 }
 
@@ -117,5 +120,51 @@ private let testTeams = [
     await store.send(.logoutButtonTapped) {
         $0.status = .unauthenticated
         $0.user = nil
+    }
+}
+
+// MARK: - Ingestion Strategy Tests
+
+@Test func `team strategy changed updates teamStrategies`() async {
+    let store = TestStore(
+        initialState: LinearAuthFeature.State(
+            status: .teamSelection,
+            availableTeams: testTeams,
+            selectedTeamIds: Set(testTeams.map(\.id)),
+            teamStrategies: ["team-1": .labelFiltered]
+        )
+    ) {
+        LinearAuthFeature()
+    }
+
+    await store.send(.teamStrategyChanged(teamId: "team-1", strategy: .allIssues)) {
+        $0.teamStrategies = ["team-1": .allIssues]
+    }
+}
+
+@Test func `team selection confirmed applies strategy from teamStrategies`() async {
+    var savedRecords: [LinearTeamRecord] = []
+
+    let store = TestStore(
+        initialState: LinearAuthFeature.State(
+            status: .teamSelection,
+            availableTeams: testTeams,
+            selectedTeamIds: Set(testTeams.map(\.id)),
+            teamStrategies: ["team-1": .allIssues]
+        )
+    ) {
+        LinearAuthFeature()
+    } withDependencies: {
+        $0.databaseClient.saveTeams = { records in
+            savedRecords = records
+        }
+    }
+
+    await store.send(.teamSelectionConfirmed)
+
+    await store.receive(\.delegate.teamsConfirmed) { _ in
+        // Verify the saved records carry the strategy
+        #expect(savedRecords.count == 1)
+        #expect(savedRecords.first?.ingestionStrategy == .allIssues)
     }
 }
