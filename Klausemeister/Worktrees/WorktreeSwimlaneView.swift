@@ -135,17 +135,20 @@ struct WorktreeSwimlaneView: View {
                         ))
                     }
                 }
+                Button {
+                    store.send(.removeRepoTapped(repoId: repo.id))
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Remove repository")
                 Menu {
                     Button {
                         store.send(.syncRepo(repoId: repo.id))
                     } label: {
                         Label("Refresh worktrees", systemImage: "arrow.clockwise")
-                    }
-                    Divider()
-                    Button(role: .destructive) {
-                        store.send(.confirmDeleteRepoTapped(repoId: repo.id))
-                    } label: {
-                        Label("Remove Repository", systemImage: "trash")
                     }
                 } label: {
                     Image(systemName: "ellipsis")
