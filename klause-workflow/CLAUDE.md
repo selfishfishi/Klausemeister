@@ -49,15 +49,16 @@ Call `reportProgress` liberally — once per meaningful sub-step of each command
 | Pulled Linear state | Command | Next state on success |
 |---|---|---|
 | `Backlog` | `/klause-define` | `Todo` |
+| `Todo` | `/klause-execute` | `In Progress` |
 | `In Review` | `/klause-review` | `Testing` or `Done` (the command decides) |
 | `Testing` | `/klause-verify` | `Done` |
 | *(any other state)* | No `klause-*` command exists yet. Do the work directly — use `/feature-dev` or plain conversation. | Whatever state the work advanced to. |
 
-`/klause-define` and `/klause-pull` are implemented and use the `getProductState` / `transition` MCP tools for state validation. `/klause-pull` is not state-dispatched — it is invoked explicitly or by `/klause:next` when the queue position is `inbox`. `/klause-review` and `/klause-verify` are still placeholders (KLA-76, KLA-77). See `commands/` for details.
+`/klause-define`, `/klause-pull`, and `/klause-execute` are implemented and use the `getProductState` / `transition` MCP tools for state validation. `/klause-pull` is not state-dispatched — it is invoked explicitly or by `/klause:next` when the queue position is `inbox`. `/klause-execute` transitions Todo → In Progress and invokes `/feature-dev:feature-dev`. `/klause-review` and `/klause-verify` are still placeholders (KLA-76, KLA-77). See `commands/` for details.
 
-For states without a dedicated command — `Definition`, `Todo`, `Spec`, `In Progress` — pick the best tool for the work and report back. Typical fits:
+For states without a dedicated command — `Definition`, `Spec`, `In Progress` — pick the best tool for the work and report back. Typical fits:
 
-- `Todo` or `Spec` → `/feature-dev` or a normal implementation conversation
+- `Definition` or `Spec` → normal conversation or `/feature-dev`
 - `In Progress` → continue the work, then move on to review
 
 ## 4. Skipping
