@@ -72,5 +72,17 @@ struct TerminalContainerView: View {
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .tint(themeColors.accentColor)
         .task { store.send(.onAppear) }
+        .sheet(
+            isPresented: Binding(
+                get: { store.shortcutCenter != nil },
+                set: { if !$0 { store.send(.shortcutCenterDismissed) } }
+            )
+        ) {
+            if let scStore = store.scope(
+                state: \.shortcutCenter, action: \.shortcutCenter
+            ) {
+                ShortcutCenterView(store: scStore)
+            }
+        }
     }
 }

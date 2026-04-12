@@ -10,6 +10,7 @@ enum AppCommand: String, CaseIterable, Hashable {
     case openTeamSettings
     case newWorktree
     case toggleDebugPanel
+    case openShortcutCenter
 
     enum Category: String, CaseIterable {
         case view
@@ -30,6 +31,7 @@ enum AppCommand: String, CaseIterable, Hashable {
         case .openTeamSettings: "Team Settings"
         case .newWorktree: "New Worktree"
         case .toggleDebugPanel: "Toggle Debug Panel"
+        case .openShortcutCenter: "Keyboard Shortcuts"
         }
     }
 
@@ -39,7 +41,7 @@ enum AppCommand: String, CaseIterable, Hashable {
         case .showMeister, .showWorktrees, .openCommandPalette: .navigation
         case .syncLinearIssues, .openLinearAuth, .openTeamSettings: .linear
         case .newWorktree: .worktree
-        case .toggleDebugPanel: .system
+        case .toggleDebugPanel, .openShortcutCenter: .system
         }
     }
 
@@ -54,6 +56,7 @@ enum AppCommand: String, CaseIterable, Hashable {
         case .openTeamSettings: "Configure which Linear teams are shown"
         case .newWorktree: "Create a new git worktree"
         case .toggleDebugPanel: "Show or hide the MCP diagnostics panel"
+        case .openShortcutCenter: "View and customize keyboard shortcuts"
         }
     }
 
@@ -63,7 +66,8 @@ enum AppCommand: String, CaseIterable, Hashable {
         case .openCommandPalette: KeyBinding(key: "k", modifiers: .command)
         case .toggleDebugPanel: KeyBinding(key: "d", modifiers: [.command, .shift])
         case .showMeister, .showWorktrees, .syncLinearIssues,
-             .openLinearAuth, .openTeamSettings, .newWorktree:
+             .openLinearAuth, .openTeamSettings, .newWorktree,
+             .openShortcutCenter:
             nil
         }
     }

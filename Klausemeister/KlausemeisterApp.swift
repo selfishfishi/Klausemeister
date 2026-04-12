@@ -74,6 +74,13 @@ struct KlausemeisterApp: App {
                 .hidden()
             }
 
+            CommandGroup(after: .appSettings) {
+                Button(AppCommand.openShortcutCenter.displayName) {
+                    store.send(.openShortcutCenter)
+                }
+                .keyboardShortcut(for: .openShortcutCenter, in: store.keyBindings)
+            }
+
             CommandMenu("Debug") {
                 Button(AppCommand.toggleDebugPanel.displayName) {
                     store.send(.debugPanel(.panelToggled))
