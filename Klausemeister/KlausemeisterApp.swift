@@ -53,6 +53,15 @@ struct KlausemeisterApp: App {
             store.send(.themeChanged(newTheme))
         }
         .commands {
+            CommandGroup(after: .sidebar) {
+                let bindings = store.keyBindings
+
+                Button(AppCommand.toggleSidebar.displayName) {
+                    store.send(.toggleSidebar)
+                }
+                .keyboardShortcut(for: .toggleSidebar, in: bindings)
+            }
+
             CommandMenu("Debug") {
                 Button("MCP Diagnostics") {
                     store.send(.debugPanel(.panelToggled))

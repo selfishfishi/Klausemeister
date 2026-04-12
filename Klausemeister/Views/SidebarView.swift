@@ -9,7 +9,7 @@ struct SidebarView: View {
         List {
             // Meister item
             Button {
-                store.send(.meisterTapped)
+                store.send(.showMeister)
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "squares.leading.rectangle")
