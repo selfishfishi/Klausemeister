@@ -9,7 +9,7 @@
 // the wire format and a single source of truth prevents drift.
 import Foundation
 
-struct HelloFrame: Codable, Equatable {
+nonisolated struct HelloFrame: Codable, Equatable {
     /// Must equal `"1"`. Set by Klausemeister when spawning the meister Claude
     /// Code; inherited by the shim subprocess; forwarded here.
     let klauseMeister: String
@@ -18,7 +18,7 @@ struct HelloFrame: Codable, Equatable {
     let klauseWorktreeId: String
 
     /// Validates the frame meets the minimum requirements to identify a meister.
-    var isValidMeister: Bool {
+    nonisolated var isValidMeister: Bool {
         klauseMeister == "1" && !klauseWorktreeId.isEmpty
     }
 }
