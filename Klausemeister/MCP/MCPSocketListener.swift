@@ -19,7 +19,7 @@ import os.log
 ///
 /// The function returns only when the underlying `.run` effect is cancelled
 /// (i.e. when the app is shutting down).
-private func debugLog(_ message: String) {
+nonisolated private func debugLog(_ message: String) {
     let line = "[\(Date())] \(message)\n"
     let path = "/tmp/klause-mcp-debug.log"
     if FileManager.default.fileExists(atPath: path) {
@@ -33,7 +33,7 @@ private func debugLog(_ message: String) {
     }
 }
 
-enum MCPSocketListener {
+actor MCPSocketListener {
     /// Hard-coded socket path. Klausemeister assumes a single instance per
     /// machine; if you ever run two copies they will fight for this path.
     static let socketPath: String = {
@@ -58,24 +58,54 @@ enum MCPSocketListener {
 
     private static let logger = Logger(label: "klausemeister.mcp.listener")
 
+    // MARK: - Per-worktree connection tracking (KLA-96)
+
+    /// Maps worktreeId → connectionId of the current (most recent) connection.
+    /// When a new connection arrives for a worktreeId that already has one, the
+    /// old connectionId is superseded. The old connection drains naturally; its
+    /// close event is suppressed by the staleness check.
+    private var activeConnections: [String: UUID] = [:]
+
+    /// Record a new connection as current for the given worktreeId.
+    /// Any previous connection for the same worktreeId is superseded — its
+    /// subsequent close event will be suppressed.
+    private func activateConnection(worktreeId: String) -> UUID {
+        let connectionId = UUID()
+        activeConnections[worktreeId] = connectionId
+        return connectionId
+    }
+
+    /// Returns `true` if `connectionId` is still the active connection for
+    /// `worktreeId`. Returns `false` if a newer connection has superseded it.
+    private func isCurrentConnection(worktreeId: String, connectionId: UUID) -> Bool {
+        activeConnections[worktreeId] == connectionId
+    }
+
+    /// Remove the tracking entry if `connectionId` is still current.
+    private func deactivateConnection(worktreeId: String, connectionId: UUID) {
+        if activeConnections[worktreeId] == connectionId {
+            activeConnections.removeValue(forKey: worktreeId)
+        }
+    }
+
     /// Long-running entry point. Returns when the listener is cancelled
     /// (the wrapping `.run` effect is cancelled on app shutdown).
-    static func run(
+    func run(
         eventContinuation: AsyncStream<MCPServerEvent>.Continuation
     ) async {
         debugLog("MCPSocketListener.run() starting")
         do {
-            try ensureAppSupportDirectory()
-            installShimSymlink()
-            try unlinkStaleSocket()
-            debugLog("socket unlinked, creating listener at \(socketPath)")
+            try Self.ensureAppSupportDirectory()
+            Self.installShimSymlink()
+            try Self.unlinkStaleSocket()
+            debugLog("socket unlinked, creating listener at \(Self.socketPath)")
 
-            let listenFD = try makeListeningSocket()
+            let listenFD = try Self.makeListeningSocket()
             debugLog("listening socket created fd=\(listenFD), entering acceptLoop")
             await acceptLoop(listenFD: listenFD, eventContinuation: eventContinuation)
             debugLog("acceptLoop returned (should never happen)")
         } catch {
-            logger.error("MCP listener failed to start: \(error.localizedDescription)")
+            Self.logger.error("MCP listener failed to start: \(error.localizedDescription)")
             eventContinuation.yield(.errorOccurred(message: "MCP server: \(error.localizedDescription)"))
         }
     }
@@ -208,7 +238,7 @@ enum MCPSocketListener {
 
     // MARK: - Accept loop
 
-    private static func acceptLoop(
+    private func acceptLoop(
         listenFD: Int32,
         eventContinuation: AsyncStream<MCPServerEvent>.Continuation
     ) async {
@@ -217,7 +247,7 @@ enum MCPSocketListener {
         // Park on the listen socket using GCD. Fires when a connection is
         // pending. Runs accept() then hands off to handleConnection.
         let source = DispatchSource.makeReadSource(fileDescriptor: listenFD, queue: .global(qos: .userInitiated))
-        source.setEventHandler {
+        source.setEventHandler { [self] in
             var clientAddr = sockaddr_un()
             var clientLen = socklen_t(MemoryLayout<sockaddr_un>.size)
             let clientFD = withUnsafeMutablePointer(to: &clientAddr) { addrPtr in
@@ -228,7 +258,7 @@ enum MCPSocketListener {
             guard clientFD >= 0 else { return }
             debugLog("accepted connection fd=\(clientFD)")
             Task.detached {
-                await handleConnection(
+                await self.handleConnection(
                     socketFD: clientFD,
                     eventContinuation: eventContinuation
                 )
@@ -247,14 +277,13 @@ enum MCPSocketListener {
         }
     }
 
-    private static let mcpLog = OSLog(subsystem: "com.klausemeister", category: "MCPSocket")
-
-    private static func handleConnection(
+    private func handleConnection(
         socketFD: Int32,
         eventContinuation: AsyncStream<MCPServerEvent>.Continuation
     ) async {
         debugLog("handleConnection entered fd=\(socketFD)")
         var worktreeId: String?
+        var connectionId: UUID?
         do {
             let (helloLine, remainder) = try await SocketTransport.readHelloLine(from: socketFD)
             debugLog("hello read, remainder=\(remainder.count) bytes")
@@ -264,18 +293,21 @@ enum MCPSocketListener {
                 Darwin.close(socketFD)
                 return
             }
-            worktreeId = hello.klauseWorktreeId
-            debugLog("valid hello for wt=\(hello.klauseWorktreeId)")
+            let wtId = hello.klauseWorktreeId
+            let connId = activateConnection(worktreeId: wtId)
+            worktreeId = wtId
+            connectionId = connId
+            debugLog("valid hello for wt=\(wtId) conn=\(connId)")
 
-            eventContinuation.yield(.meisterHelloReceived(worktreeId: hello.klauseWorktreeId))
+            eventContinuation.yield(.meisterHelloReceived(worktreeId: wtId))
 
             let transport = SocketTransport(
                 socketFD: socketFD,
-                logger: Logger(label: "klausemeister.mcp.transport.\(hello.klauseWorktreeId)"),
+                logger: Logger(label: "klausemeister.mcp.transport.\(wtId)"),
                 initialData: remainder
             )
-            let server = await makeServer(
-                worktreeId: hello.klauseWorktreeId,
+            let server = await Self.makeServer(
+                worktreeId: wtId,
                 eventContinuation: eventContinuation
             )
             debugLog("starting MCP server")
@@ -284,22 +316,40 @@ enum MCPSocketListener {
             await server.waitUntilCompleted()
             debugLog("server completed normally")
 
-            // Server exited cleanly — the meister's transport closed. Treat
-            // as a connection drop so `WorktreeFeature` flips state.
-            eventContinuation.yield(.meisterConnectionClosed(worktreeId: hello.klauseWorktreeId))
+            // Only yield the close event if this connection is still the
+            // current one for this worktreeId. A newer connection may have
+            // superseded us while we were running (KLA-96).
+            if isCurrentConnection(worktreeId: wtId, connectionId: connId) {
+                eventContinuation.yield(.meisterConnectionClosed(worktreeId: wtId))
+                deactivateConnection(worktreeId: wtId, connectionId: connId)
+            } else {
+                debugLog("suppressing stale close for wt=\(wtId) conn=\(connId)")
+            }
         } catch {
             debugLog("handleConnection threw: \(error)")
-            // fd is closed by SocketTransport.deinit or on early exit
-            eventContinuation.yield(.errorOccurred(message: "MCP connection failed: \(error.localizedDescription)"))
-            if let worktreeId {
-                eventContinuation.yield(.meisterConnectionClosed(worktreeId: worktreeId))
+            if let worktreeId, let connectionId {
+                // Post-hello failure. Only report if this is still the
+                // active connection — a superseded connection's errors are
+                // noise from a transport we already replaced.
+                if isCurrentConnection(worktreeId: worktreeId, connectionId: connectionId) {
+                    eventContinuation.yield(.errorOccurred(message: "MCP connection failed: \(error.localizedDescription)"))
+                    eventContinuation.yield(.meisterConnectionClosed(worktreeId: worktreeId))
+                    deactivateConnection(worktreeId: worktreeId, connectionId: connectionId)
+                } else {
+                    debugLog("suppressing stale error for wt=\(worktreeId) conn=\(connectionId)")
+                }
+            } else {
+                // Pre-hello failure — fd is closed by SocketTransport.deinit
+                eventContinuation.yield(.errorOccurred(message: "MCP connection failed: \(error.localizedDescription)"))
             }
         }
     }
+}
 
-    // MARK: - Server construction
+// MARK: - Server construction & tool dispatch
 
-    private static func makeServer(
+extension MCPSocketListener {
+    static func makeServer(
         worktreeId: String,
         eventContinuation: AsyncStream<MCPServerEvent>.Continuation
     ) async -> Server {
@@ -326,9 +376,7 @@ enum MCPSocketListener {
         return server
     }
 
-    // MARK: - Tool dispatch
-
-    private static func dispatchTool(
+    fileprivate static func dispatchTool(
         name: String,
         arguments: [String: Value]?,
         worktreeId: String,
@@ -379,7 +427,7 @@ enum MCPSocketListener {
         }
     }
 
-    private static func errorResult(_ message: String) -> CallTool.Result {
+    fileprivate static func errorResult(_ message: String) -> CallTool.Result {
         CallTool.Result(content: [.text(text: message, annotations: nil, _meta: nil)], isError: true)
     }
 }
@@ -387,7 +435,7 @@ enum MCPSocketListener {
 // MARK: - Tool catalog (input schemas)
 
 private enum ToolCatalog {
-    static let tools: [Tool] = [
+    nonisolated static let tools: [Tool] = [
         Tool(
             name: "getNextItem",
             // swiftlint:disable:next line_length

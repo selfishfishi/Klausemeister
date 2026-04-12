@@ -24,10 +24,11 @@ struct MCPServerClient {
 extension MCPServerClient: DependencyKey {
     nonisolated static let liveValue: MCPServerClient = {
         let (stream, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
+        let listener = MCPSocketListener()
 
         return MCPServerClient(
             start: {
-                await MCPSocketListener.run(eventContinuation: continuation)
+                await listener.run(eventContinuation: continuation)
             },
             events: { stream }
         )
