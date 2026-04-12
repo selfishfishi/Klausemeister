@@ -16,7 +16,7 @@ struct WorktreeTerminalTabView: View {
 
             if let overlayMessage {
                 VStack(spacing: 12) {
-                    if worktree.meisterStatus == .spawning || worktree.meisterStatus == .none {
+                    if worktree.meisterStatus == .spawning {
                         ProgressView()
                             .controlSize(.regular)
                     }
@@ -33,11 +33,14 @@ struct WorktreeTerminalTabView: View {
 
     private var overlayMessage: String? {
         switch worktree.meisterStatus {
-        case .none, .spawning:
+        case .spawning:
             "Starting Meister…"
         case .disconnected:
             "Meister disconnected"
-        case .running:
+        case .none, .running:
+            // `.none` means no active spawn — either we intentionally skipped
+            // it (pre-existing session) or we haven't started yet. Either way
+            // do not lie about "starting"; show the bare terminal underneath.
             nil
         }
     }

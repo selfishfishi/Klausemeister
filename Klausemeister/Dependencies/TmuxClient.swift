@@ -144,7 +144,7 @@ extension TmuxClient: DependencyKey {
         hasSession: unimplemented("TmuxClient.hasSession"),
         killSession: unimplemented("TmuxClient.killSession"),
         listSessions: unimplemented("TmuxClient.listSessions"),
-        resolvedTmuxPath: unimplemented("TmuxClient.resolvedTmuxPath")
+        resolvedTmuxPath: unimplemented("TmuxClient.resolvedTmuxPath", placeholder: nil)
     )
 }
 

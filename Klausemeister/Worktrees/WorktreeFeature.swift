@@ -262,6 +262,14 @@ struct WorktreeFeature {
         guard state.worktrees[wtIndex].meisterStatus == .none else {
             return .none
         }
+        // If a tmux session already exists from a prior app run, do not try
+        // to spawn a meister into it — we have no way to reconnect a stale
+        // claude's MCP shim to our new socket, and typing `claude` into an
+        // already-live window 0 would land in whatever is currently there.
+        // Users can manually start claude from the Terminal tab if needed.
+        guard state.worktrees[wtIndex].tmuxSessionStatus != .sessionExists else {
+            return .none
+        }
         let workingDirectory = state.worktrees[wtIndex].gitWorktreePath
         guard !workingDirectory.isEmpty else { return .none }
         let sessionName = WorktreeConfig.tmuxSessionName(
@@ -298,10 +306,15 @@ struct WorktreeFeature {
     /// dispatches `.cancel(id: meisterSpawn)`, leaving the Terminal tab
     /// permanently blank on the happy path.
     ///
-    /// When the meister is already running (or spawning from an earlier
-    /// issue-assignment path), we skip the spawn entirely and just create the
-    /// surface — that effect is non-cancellable so it does not interfere with
-    /// the in-flight `ensureMeisterEffect` managing the meister lifecycle.
+    /// We skip the spawn entirely and take the non-cancellable "attach only"
+    /// branch when any of:
+    ///   - the meister is already running/spawning/disconnected (some other
+    ///     path is managing its lifecycle);
+    ///   - the tmux session already exists from a prior app run. We have no
+    ///     way to reconnect a stale claude's MCP shim to our new socket, and
+    ///     typing `claude` into the existing window 0 would land in whatever
+    ///     is there (shell or live claude), so the safest thing is to attach
+    ///     and let the user see/interact with the session directly.
     private func terminalActivationEffect(
         state: inout State,
         worktree: Worktree
@@ -315,7 +328,8 @@ struct WorktreeFeature {
         // Use the absolute path probed by `TmuxClient` at construction time.
         let tmuxPath = tmuxClient.resolvedTmuxPath() ?? "tmux"
         let command = "\(tmuxPath) attach-session -t =\(sessionName)"
-        let needsSpawn = state.worktrees[id: worktreeId]?.meisterStatus == .none
+        let needsSpawn = worktree.meisterStatus == .none
+            && worktree.tmuxSessionStatus != .sessionExists
 
         guard needsSpawn else {
             return .run { [surfaceManager] _ in
