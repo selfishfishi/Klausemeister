@@ -17,6 +17,10 @@ struct DatabaseClient {
     var markOrphanedIssues: @Sendable (_ linearIds: [String], _ isOrphaned: Bool) async throws -> Void
     var fetchWorkflowStates: @Sendable () async throws -> [LinearWorkflowStateRecord]
     var saveWorkflowStates: @Sendable (_ records: [LinearWorkflowStateRecord]) async throws -> Void
+    var fetchTeams: @Sendable () async throws -> [LinearTeamRecord]
+    var saveTeams: @Sendable (_ records: [LinearTeamRecord]) async throws -> Void
+    var deleteAllTeams: @Sendable () async throws -> Void
+    var updateTeamFilterVisibility: @Sendable (_ teamId: String, _ isHiddenFromBoard: Bool) async throws -> Void
 }
 
 extension DatabaseClient: DependencyKey {
@@ -119,6 +123,32 @@ extension DatabaseClient: DependencyKey {
                         try record.save(db)
                     }
                 }
+            },
+            fetchTeams: {
+                try await dbQueue.read { db in
+                    try LinearTeamRecord.fetchAll(db)
+                }
+            },
+            saveTeams: { records in
+                try await dbQueue.write { db in
+                    try db.execute(sql: "DELETE FROM linear_teams")
+                    for record in records {
+                        try record.save(db)
+                    }
+                }
+            },
+            deleteAllTeams: {
+                try await dbQueue.write { db in
+                    try db.execute(sql: "DELETE FROM linear_teams")
+                }
+            },
+            updateTeamFilterVisibility: { teamId, isHiddenFromBoard in
+                try await dbQueue.write { db in
+                    if var record = try LinearTeamRecord.fetchOne(db, key: teamId) {
+                        record.isHiddenFromBoard = isHiddenFromBoard
+                        try record.update(db)
+                    }
+                }
             }
         )
     }()
@@ -137,7 +167,11 @@ extension DatabaseClient: DependencyKey {
         fetchImportedIssueByIdentifier: unimplemented("DatabaseClient.fetchImportedIssueByIdentifier"),
         markOrphanedIssues: unimplemented("DatabaseClient.markOrphanedIssues"),
         fetchWorkflowStates: unimplemented("DatabaseClient.fetchWorkflowStates"),
-        saveWorkflowStates: unimplemented("DatabaseClient.saveWorkflowStates")
+        saveWorkflowStates: unimplemented("DatabaseClient.saveWorkflowStates"),
+        fetchTeams: unimplemented("DatabaseClient.fetchTeams"),
+        saveTeams: unimplemented("DatabaseClient.saveTeams"),
+        deleteAllTeams: unimplemented("DatabaseClient.deleteAllTeams"),
+        updateTeamFilterVisibility: unimplemented("DatabaseClient.updateTeamFilterVisibility")
     )
 }
 

@@ -155,13 +155,21 @@ struct SidebarLinearStatusView: View {
                 }
                 .buttonStyle(.plain)
 
-            case .authenticating:
+            case .authenticating, .fetchingTeams:
                 ProgressView()
                     .controlSize(.mini)
                     .tint(themeColors.accentColor)
-                Text("Connecting...")
+                Text(authState.status == .fetchingTeams ? "Loading teams..." : "Connecting...")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
+
+            case .teamSelection:
+                Circle()
+                    .fill(themeColors.accentColor.opacity(0.6))
+                    .frame(width: 6, height: 6)
+                Text("Select teams...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
             case .authenticated:
                 Circle()

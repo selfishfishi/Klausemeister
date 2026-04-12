@@ -4,7 +4,8 @@ import Foundation
 struct LinearAPIClient {
     // swiftlint:disable:next identifier_name
     var me: @Sendable () async throws -> LinearUser
-    var fetchLabeledIssues: @Sendable (_ label: String) async throws -> [LinearIssue]
+    var fetchLabeledIssues: @Sendable (_ label: String, _ teamId: String?) async throws -> [LinearIssue]
+    var fetchTeams: @Sendable () async throws -> [LinearTeam]
     var fetchWorkflowStatesByTeam: @Sendable () async throws -> WorkflowStatesByTeam
     var updateIssueStatus: @Sendable (_ issueId: String, _ statusId: String) async throws -> Void
 }
@@ -136,7 +137,7 @@ extension LinearAPIClient: DependencyKey {
                 )
             },
 
-            fetchLabeledIssues: { label in
+            fetchLabeledIssues: { label, teamId in
                 let token = try await loadToken(keychainClient: keychainClient)
 
                 // Two separate, simple queries instead of one complex OR filter.
@@ -170,29 +171,88 @@ extension LinearAPIClient: DependencyKey {
                 var seenIds = Set<String>()
 
                 let excludeCanceled: [String: Any] = ["type": ["neq": "canceled"]]
+                let teamFilter: [String: Any]? = teamId.map { ["id": ["eq": $0]] }
+
+                var directFilter: [String: Any] = [
+                    "labels": ["name": ["eq": label]],
+                    "state": excludeCanceled
+                ]
+                if let teamFilter { directFilter["team"] = teamFilter }
 
                 // Fetch issues with the direct label
                 try await fetchPaginatedIssues(
                     token: token,
                     query: directQuery,
-                    filter: ["labels": ["name": ["eq": label]], "state": excludeCanceled],
+                    filter: directFilter,
                     into: &allIssues,
                     seenIds: &seenIds
                 )
+
+                var projectFilter: [String: Any] = [
+                    "project": ["labels": ["name": ["eq": label]]],
+                    "state": excludeCanceled
+                ]
+                if let teamFilter { projectFilter["team"] = teamFilter }
 
                 // Fetch issues from labeled projects
                 try await fetchPaginatedIssues(
                     token: token,
                     query: projectQuery,
-                    filter: [
-                        "project": ["labels": ["name": ["eq": label]]],
-                        "state": excludeCanceled
-                    ],
+                    filter: projectFilter,
                     into: &allIssues,
                     seenIds: &seenIds
                 )
 
                 return allIssues
+            },
+
+            fetchTeams: {
+                let token = try await loadToken(keychainClient: keychainClient)
+
+                let query = """
+                query {
+                  teams(first: 50) {
+                    nodes { id key name }
+                  }
+                }
+                """
+                let data = try await graphQLRequest(
+                    token: token, query: query, variables: nil
+                )
+
+                // swiftlint:disable nesting
+                struct GraphQLResponse: Decodable {
+                    struct Data: Decodable {
+                        struct Teams: Decodable {
+                            struct TeamNode: Decodable {
+                                let id: String
+                                let key: String
+                                let name: String
+                            }
+
+                            let nodes: [TeamNode]
+                        }
+
+                        let teams: Teams
+                    }
+
+                    let data: Data
+                }
+                // swiftlint:enable nesting
+
+                let graphQLResponse = try JSONDecoder().decode(
+                    GraphQLResponse.self, from: data
+                )
+                return graphQLResponse.data.teams.nodes.enumerated().map { index, node in
+                    LinearTeam(
+                        id: node.id,
+                        key: node.key,
+                        name: node.name,
+                        colorIndex: index % 6,
+                        isEnabled: true,
+                        isHiddenFromBoard: false
+                    )
+                }
             },
 
             fetchWorkflowStatesByTeam: {
@@ -282,6 +342,7 @@ extension LinearAPIClient: DependencyKey {
     nonisolated static let testValue = LinearAPIClient(
         me: unimplemented("LinearAPIClient.me"),
         fetchLabeledIssues: unimplemented("LinearAPIClient.fetchLabeledIssues"),
+        fetchTeams: unimplemented("LinearAPIClient.fetchTeams"),
         fetchWorkflowStatesByTeam: unimplemented("LinearAPIClient.fetchWorkflowStatesByTeam"),
         updateIssueStatus: unimplemented("LinearAPIClient.updateIssueStatus")
     )

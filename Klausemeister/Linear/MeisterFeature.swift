@@ -17,6 +17,7 @@ struct MeisterFeature {
         /// Defaults to hiding `.completed` since most users don't want finished
         /// work cluttering the board.
         var hiddenStages: Set<MeisterState> = [.completed]
+        var teams: [LinearTeam] = []
     }
 
     nonisolated static let workflowStatesCacheTTL: TimeInterval = 15 * 60
@@ -66,6 +67,8 @@ struct MeisterFeature {
         case removeIssueFromColumns(issueId: String)
         case issueDroppedFromWorktree(issueId: String, onColumn: MeisterState)
         case issueDroppedFromWorktreeResolved(issue: LinearIssue, onColumn: MeisterState)
+        case teamsConfirmed([LinearTeam])
+        case teamFilterToggled(teamId: String)
         case delegate(Delegate)
 
         @CasePathable
@@ -85,13 +88,14 @@ struct MeisterFeature {
     @Dependency(\.date) var date
     @Dependency(\.continuousClock) var clock
 
-    private func syncEffect(shouldFetchStates: Bool) -> Effect<Action> {
+    private func syncEffect(shouldFetchStates: Bool, enabledTeamIds: [String] = []) -> Effect<Action> {
         .run { [linearAPIClient, databaseClient] send in
             await send(.syncCompleted(TaskResult {
                 try await performSync(
                     linearAPIClient: linearAPIClient,
                     databaseClient: databaseClient,
-                    fetchWorkflowStates: shouldFetchStates
+                    fetchWorkflowStates: shouldFetchStates,
+                    enabledTeamIds: enabledTeamIds
                 )
             }))
         }
@@ -102,7 +106,7 @@ struct MeisterFeature {
     /// the network fetch is needed based on the cache's `fetchedAt` timestamp.
     /// This is sequential (read cache → decide TTL → run sync) to avoid the race
     /// where in-memory state is empty and we always fetch fresh.
-    private func onAppearEffect() -> Effect<Action> {
+    private func onAppearEffect(enabledTeamIds: [String] = []) -> Effect<Action> {
         .run { [linearAPIClient, databaseClient, currentNow = date.now] send in
             // 1. Load persisted cache (if any)
             let records = await (try? databaseClient.fetchWorkflowStates()) ?? []
@@ -134,7 +138,8 @@ struct MeisterFeature {
                 try await performSync(
                     linearAPIClient: linearAPIClient,
                     databaseClient: databaseClient,
-                    fetchWorkflowStates: shouldFetchStates
+                    fetchWorkflowStates: shouldFetchStates,
+                    enabledTeamIds: enabledTeamIds
                 )
             }))
         }
@@ -154,14 +159,16 @@ struct MeisterFeature {
                 return .none
 
             case .onAppear:
+                // Teams are loaded via teamsConfirmed, which also triggers
+                // the initial sync. Skip syncing here if teams aren't loaded
+                // yet to avoid a race with the workspace-wide fallback query.
+                guard !state.teams.isEmpty else { return .none }
                 state.syncStatus = .syncing
-                // First launch: must read persisted cache + check its timestamp before
-                // deciding whether the network states fetch is needed. This is sequential
-                // to avoid the race where in-memory state is empty and we always fetch.
+                let enabledTeamIds = state.teams.filter(\.isEnabled).map(\.id)
                 return .merge(
                     .send(.delegate(.syncStarted)),
                     .cancel(id: "MeisterFeature.syncIndicatorReset"),
-                    onAppearEffect()
+                    onAppearEffect(enabledTeamIds: enabledTeamIds)
                 )
 
             case .refreshTapped:
@@ -170,19 +177,21 @@ struct MeisterFeature {
                     lastFetched: state.workflowStatesLastFetched,
                     now: date.now
                 )
+                let enabledTeamIds = state.teams.filter(\.isEnabled).map(\.id)
                 return .merge(
                     .send(.delegate(.syncStarted)),
                     .cancel(id: "MeisterFeature.syncIndicatorReset"),
-                    syncEffect(shouldFetchStates: shouldFetchStates)
+                    syncEffect(shouldFetchStates: shouldFetchStates, enabledTeamIds: enabledTeamIds)
                 )
 
             case .refreshLinearMetadataTapped:
                 state.workflowStatesLastFetched = nil
                 state.syncStatus = .syncing
+                let enabledTeamIds = state.teams.filter(\.isEnabled).map(\.id)
                 return .merge(
                     .send(.delegate(.syncStarted)),
                     .cancel(id: "MeisterFeature.syncIndicatorReset"),
-                    syncEffect(shouldFetchStates: true)
+                    syncEffect(shouldFetchStates: true, enabledTeamIds: enabledTeamIds)
                 )
 
             case let .workflowStatesLoadedFromCache(states, fetchedAt):
@@ -366,6 +375,32 @@ struct MeisterFeature {
                 }
                 return .send(.delegate(.issueReturnedFromWorktreeByDrop(issueId: issue.id)))
 
+            case let .teamsConfirmed(teams):
+                state.teams = teams
+                state.syncStatus = .syncing
+                let shouldFetchStates = MeisterFeature.shouldFetchWorkflowStates(
+                    lastFetched: state.workflowStatesLastFetched,
+                    now: date.now
+                )
+                return .merge(
+                    .send(.delegate(.syncStarted)),
+                    .cancel(id: "MeisterFeature.syncIndicatorReset"),
+                    syncEffect(
+                        shouldFetchStates: shouldFetchStates,
+                        enabledTeamIds: teams.filter(\.isEnabled).map(\.id)
+                    )
+                )
+
+            case let .teamFilterToggled(teamId):
+                guard let index = state.teams.firstIndex(where: { $0.id == teamId }) else {
+                    return .none
+                }
+                state.teams[index].isHiddenFromBoard.toggle()
+                let isNowHidden = state.teams[index].isHiddenFromBoard
+                return .run { [databaseClient] _ in
+                    try? await databaseClient.updateTeamFilterVisibility(teamId, isNowHidden)
+                }
+
             case .delegate:
                 return .none
             }
@@ -408,9 +443,40 @@ struct MeisterFeature {
 nonisolated private func performSync(
     linearAPIClient: LinearAPIClient,
     databaseClient: DatabaseClient,
-    fetchWorkflowStates: Bool
+    fetchWorkflowStates: Bool,
+    enabledTeamIds: [String]
 ) async throws -> MeisterFeature.SyncResult {
-    async let issuesTask = linearAPIClient.fetchLabeledIssues(MeisterFeature.syncLabel)
+    // Fetch issues — per-team parallel when team IDs are available,
+    // otherwise fall back to the workspace-wide single fetch.
+    async let issuesTask: [LinearIssue] = {
+        if enabledTeamIds.isEmpty {
+            return try await linearAPIClient.fetchLabeledIssues(MeisterFeature.syncLabel, nil)
+        }
+        return try await withThrowingTaskGroup(of: [LinearIssue].self) { group in
+            for teamId in enabledTeamIds {
+                group.addTask {
+                    do {
+                        return try await linearAPIClient.fetchLabeledIssues(
+                            MeisterFeature.syncLabel, teamId
+                        )
+                    } catch {
+                        // Isolated failure — this team's issues are skipped,
+                        // other teams continue. The next sync will retry.
+                        return []
+                    }
+                }
+            }
+            var allIssues: [LinearIssue] = []
+            var seenIds = Set<String>()
+            for try await teamIssues in group {
+                for issue in teamIssues where seenIds.insert(issue.id).inserted {
+                    allIssues.append(issue)
+                }
+            }
+            return allIssues
+        }
+    }()
+
     async let statesTask: WorkflowStatesByTeam? = {
         guard fetchWorkflowStates else { return nil }
         return try await linearAPIClient.fetchWorkflowStatesByTeam()
@@ -450,11 +516,23 @@ nonisolated private func performSync(
 // MARK: - State Helpers
 
 extension MeisterFeature.State {
+    var hiddenTeamIds: Set<String> {
+        Set(teams.filter(\.isHiddenFromBoard).map(\.id))
+    }
+
     /// Columns the user has chosen to see. Purely view-layer filtering —
     /// `columns` still holds every stage, so toggling a stage back on reveals
-    /// its existing issues without resyncing.
+    /// its existing issues without resyncing. Team filter hides issues from
+    /// deselected teams while preserving column structure.
     var visibleColumns: IdentifiedArrayOf<MeisterFeature.KanbanColumn> {
-        columns.filter { !hiddenStages.contains($0.id) }
+        let stageFiltered = columns.filter { !hiddenStages.contains($0.id) }
+        guard !hiddenTeamIds.isEmpty else { return stageFiltered }
+        let teamFiltered = stageFiltered.map { column in
+            var col = column
+            col.issues = column.issues.filter { !hiddenTeamIds.contains($0.teamId) }
+            return col
+        }
+        return IdentifiedArrayOf(uniqueElements: teamFiltered)
     }
 
     func columnContainingIssue(_ issueId: String) -> MeisterFeature.KanbanColumn? {

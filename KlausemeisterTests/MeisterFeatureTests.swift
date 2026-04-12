@@ -57,7 +57,7 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
     let store = TestStore(initialState: MeisterFeature.State()) {
         MeisterFeature()
     } withDependencies: {
-        $0.linearAPIClient.fetchLabeledIssues = { label in
+        $0.linearAPIClient.fetchLabeledIssues = { label, _ in
             #expect(label == MeisterFeature.syncLabel)
             return [sampleIssue, sampleIssueKLA15]
         }
@@ -98,7 +98,7 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
     let store = TestStore(initialState: MeisterFeature.State()) {
         MeisterFeature()
     } withDependencies: {
-        $0.linearAPIClient.fetchLabeledIssues = { _ in [sampleIssue] }
+        $0.linearAPIClient.fetchLabeledIssues = { _, _ in [sampleIssue] }
         $0.linearAPIClient.fetchWorkflowStatesByTeam = { sampleWorkflowStates }
         $0.databaseClient.fetchUnqueuedImportedIssues = { [orphanedRecord] }
         $0.databaseClient.fetchWorkflowStates = { [] }
@@ -137,7 +137,7 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
     let store = TestStore(initialState: MeisterFeature.State()) {
         MeisterFeature()
     } withDependencies: {
-        $0.linearAPIClient.fetchLabeledIssues = { _ in throw TestError() }
+        $0.linearAPIClient.fetchLabeledIssues = { _, _ in throw TestError() }
         $0.linearAPIClient.fetchWorkflowStatesByTeam = { [:] }
         $0.databaseClient.fetchUnqueuedImportedIssues = { [] }
         $0.databaseClient.fetchWorkflowStates = { [] }

@@ -6,6 +6,7 @@ struct MeisterView: View {
     let worktrees: [Worktree]
     let repositories: [Repository]
     var assignedWorktreeNames: [String: String] = [:]
+    var teams: [LinearTeam] = []
 
     @Environment(\.themeColors) private var themeColors
 
@@ -14,7 +15,20 @@ struct MeisterView: View {
             // Header with filter + sync
             HStack(spacing: 10) {
                 Spacer()
-                FilterMenu(
+                if teams.count > 1 {
+                    TeamFilterMenu(
+                        teams: teams,
+                        hiddenTeamIds: store.hiddenTeamIds,
+                        themeColors: themeColors,
+                        onToggle: { teamId in
+                            store.send(
+                                .teamFilterToggled(teamId: teamId),
+                                animation: .smooth(duration: 0.2)
+                            )
+                        }
+                    )
+                }
+                StageFilterMenu(
                     hiddenStages: store.hiddenStages,
                     onToggle: { stage in
                         store.send(
@@ -43,6 +57,7 @@ struct MeisterView: View {
                                 worktrees: worktrees,
                                 repositories: repositories,
                                 assignedWorktreeNames: assignedWorktreeNames,
+                                teams: teams,
                                 onMoveToStatus: { issueId, target in
                                     store.send(.moveToStatusTapped(issueId: issueId, target: target))
                                 },
@@ -127,20 +142,16 @@ private struct SyncIndicatorMenu: View {
 
     private var helpText: String {
         switch syncStatus {
-        case .idle: "Sync issues with klause label"
+        case .idle: "Sync issues"
         case .syncing: "Syncing..."
         case .succeeded: "Sync complete"
         }
     }
 }
 
-// MARK: - Filter Menu (Liquid Glass)
+// MARK: - Stage Filter Menu (Liquid Glass)
 
-/// Dropdown menu letting the user toggle individual `MeisterState` columns
-/// on and off. Wrapped in `.glassEffect` to match the Liquid Glass look used
-/// for other floating controls in the app. Pure presentation — takes the
-/// current hidden set and a toggle callback, no store dependency.
-private struct FilterMenu: View {
+private struct StageFilterMenu: View {
     let hiddenStages: Set<MeisterState>
     let onToggle: (MeisterState) -> Void
 
@@ -168,5 +179,41 @@ private struct FilterMenu: View {
         .fixedSize()
         .tint(Color(nsColor: .secondaryLabelColor))
         .help("Filter visible columns")
+    }
+}
+
+// MARK: - Team Filter Menu
+
+private struct TeamFilterMenu: View {
+    let teams: [LinearTeam]
+    let hiddenTeamIds: Set<String>
+    let themeColors: ThemeColors
+    let onToggle: (String) -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(teams) { team in
+                Button {
+                    onToggle(team.id)
+                } label: {
+                    let isVisible = !hiddenTeamIds.contains(team.id)
+                    if isVisible {
+                        Label(team.key, systemImage: "checkmark")
+                    } else {
+                        Text(team.key)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "person.2.circle")
+                .symbolRenderingMode(.monochrome)
+                .font(.system(size: 44, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .tint(Color(nsColor: .secondaryLabelColor))
+        .help("Filter visible teams")
     }
 }

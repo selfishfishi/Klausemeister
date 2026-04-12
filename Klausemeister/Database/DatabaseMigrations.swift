@@ -3,6 +3,7 @@ import Foundation
 import GRDB
 
 enum DatabaseMigrations {
+    // swiftlint:disable:next function_body_length
     nonisolated static func registerAll(_ migrator: inout DatabaseMigrator) {
         migrator.registerMigration("v1-imported-issues") { db in
             try db.create(table: "imported_issues") { t in
@@ -86,6 +87,17 @@ enum DatabaseMigrations {
                 t.column("type", .text).notNull()
                 t.column("position", .double).notNull().defaults(to: 0)
                 t.column("fetchedAt", .text).notNull()
+            }
+        }
+
+        migrator.registerMigration("v7-linear-teams") { db in
+            try db.create(table: "linear_teams") { t in
+                t.column("id", .text).primaryKey()
+                t.column("key", .text).notNull()
+                t.column("name", .text).notNull()
+                t.column("colorIndex", .integer).notNull().defaults(to: 0)
+                t.column("isEnabled", .boolean).notNull().defaults(to: true)
+                t.column("isHiddenFromBoard", .boolean).notNull().defaults(to: false)
             }
         }
     }

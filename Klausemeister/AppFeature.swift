@@ -132,6 +132,10 @@ struct AppFeature {
                     oauthClient.handleCallback(url)
                 }
 
+            case let .linearAuth(.delegate(.teamsConfirmed(teams))):
+                state.linearAuth.status = .authenticated
+                return .send(.meister(.teamsConfirmed(teams)))
+
             case let .linearAuth(.delegate(.errorOccurred(message))):
                 return .send(.statusBar(.errorReported(source: .linearAuth, message: message)))
 
