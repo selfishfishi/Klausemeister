@@ -123,5 +123,15 @@ enum DatabaseMigrations {
                 table.column("useCount", .integer).notNull().defaults(to: 1)
             }
         }
+
+        migrator.registerMigration("v11-team-state-mappings") { db in
+            try db.create(table: "team_state_mappings") { t in
+                t.column("teamId", .text).notNull()
+                t.column("linearStateId", .text).notNull()
+                t.column("linearStateName", .text).notNull()
+                t.column("meisterState", .text).notNull()
+                t.primaryKey(["teamId", "linearStateId"])
+            }
+        }
     }
 }

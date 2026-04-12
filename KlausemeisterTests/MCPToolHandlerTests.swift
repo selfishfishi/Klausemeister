@@ -84,6 +84,7 @@ private let processingItem = WorktreeQueueItemRecord(
 @Test func `resolver is case insensitive`() async throws {
     let stateId = try await withDependencies {
         $0.databaseClient.fetchWorkflowStates = { [inProgressState, doneState] }
+        $0.stateMappingClient.fetchForTeam = { _ in [] }
     } operation: {
         try await WorkflowStateResolver.resolve(teamId: teamId, stateName: "in progress")
     }
@@ -121,6 +122,7 @@ private let processingItem = WorktreeQueueItemRecord(
             return issueRecord
         }
         $0.databaseClient.fetchWorkflowStates = { [inProgressState, doneState] }
+        $0.stateMappingClient.fetchForTeam = { _ in [] }
         $0.linearAPIClient.updateIssueStatus = { issueId, stateId in
             linearUpdate = (issueId, stateId)
         }

@@ -35,27 +35,22 @@ enum MeisterState: String, CaseIterable, Hashable, Identifiable {
     }
 }
 
-// MARK: - Mapping (default, pre-per-team configuration)
+// MARK: - Default Mapping Heuristic
 
-extension LinearIssue {
-    /// Resolves this issue to a canonical `MeisterState`.
+extension MeisterState {
+    /// Computes the default MeisterState for a Linear workflow state using
+    /// the two-tier heuristic: name match first, then type fallback.
     ///
-    /// The mapping is two-tiered:
-    /// 1. Exact name match (case-insensitive) against `MeisterState.displayName`
-    ///    — catches the common names ("Backlog", "Todo", "In Progress",
-    ///    "In Review", "Testing").
-    /// 2. Linear state-type fallback — anything typed `backlog`/`unstarted`/
-    ///    `started`/`completed` that didn't match by name falls into the
-    ///    canonical stage for that type.
-    ///
-    /// Returns `nil` for issues whose state type is `canceled` or otherwise
-    /// unrecognized — those do not belong on the kanban. Canceled issues are
-    /// already filtered at the API layer; this handles stale orphaned records
-    /// still in the local cache.
-    ///
-    /// Per-team overrides will replace this default in a later change.
-    var meisterState: MeisterState? {
-        let needle = status.lowercased()
+    /// Used for auto-seeding the per-team mapping table and as a fallback
+    /// when no explicit mapping exists.
+    static func defaultMapping(for linearState: LinearWorkflowState) -> MeisterState? {
+        defaultMapping(name: linearState.name, statusType: linearState.type)
+    }
+
+    /// Core heuristic shared between seeding and the `LinearIssue.meisterState`
+    /// computed property.
+    static func defaultMapping(name: String, statusType: String) -> MeisterState? {
+        let needle = name.lowercased()
         for state in MeisterState.allCases where state.displayName.lowercased() == needle {
             return state
         }
@@ -66,6 +61,14 @@ extension LinearIssue {
         case "completed": return .completed
         default: return nil
         }
+    }
+}
+
+extension LinearIssue {
+    /// Resolves this issue to a canonical `MeisterState` using the default
+    /// heuristic. Prefer the per-team mapping table when available.
+    var meisterState: MeisterState? {
+        MeisterState.defaultMapping(name: status, statusType: statusType)
     }
 }
 

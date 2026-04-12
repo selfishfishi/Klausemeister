@@ -18,6 +18,8 @@ struct MeisterFeature {
         /// work cluttering the board.
         var hiddenStages: Set<MeisterState> = [.completed]
         var teams: [LinearTeam] = []
+        var stateMappings: StateMappingTable = [:]
+        @Presents var stateMappingEditor: StateMappingFeature.State?
     }
 
     nonisolated static let workflowStatesCacheTTL: TimeInterval = 15 * 60
@@ -71,6 +73,9 @@ struct MeisterFeature {
         case issueDroppedFromWorktreeResolved(issue: LinearIssue, onColumn: MeisterState)
         case teamsConfirmed([LinearTeam])
         case teamFilterToggled(teamId: String)
+        case stateMappingsLoaded(StateMappingTable)
+        case stateMappingButtonTapped
+        case stateMappingEditor(PresentationAction<StateMappingFeature.Action>)
         case delegate(Delegate)
 
         @CasePathable
@@ -87,6 +92,7 @@ struct MeisterFeature {
 
     @Dependency(\.linearAPIClient) var linearAPIClient
     @Dependency(\.databaseClient) var databaseClient
+    @Dependency(\.stateMappingClient) var stateMappingClient
     @Dependency(\.date) var date
     @Dependency(\.continuousClock) var clock
 
@@ -109,7 +115,13 @@ struct MeisterFeature {
     /// This is sequential (read cache → decide TTL → run sync) to avoid the race
     /// where in-memory state is empty and we always fetch fresh.
     private func onAppearEffect(enabledTeams: [LinearTeam] = []) -> Effect<Action> {
-        .run { [linearAPIClient, databaseClient, currentNow = date.now] send in
+        .run { [linearAPIClient, databaseClient, stateMappingClient, currentNow = date.now] send in
+            // 0. Load persisted state mappings
+            let mappingRecords = await (try? stateMappingClient.fetchAll()) ?? []
+            if !mappingRecords.isEmpty {
+                await send(.stateMappingsLoaded(StateMappingTable.from(mappingRecords)))
+            }
+
             // 1. Load persisted cache (if any)
             let records = await (try? databaseClient.fetchWorkflowStates()) ?? []
             var cachedFetchedAt: Date?
@@ -210,7 +222,9 @@ struct MeisterFeature {
                     state.workflowStatesByTeam = freshStates
                     state.workflowStatesLastFetched = now
                 }
-                state.columns = MeisterFeature.rebuildColumns(from: result.issues)
+                state.columns = MeisterFeature.rebuildColumns(
+                    from: result.issues, mappings: state.stateMappings
+                )
                 state.syncStatus = .succeeded
                 let records = result.issues.map { ImportedIssueRecord(from: $0, importedAt: now) }
                 let workflowRecordsToSave: [LinearWorkflowStateRecord]? = result.workflowStatesByTeam.map { states in
@@ -241,6 +255,29 @@ struct MeisterFeature {
                     .run { [databaseClient] _ in
                         if let workflowRecordsToSave {
                             try? await databaseClient.saveWorkflowStates(workflowRecordsToSave)
+                        }
+                    },
+                    .run { [stateMappingClient] send in
+                        if let freshStates = result.workflowStatesByTeam {
+                            let allStates = freshStates.values.flatMap(\.self)
+                            let existing = await (try? stateMappingClient.fetchAll()) ?? []
+                            let seeds = StateMappingClient.computeSeedRecords(
+                                freshStates: allStates, existingMappings: existing
+                            )
+                            if !seeds.isEmpty {
+                                do {
+                                    try await stateMappingClient.seedMappings(seeds)
+                                } catch {
+                                    await send(.delegate(.errorOccurred(
+                                        message: "Failed to seed state mappings: \(error.localizedDescription)"
+                                    )))
+                                }
+                            }
+                        }
+                        // Only update in-memory table if fetch succeeds — avoid wiping valid mappings
+                        if let records = try? await stateMappingClient.fetchAll() {
+                            let table = StateMappingTable.from(records)
+                            await send(.stateMappingsLoaded(table))
                         }
                     },
                     .run { [clock] send in
@@ -280,9 +317,12 @@ struct MeisterFeature {
 
                 let originalIssue = sourceColumn.issues[issueIndex]
                 // Resolve the team-specific workflow state for the target MeisterState.
-                guard let teamStates = state.workflowStatesByTeam[originalIssue.teamId],
-                      let targetLinearState = target.linearState(in: teamStates)
-                else {
+                guard let targetLinearState = resolveLinearState(
+                    for: target,
+                    teamId: originalIssue.teamId,
+                    mappings: state.stateMappings,
+                    workflowStatesByTeam: state.workflowStatesByTeam
+                ) else {
                     // No matching workflow state for this team — cannot move
                     return .none
                 }
@@ -364,7 +404,8 @@ struct MeisterFeature {
                 guard !state.columns.isEmpty else { return .none }
                 let alreadyPresent = state.columns.contains { $0.issues.contains { $0.id == issue.id } }
                 guard !alreadyPresent else { return .none }
-                if let targetState = issue.meisterState, state.columns[id: targetState] != nil {
+                let mapped = state.stateMappings[issue.teamId]?[issue.statusId]
+                if let targetState = mapped ?? issue.meisterState, state.columns[id: targetState] != nil {
                     state.columns[id: targetState]?.issues.append(issue)
                 } else if let firstColumn = state.columns.first {
                     state.columns[id: firstColumn.id]?.issues.append(issue)
@@ -383,6 +424,10 @@ struct MeisterFeature {
                 guard !alreadyPresent else { return .none }
                 if state.columns[id: onColumn] != nil {
                     state.columns[id: onColumn]?.issues.append(issue)
+                } else if let mapped = state.stateMappings[issue.teamId]?[issue.statusId],
+                          state.columns[id: mapped] != nil
+                {
+                    state.columns[id: mapped]?.issues.append(issue)
                 } else if let targetState = issue.meisterState, state.columns[id: targetState] != nil {
                     state.columns[id: targetState]?.issues.append(issue)
                 } else if let firstColumn = state.columns.first {
@@ -425,9 +470,47 @@ struct MeisterFeature {
                     try? await databaseClient.updateTeamFilterVisibility(teamId, isNowHidden)
                 }
 
+            case let .stateMappingsLoaded(table):
+                state.stateMappings = table
+                // Rebuild columns with updated mappings
+                let allIssues = state.columns.flatMap(\.issues)
+                if !allIssues.isEmpty {
+                    state.columns = MeisterFeature.rebuildColumns(
+                        from: allIssues, mappings: table
+                    )
+                }
+                return .none
+
+            case .stateMappingButtonTapped:
+                state.stateMappingEditor = StateMappingFeature.State(
+                    teams: state.teams.filter(\.isEnabled),
+                    workflowStatesByTeam: state.workflowStatesByTeam,
+                    mappings: state.stateMappings
+                )
+                return .none
+
+            case let .stateMappingEditor(.presented(.delegate(.mappingsSaved(table)))):
+                state.stateMappingEditor = nil
+                state.stateMappings = table
+                let allIssues = state.columns.flatMap(\.issues)
+                state.columns = MeisterFeature.rebuildColumns(
+                    from: allIssues, mappings: table
+                )
+                return .none
+
+            case .stateMappingEditor(.presented(.delegate(.dismissed))):
+                state.stateMappingEditor = nil
+                return .none
+
+            case .stateMappingEditor:
+                return .none
+
             case .delegate:
                 return .none
             }
+        }
+        .ifLet(\.$stateMappingEditor, action: \.stateMappingEditor) {
+            StateMappingFeature()
         }
     }
 
@@ -449,10 +532,14 @@ struct MeisterFeature {
 
     // MARK: - Column helpers
 
-    static func rebuildColumns(from issues: [LinearIssue]) -> IdentifiedArrayOf<KanbanColumn> {
+    static func rebuildColumns(
+        from issues: [LinearIssue],
+        mappings: StateMappingTable = [:]
+    ) -> IdentifiedArrayOf<KanbanColumn> {
         var bucketed: [MeisterState: [LinearIssue]] = [:]
         for issue in issues {
-            guard let state = issue.meisterState else { continue }
+            let mapped = mappings[issue.teamId]?[issue.statusId]
+            guard let state = mapped ?? issue.meisterState else { continue }
             bucketed[state, default: []].append(issue)
         }
         let columns = MeisterState.allCases.map { state in
@@ -460,6 +547,30 @@ struct MeisterFeature {
         }
         return IdentifiedArrayOf(uniqueElements: columns)
     }
+}
+
+// MARK: - Mapping Helpers
+
+/// Resolves the Linear workflow state for a target MeisterState using the
+/// mapping table first, falling back to the heuristic.
+nonisolated func resolveLinearState(
+    for target: MeisterState,
+    teamId: String,
+    mappings: StateMappingTable,
+    workflowStatesByTeam: WorkflowStatesByTeam
+) -> LinearWorkflowState? {
+    guard let teamStates = workflowStatesByTeam[teamId] else { return nil }
+    // 1. Mapping table: find a Linear state that maps to the target MeisterState.
+    //    When multiple states map to the same stage, pick the lowest position.
+    if let teamMappings = mappings[teamId] {
+        let candidateIds = teamMappings.filter { $0.value == target }.map(\.key)
+        let candidate = teamStates
+            .filter { candidateIds.contains($0.id) }
+            .min(by: { $0.position < $1.position })
+        if let candidate { return candidate }
+    }
+    // 2. Heuristic fallback
+    return target.linearState(in: teamStates)
 }
 
 // MARK: - Sync logic

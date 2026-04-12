@@ -2,31 +2,42 @@
 import Dependencies
 import Foundation
 
-/// Resolves a Linear workflow-state name (e.g. `"Todo"`, `"In Progress"`, `"Done"`)
-/// to the team-specific state UUID required by `LinearAPIClient.updateIssueStatus`.
+/// Resolves Linear workflow-state references to team-specific state UUIDs
+/// required by `LinearAPIClient.updateIssueStatus`.
 ///
-/// Linear workflow states are per-team — each team has its own copies of the
-/// standard states with distinct UUIDs. The local cache in
-/// `DatabaseClient.fetchWorkflowStates()` holds every team's states; this resolver
-/// looks up the right one for a given `(teamId, name)` pair.
-///
-/// Implemented as a static function on a namespace enum and tested directly
-/// via `withDependencies`.
+/// Resolution uses the per-team mapping table first (which maps
+/// `MeisterState` → Linear state UUID per team), falling back to
+/// a case-insensitive name match against the workflow states cache.
 enum WorkflowStateResolver {
     /// Look up a state UUID for a given team and case-insensitive state name.
     ///
-    /// - Parameters:
-    ///   - teamId: Linear team UUID (from `ImportedIssueRecord.teamId`).
-    ///   - stateName: Human-readable state name as the meister Claude Code knows it.
-    /// - Returns: The state UUID, or `nil` if no matching state exists for the team.
-    /// - Throws: Whatever `databaseClient.fetchWorkflowStates` throws.
+    /// Tries mapping-table resolution first: if `stateName` matches a
+    /// `MeisterState.displayName`, resolves via the mapping table to
+    /// find the team-specific Linear state. Falls back to a direct
+    /// name match against the workflow states cache.
     static func resolve(
         teamId: String,
         stateName: String
     ) async throws -> String? {
+        @Dependency(\.stateMappingClient) var stateMappingClient
         @Dependency(\.databaseClient) var databaseClient
-        let states = try await databaseClient.fetchWorkflowStates()
+
+        // 1. Try mapping table: if stateName is a MeisterState displayName,
+        //    find the mapped Linear state for this team.
+        //    Catch errors locally so the name-match fallback still runs.
         let needle = stateName.lowercased()
+        if let meisterState = MeisterState.allCases.first(
+            where: { $0.displayName.lowercased() == needle }
+        ) {
+            if let mappings = try? await stateMappingClient.fetchForTeam(teamId),
+               let mapped = mappings.first(where: { $0.meisterState == meisterState.rawValue })
+            {
+                return mapped.linearStateId
+            }
+        }
+
+        // 2. Fallback: direct name match against workflow states cache
+        let states = try await databaseClient.fetchWorkflowStates()
         return states.first { record in
             record.teamId == teamId && record.name.lowercased() == needle
         }?.id
