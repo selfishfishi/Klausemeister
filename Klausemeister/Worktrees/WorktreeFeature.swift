@@ -119,6 +119,10 @@ struct WorktreeFeature {
         /// Replayed once `worktreesLoaded` populates the worktree array.
         var pendingHellos: Set<String> = []
 
+        /// MCP queue events that arrived before worktrees were loaded.
+        /// Replayed once `worktreesLoaded` populates the worktree array.
+        var pendingQueueEvents: [MCPServerEvent] = []
+
         /// Which repo sections are collapsed in the swimlane view.
         var collapsedRepoIds: Set<String> = []
         /// Presented create-worktree sheet state, or nil when the sheet is hidden.
@@ -205,6 +209,10 @@ struct WorktreeFeature {
         case meisterSpawnFailed(worktreeId: String)
         case meisterHelloReceived(worktreeId: String)
         case meisterConnectionClosed(worktreeId: String)
+
+        // MCP queue sync (KLA-107)
+        case mcpItemMovedToProcessing(worktreeId: String, issueLinearId: String)
+        case mcpItemMovedToOutbox(worktreeId: String, issueLinearId: String)
 
         case alert(PresentationAction<Alert>)
         case delegate(Delegate)
@@ -579,6 +587,32 @@ struct WorktreeFeature {
                     state.worktrees[id: worktreeId]?.meisterStatus = .running
                 }
                 state.pendingHellos.removeAll()
+
+                // Replay MCP queue events buffered before worktrees loaded.
+                for event in state.pendingQueueEvents {
+                    switch event {
+                    case let .itemMovedToProcessing(worktreeId, issueLinearId):
+                        if let wtIndex = state.worktrees.index(id: worktreeId),
+                           let idx = state.worktrees[wtIndex].inbox.firstIndex(
+                               where: { $0.id == issueLinearId }
+                           )
+                        {
+                            let issue = state.worktrees[wtIndex].inbox.remove(at: idx)
+                            state.worktrees[wtIndex].processing = issue
+                        }
+                    case let .itemMovedToOutbox(worktreeId, issueLinearId):
+                        if let wtIndex = state.worktrees.index(id: worktreeId),
+                           let proc = state.worktrees[wtIndex].processing,
+                           proc.id == issueLinearId
+                        {
+                            state.worktrees[wtIndex].processing = nil
+                            state.worktrees[wtIndex].outbox.append(proc)
+                        }
+                    default:
+                        break
+                    }
+                }
+                state.pendingQueueEvents.removeAll()
 
                 let worktreePaths = state.worktrees.map { (id: $0.id, path: $0.gitWorktreePath) }
                 let worktreeInfo = Self.worktreeStatsInputs(from: state)
@@ -1219,6 +1253,7 @@ struct WorktreeFeature {
 
             case let .loadFailed(message):
                 state.pendingHellos.removeAll()
+                state.pendingQueueEvents.removeAll()
                 return .send(.delegate(.errorOccurred(message: message)))
 
             case let .assignFailed(worktreeId, issueId):
@@ -1469,6 +1504,38 @@ struct WorktreeFeature {
                 // No auto-respawn (spec FR #7). Flip to disconnected; user
                 // action required to restart.
                 state.worktrees[id: worktreeId]?.meisterStatus = .disconnected
+                return .none
+
+            // MARK: - MCP queue sync (KLA-107)
+
+            case let .mcpItemMovedToProcessing(worktreeId, issueLinearId):
+                guard let wtIndex = state.worktrees.index(id: worktreeId) else {
+                    state.pendingQueueEvents.append(
+                        .itemMovedToProcessing(worktreeId: worktreeId, issueLinearId: issueLinearId)
+                    )
+                    return .none
+                }
+                if let inboxIndex = state.worktrees[wtIndex].inbox.firstIndex(
+                    where: { $0.id == issueLinearId }
+                ) {
+                    let issue = state.worktrees[wtIndex].inbox.remove(at: inboxIndex)
+                    state.worktrees[wtIndex].processing = issue
+                }
+                return .none
+
+            case let .mcpItemMovedToOutbox(worktreeId, issueLinearId):
+                guard let wtIndex = state.worktrees.index(id: worktreeId) else {
+                    state.pendingQueueEvents.append(
+                        .itemMovedToOutbox(worktreeId: worktreeId, issueLinearId: issueLinearId)
+                    )
+                    return .none
+                }
+                if let proc = state.worktrees[wtIndex].processing,
+                   proc.id == issueLinearId
+                {
+                    state.worktrees[wtIndex].processing = nil
+                    state.worktrees[wtIndex].outbox.append(proc)
+                }
                 return .none
 
             case .delegate:

@@ -24,4 +24,14 @@ enum MCPServerEvent: Equatable {
     /// exited, the shim disconnected, or the transport errored. Flips the
     /// worktree to `.disconnected`. KLA-74 spec forbids auto-respawn.
     case meisterConnectionClosed(worktreeId: String)
+
+    /// An MCP tool moved a queue item from inbox to processing (e.g.
+    /// `getNextItem` or `transition("pull")`). `WorktreeFeature` uses
+    /// this to sync its in-memory state with the DB mutation.
+    case itemMovedToProcessing(worktreeId: String, issueLinearId: String)
+
+    /// An MCP tool moved a queue item from processing to outbox (e.g.
+    /// `completeItem` or `transition("push")`). `WorktreeFeature` uses
+    /// this to sync its in-memory state with the DB mutation.
+    case itemMovedToOutbox(worktreeId: String, issueLinearId: String)
 }
