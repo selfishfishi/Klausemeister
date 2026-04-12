@@ -22,6 +22,10 @@ struct SwimlaneHeaderView: View {
                     .lineLimit(1)
             }
 
+            if let stats = worktree.gitStats, !stats.isEmpty {
+                GitStatsLineView(stats: stats)
+            }
+
             statusPill
         }
         .padding(10)

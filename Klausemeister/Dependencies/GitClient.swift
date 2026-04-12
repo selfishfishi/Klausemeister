@@ -1,5 +1,6 @@
 import Dependencies
 import Foundation
+import OSLog
 
 struct GitClient {
     var repositoryRoot: @Sendable (_ fromPath: String) async throws -> String
@@ -16,6 +17,11 @@ struct GitClient {
     var listBranches: @Sendable (_ repoPath: String) async throws -> [String]
     var resolveDefaultBranch: @Sendable (_ repoPath: String) async throws -> DefaultBranch
     var fetchBranch: @Sendable (_ repoPath: String, _ branch: String) async throws -> Void
+    var diffStats: @Sendable (_ worktreePath: String) async throws -> DiffStats
+    var commitsAhead: @Sendable (_ worktreePath: String, _ defaultBranch: String) async throws -> Int
+    /// Watches the git directory for a worktree and yields a value whenever
+    /// the index, HEAD, or refs change. The caller should debounce.
+    var watchForChanges: @Sendable (_ worktreePath: String) -> AsyncStream<Void>
 
     struct WorktreeListEntry: Equatable {
         let path: String
@@ -31,6 +37,12 @@ struct GitClient {
     struct DefaultBranch: Equatable {
         let name: String
         let hasOrigin: Bool
+    }
+
+    struct DiffStats: Equatable {
+        let uncommittedFiles: Int
+        let additions: Int
+        let deletions: Int
     }
 }
 
@@ -159,6 +171,145 @@ extension GitClient: DependencyKey {
             },
             fetchBranch: { repoPath, branch in
                 _ = try shell(["-C", repoPath, "fetch", "origin", branch])
+            },
+            diffStats: { worktreePath in
+                // Count uncommitted files (staged + unstaged)
+                let statusOutput = try shell([
+                    "-C", worktreePath, "status", "--porcelain"
+                ])
+                let uncommitted = statusOutput
+                    .split(separator: "\n", omittingEmptySubsequences: true).count
+
+                // Additions/deletions vs HEAD (staged + unstaged combined).
+                // In a fresh repo with no commits, HEAD doesn't exist and
+                // `git diff HEAD` fails — fall back to `git diff --cached`.
+                let numstat: String = if let headDiff = try? shell([
+                    "-C", worktreePath, "diff", "HEAD", "--numstat"
+                ]) {
+                    headDiff
+                } else {
+                    (try? shell([
+                        "-C", worktreePath, "diff", "--cached", "--numstat"
+                    ])) ?? ""
+                }
+                var adds = 0
+                var dels = 0
+                for line in numstat.split(separator: "\n") {
+                    let parts = line.split(separator: "\t")
+                    guard parts.count >= 2 else { continue }
+                    adds += Int(parts[0]) ?? 0
+                    dels += Int(parts[1]) ?? 0
+                }
+                return GitClient.DiffStats(
+                    uncommittedFiles: uncommitted,
+                    additions: adds,
+                    deletions: dels
+                )
+            },
+            commitsAhead: { worktreePath, defaultBranch in
+                let output = try shell([
+                    "-C", worktreePath, "rev-list", "--count",
+                    "\(defaultBranch)..HEAD"
+                ])
+                return Int(output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+            },
+            watchForChanges: { worktreePath in
+                let log = Logger(subsystem: "com.klausemeister", category: "GitClient.watch")
+
+                return AsyncStream { continuation in
+                    // Resolve the git directory. For worktrees, .git is a file
+                    // containing "gitdir: /path/to/main/.git/worktrees/<name>".
+                    let dotGit = URL(fileURLWithPath: worktreePath)
+                        .appendingPathComponent(".git")
+                    let gitDirPath: String
+                    var isDir: ObjCBool = false
+                    if FileManager.default.fileExists(atPath: dotGit.path, isDirectory: &isDir),
+                       !isDir.boolValue
+                    {
+                        if let content = try? String(contentsOf: dotGit, encoding: .utf8),
+                           content.hasPrefix("gitdir: ")
+                        {
+                            gitDirPath = content
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                                .replacingOccurrences(of: "gitdir: ", with: "")
+                        } else {
+                            log.warning(
+                                "watchForChanges: .git file at \(dotGit.path) is not a gitdir pointer; FS monitoring may miss events"
+                            )
+                            gitDirPath = dotGit.path
+                        }
+                    } else {
+                        gitDirPath = dotGit.path
+                    }
+
+                    // Serial queue for debounce — all event handlers and
+                    // debounce timers run here, eliminating data races.
+                    let debounceQueue = DispatchQueue(
+                        label: "com.klausemeister.git-watcher.\(worktreePath.hashValue)",
+                        qos: .utility
+                    )
+
+                    // Open file descriptors for both the gitdir (catches file
+                    // creation/deletion) and the index file (catches staging).
+                    let dirFD = open(gitDirPath, O_EVTONLY)
+                    let indexPath = (gitDirPath as NSString).appendingPathComponent("index")
+                    let indexFD = open(indexPath, O_EVTONLY)
+
+                    guard dirFD >= 0 || indexFD >= 0 else {
+                        log.warning(
+                            "watchForChanges: failed to open \(gitDirPath) (errno \(errno)); FS watcher inactive for \(worktreePath)"
+                        )
+                        continuation.finish()
+                        return
+                    }
+
+                    // Shared debounce state — only accessed on debounceQueue.
+                    var pendingWork: DispatchWorkItem?
+
+                    func scheduleDebounce() {
+                        pendingWork?.cancel()
+                        let work = DispatchWorkItem { continuation.yield() }
+                        pendingWork = work
+                        debounceQueue.asyncAfter(
+                            deadline: .now() + .seconds(2), execute: work
+                        )
+                    }
+
+                    var sources: [DispatchSourceFileSystemObject] = []
+
+                    if dirFD >= 0 {
+                        let dirSource = DispatchSource.makeFileSystemObjectSource(
+                            fileDescriptor: dirFD,
+                            eventMask: [.write, .rename, .delete, .extend],
+                            queue: debounceQueue
+                        )
+                        dirSource.setEventHandler { scheduleDebounce() }
+                        dirSource.setCancelHandler { close(dirFD) }
+                        sources.append(dirSource)
+                    }
+
+                    if indexFD >= 0 {
+                        let indexSource = DispatchSource.makeFileSystemObjectSource(
+                            fileDescriptor: indexFD,
+                            eventMask: [.write, .rename, .delete],
+                            queue: debounceQueue
+                        )
+                        indexSource.setEventHandler { scheduleDebounce() }
+                        indexSource.setCancelHandler { close(indexFD) }
+                        sources.append(indexSource)
+                    }
+
+                    let activeSources = sources
+                    continuation.onTermination = { _ in
+                        for source in activeSources {
+                            source.cancel()
+                        }
+                    }
+
+                    for source in activeSources {
+                        source.resume()
+                    }
+                }
             }
         )
     }()
@@ -172,7 +323,13 @@ extension GitClient: DependencyKey {
         listWorktrees: unimplemented("GitClient.listWorktrees"),
         listBranches: unimplemented("GitClient.listBranches"),
         resolveDefaultBranch: unimplemented("GitClient.resolveDefaultBranch"),
-        fetchBranch: unimplemented("GitClient.fetchBranch")
+        fetchBranch: unimplemented("GitClient.fetchBranch"),
+        diffStats: unimplemented("GitClient.diffStats"),
+        commitsAhead: unimplemented("GitClient.commitsAhead"),
+        watchForChanges: unimplemented(
+            "GitClient.watchForChanges",
+            placeholder: AsyncStream { $0.finish() }
+        )
     )
 }
 
