@@ -150,6 +150,160 @@ enum ToolHandlers {
         return try .success(Self.encodeJSON(snapshot))
     }
 
+    // MARK: - getProductState
+
+    /// Returns the current product state (kanban + queue position) for the
+    /// active item in this worktree. Prefers the processing item; falls back
+    /// to the first inbox item. Returns `{"state":null}` if the queue is empty.
+    static func getProductState(worktreeId: String) async throws -> ToolResult {
+        @Dependency(\.worktreeClient) var worktreeClient
+        @Dependency(\.databaseClient) var databaseClient
+
+        let items = try await worktreeClient.fetchQueueItems(worktreeId)
+        guard let target = resolveTargetItem(from: items, for: nil) else {
+            return .success(#"{"state":null}"#)
+        }
+        return try await buildProductStateResult(
+            item: target,
+            databaseClient: databaseClient
+        )
+    }
+
+    // MARK: - transition
+
+    /// Execute a workflow command to advance the product state. Validates the
+    /// transition against the state machine before applying side effects.
+    static func transition(
+        commandName: String,
+        worktreeId: String
+    ) async throws -> ToolResult {
+        @Dependency(\.worktreeClient) var worktreeClient
+        @Dependency(\.databaseClient) var databaseClient
+
+        guard let command = WorkflowCommand(rawValue: commandName) else {
+            let valid = WorkflowCommand.allCases.map(\.rawValue).joined(separator: ", ")
+            return .failure("Unknown command: \(commandName). Valid: \(valid)")
+        }
+
+        let items = try await worktreeClient.fetchQueueItems(worktreeId)
+        guard let target = resolveTargetItem(from: items, for: command) else {
+            return .failure("No item available for \(commandName)")
+        }
+
+        guard let issueRecord = try await databaseClient.fetchImportedIssue(target.issueLinearId) else {
+            return .failure("Imported issue \(target.issueLinearId) not found in local cache")
+        }
+
+        let issue = LinearIssue(from: issueRecord)
+        guard let kanban = issue.meisterState else {
+            return .failure("Issue status '\(issue.status)' does not map to a known workflow state")
+        }
+
+        let currentState = ProductState(kanban: kanban, queue: target.queuePosition)
+        guard let newState = currentState.applying(command) else {
+            let valid = currentState.validCommands.map(\.rawValue).joined(separator: ", ")
+            return .failure(
+                "Illegal transition: \(commandName) from (\(kanban.rawValue), \(target.queuePosition.rawValue)). Valid commands: \(valid)"
+            )
+        }
+
+        try await applyTransitionSideEffects(
+            from: currentState,
+            to: newState,
+            issueLinearId: target.issueLinearId,
+            teamId: issueRecord.teamId,
+            worktreeId: worktreeId
+        )
+
+        let payload = makePayload(state: newState, issue: issue)
+        return try .success(Self.encodeJSON(["state": payload]))
+    }
+
+    // MARK: - Shared helpers
+
+    /// Execute the queue and kanban side effects of a validated transition.
+    /// Queue mutations are local-first; Linear updates are best-effort.
+    private static func applyTransitionSideEffects(
+        from currentState: ProductState,
+        to newState: ProductState,
+        issueLinearId: String,
+        teamId: String,
+        worktreeId: String
+    ) async throws {
+        @Dependency(\.worktreeClient) var worktreeClient
+        @Dependency(\.linearAPIClient) var linearAPIClient
+
+        if newState.queue != currentState.queue {
+            switch newState.queue {
+            case .processing:
+                try await worktreeClient.moveToProcessingByIssueId(issueLinearId, worktreeId)
+            case .outbox:
+                try await worktreeClient.moveToOutboxByIssueId(issueLinearId, worktreeId)
+            case .inbox:
+                break
+            }
+        }
+        if newState.kanban != currentState.kanban {
+            if let stateId = try? await WorkflowStateResolver.resolve(
+                teamId: teamId,
+                stateName: newState.kanban.displayName
+            ) {
+                try? await linearAPIClient.updateIssueStatus(issueLinearId, stateId)
+            }
+        }
+    }
+
+    /// Find the target queue item for a command. For `pull`, targets the first
+    /// inbox item. For all other commands (or `nil` for read), targets the
+    /// processing item with fallback to the first inbox item.
+    private static func resolveTargetItem(
+        from items: [WorktreeQueueItemRecord],
+        for command: WorkflowCommand?
+    ) -> WorktreeQueueItemRecord? {
+        if command == .pull {
+            return items
+                .filter { $0.queuePosition == .inbox }
+                .min(by: { $0.sortOrder < $1.sortOrder })
+        }
+        return items.first { $0.queuePosition == .processing }
+            ?? items
+            .filter { $0.queuePosition == .inbox }
+            .min(by: { $0.sortOrder < $1.sortOrder })
+    }
+
+    /// Build a `ProductStatePayload` from a `ProductState` and `LinearIssue`.
+    private static func makePayload(state: ProductState, issue: LinearIssue) -> ProductStatePayload {
+        ProductStatePayload(
+            kanban: state.kanban.rawValue,
+            kanbanDisplayName: state.kanban.displayName,
+            queue: state.queue.rawValue,
+            nextCommand: state.nextCommand?.rawValue,
+            validCommands: state.validCommands.map(\.rawValue),
+            isComplete: state.isComplete,
+            issueLinearId: issue.id,
+            identifier: issue.identifier,
+            title: issue.title
+        )
+    }
+
+    /// Fetch an issue record, derive the product state, and return it as a
+    /// JSON result. Shared by `getProductState`.
+    private static func buildProductStateResult(
+        item: WorktreeQueueItemRecord,
+        databaseClient: DatabaseClient
+    ) async throws -> ToolResult {
+        guard let issueRecord = try await databaseClient.fetchImportedIssue(item.issueLinearId) else {
+            return .failure("Imported issue \(item.issueLinearId) not found in local cache")
+        }
+        let issue = LinearIssue(from: issueRecord)
+        guard let kanban = issue.meisterState else {
+            return .failure("Issue status '\(issue.status)' does not map to a known workflow state")
+        }
+        let state = ProductState(kanban: kanban, queue: item.queuePosition)
+        let payload = makePayload(state: state, issue: issue)
+        return try .success(Self.encodeJSON(["state": payload]))
+    }
+
     // MARK: - JSON helpers
 
     private static let encoder: JSONEncoder = {
@@ -185,5 +339,17 @@ extension ToolHandlers {
         let inboxCount: Int
         let processingIssueLinearId: String?
         let outboxCount: Int
+    }
+
+    struct ProductStatePayload: Encodable, Equatable {
+        let kanban: String
+        let kanbanDisplayName: String
+        let queue: String
+        let nextCommand: String?
+        let validCommands: [String]
+        let isComplete: Bool
+        let issueLinearId: String?
+        let identifier: String?
+        let title: String?
     }
 }

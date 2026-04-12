@@ -8,7 +8,7 @@ import GRDB
 /// table. Raw values match the existing DB strings so no migration is needed.
 /// `DatabaseValueConvertible` lets GRDB store/fetch this enum directly,
 /// eliminating `.rawValue` at every comparison and assignment site.
-enum QueuePosition: String, CaseIterable, Equatable, Hashable, DatabaseValueConvertible {
+enum QueuePosition: String, CaseIterable, Codable, Equatable, Hashable, DatabaseValueConvertible {
     case inbox
     case processing
     case outbox
