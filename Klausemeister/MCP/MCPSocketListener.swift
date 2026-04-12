@@ -491,7 +491,7 @@ private enum ToolCatalog {
                     ]),
                     "statusText": .object([
                         "type": .string("string"),
-                        "description": .string("Free-form short status, e.g. 'running klause-spec — exploring codebase'")
+                        "description": .string("Free-form short status, e.g. 'running klause-define — exploring codebase'")
                     ])
                 ]),
                 "required": .array([.string("issueLinearId"), .string("statusText")]),
