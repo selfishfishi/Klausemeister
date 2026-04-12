@@ -50,11 +50,12 @@ Call `reportProgress` liberally — once per meaningful sub-step of each command
 |---|---|---|
 | `Backlog` | `/klause-define` | `Todo` |
 | `Todo` | `/klause-execute` | `In Progress` |
-| `In Review` | `/klause-review` | `Testing` or `Done` (the command decides) |
+| `In Progress` | `/klause-open-pr` | `Testing` |
+| `In Review` | `/klause-open-pr` | `Testing` |
 | `Testing` | `/klause-verify` | `Done` |
 | *(any other state)* | No `klause-*` command exists yet. Do the work directly — use `/feature-dev` or plain conversation. | Whatever state the work advanced to. |
 
-`/klause-define`, `/klause-pull`, `/klause-execute`, and `/klause-review` are implemented and use the `getProductState` / `transition` MCP tools for state validation. `/klause-pull` is not state-dispatched — it is invoked explicitly or by `/klause:next` when the queue position is `inbox`. `/klause-execute` transitions Todo → In Progress and invokes `/feature-dev:feature-dev`. `/klause-review` is manual-only (not invoked by `/klause:next`) — it prompts before transitioning In Progress → In Review. `/klause-verify` is still a placeholder (KLA-77). See `commands/` for details.
+`/klause-define`, `/klause-pull`, `/klause-execute`, `/klause-review`, and `/klause-open-pr` are implemented and use the `getProductState` / `transition` MCP tools for state validation. `/klause-pull` is not state-dispatched — it is invoked explicitly or by `/klause:next` when the queue position is `inbox`. `/klause-review` is manual-only (not invoked by `/klause:next`) — it prompts before transitioning In Progress → In Review. `/klause-open-pr` delegates to `/open-pr` for pre-flight checks and PR creation, then transitions to Testing. `/klause-verify` is still a placeholder (KLA-77). See `commands/` for details.
 
 For states without a dedicated command — `Definition`, `Spec`, `In Progress` — pick the best tool for the work and report back. Typical fits:
 
