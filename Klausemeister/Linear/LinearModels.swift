@@ -48,3 +48,12 @@ struct LinearWorkflowState: Equatable, Identifiable {
 }
 
 typealias WorkflowStatesByTeam = [String: [LinearWorkflowState]]
+
+struct LinearTeam: Equatable, Identifiable, Codable {
+    let id: String
+    let key: String
+    let name: String
+    var colorIndex: Int
+    var isEnabled: Bool
+    var isHiddenFromBoard: Bool
+}

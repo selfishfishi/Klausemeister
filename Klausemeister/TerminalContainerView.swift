@@ -25,13 +25,14 @@ struct TerminalContainerView: View {
                 MeisterTabView(
                     meisterStore: store.scope(state: \.meister, action: \.meister),
                     worktreeStore: store.scope(state: \.worktree, action: \.worktree),
-                    authStatus: store.linearAuth.status,
+                    authStore: store.scope(state: \.linearAuth, action: \.linearAuth),
                     onConnect: { store.send(.linearAuth(.loginButtonTapped)) }
                 )
             } else {
                 WorktreeDetailView(
                     store: store.scope(state: \.worktree, action: \.worktree),
-                    surfaceStore: surfaceStore
+                    surfaceStore: surfaceStore,
+                    teams: store.meister.teams
                 )
             }
         }
