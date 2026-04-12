@@ -782,7 +782,9 @@ struct WorktreeFeature {
                 return .none
 
             case let .removeWorktreeConfirmed(worktreeId):
-                guard state.worktrees[id: worktreeId] != nil else { return .none }
+                guard let worktree = state.worktrees[id: worktreeId] else { return .none }
+                let path = worktree.gitWorktreePath
+                let repoId = worktree.repoId
                 if state.selectedWorktreeId == worktreeId {
                     state.selectedWorktreeId = nil
                 }
@@ -791,6 +793,9 @@ struct WorktreeFeature {
                     .cancel(id: CancelID.meisterSpawn(worktreeId)),
                     .cancel(id: CancelID.gitFSWatcher(worktreeId)),
                     .run { [surfaceManager, worktreeClient] _ in
+                        if let repoId {
+                            try await worktreeClient.ignoreWorktreePath(path, repoId)
+                        }
                         try await worktreeClient.deleteWorktree(worktreeId)
                         await MainActor.run { surfaceManager.destroySurface(worktreeId) }
                     } catch: { _, send in

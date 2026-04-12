@@ -100,5 +100,12 @@ enum DatabaseMigrations {
                 t.column("isHiddenFromBoard", .boolean).notNull().defaults(to: false)
             }
         }
+
+        migrator.registerMigration("v8-ignored-worktree-paths") { db in
+            try db.create(table: "ignored_worktree_paths") { t in
+                t.column("path", .text).primaryKey()
+                t.column("repoId", .text).notNull()
+            }
+        }
     }
 }
