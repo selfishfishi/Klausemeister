@@ -3,7 +3,7 @@ import Dependencies
 import Foundation
 import OSLog
 
-private let meisterLog = Logger(subsystem: "com.klausemeister", category: "MeisterClient")
+nonisolated private let meisterLog = Logger(subsystem: "com.klausemeister", category: "MeisterClient")
 
 /// Dependency client that spawns and tears down the meister Claude Code
 /// process for a worktree. The meister lives inside window 0 of the worktree's
