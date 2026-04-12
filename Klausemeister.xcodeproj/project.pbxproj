@@ -14,6 +14,7 @@
 		A8E7306B2F85392500806034 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = A8E7306A2F85392500806034 /* MCP */; };
 		A8E731002F88B4B700806034 /* SwiftUINavigation in Frameworks */ = {isa = PBXBuildFile; productRef = A8E730FF2F88B4B700806034 /* SwiftUINavigation */; };
 		A8E731032F88B5CD00806034 /* SwiftNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = A8E731022F88B5CD00806034 /* SwiftNavigation */; };
+		A8FX00042FA9000100806034 /* klause-mcp-shim in CopyFiles */ = {isa = PBXBuildFile; fileRef = A8E730702F85395000806034 /* klause-mcp-shim */; };
 		A8GR00022F816B35005797B3 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A8GR00012F816B35005797B3 /* GRDB */; };
 		A8ID00022F816B35005797B3 /* IdentifiedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = A8ID00012F816B35005797B3 /* IdentifiedCollections */; };
 		A8PC00022F816B35005797B3 /* PerceptionCore in Frameworks */ = {isa = PBXBuildFile; productRef = A8PC00012F816B35005797B3 /* PerceptionCore */; };
@@ -24,23 +25,22 @@
 		A8TE00112F816B35005797B3 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE00102F816B35005797B3 /* Dependencies */; };
 		A8TE00142F816B35005797B3 /* Clocks in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE00132F816B35005797B3 /* Clocks */; };
 		A8TE00162F816B35005797B3 /* ConcurrencyExtras in Frameworks */ = {isa = PBXBuildFile; productRef = A8TE00152F816B35005797B3 /* ConcurrencyExtras */; };
-		A8FX00042FA9000100806034 /* klause-mcp-shim in Embed Helpers */ = {isa = PBXBuildFile; fileRef = A8E730702F85395000806034 /* klause-mcp-shim */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		A8TE00072F816B35005797B3 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A869EED82F816B35005797B3 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A869EEDF2F816B35005797B3;
-			remoteInfo = Klausemeister;
-		};
 		A8FX00012FA9000100806034 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A869EED82F816B35005797B3 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = A8E7306F2F85395000806034;
 			remoteInfo = "klause-mcp-shim";
+		};
+		A8TE00072F816B35005797B3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A869EED82F816B35005797B3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A869EEDF2F816B35005797B3;
+			remoteInfo = Klausemeister;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -54,13 +54,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 1;
 		};
-		A8FX00032FA9000100806034 /* Embed Helpers */ = {
+		A8FX00032FA9000100806034 /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 6;
 			files = (
-				A8FX00042FA9000100806034 /* klause-mcp-shim in Embed Helpers */,
+				A8FX00042FA9000100806034 /* klause-mcp-shim in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -184,7 +184,7 @@
 				A869EEDD2F816B35005797B3 /* Frameworks */,
 				A869EEDE2F816B35005797B3 /* Resources */,
 				A8AAAA012F816B35005797B3 /* SwiftLint */,
-				A8FX00032FA9000100806034 /* Embed Helpers */,
+				A8FX00032FA9000100806034 /* CopyFiles */,
 			);
 			buildRules = (
 			);
@@ -377,15 +377,15 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		A8TE00062F816B35005797B3 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A869EEDF2F816B35005797B3 /* Klausemeister */;
-			targetProxy = A8TE00072F816B35005797B3 /* PBXContainerItemProxy */;
-		};
 		A8FX00022FA9000100806034 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = A8E7306F2F85395000806034 /* klause-mcp-shim */;
 			targetProxy = A8FX00012FA9000100806034 /* PBXContainerItemProxy */;
+		};
+		A8TE00062F816B35005797B3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A869EEDF2F816B35005797B3 /* Klausemeister */;
+			targetProxy = A8TE00072F816B35005797B3 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 

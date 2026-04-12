@@ -25,6 +25,7 @@ extension AppTheme {
         return ThemeColors(
             accentColor: Color(hex: 0xA7C080),
             warningColor: Color(hex: 0xDBBC7F),
+            errorColor: Color(hex: 0xE67E80),
             background: contrast.background,
             foreground: "#D3C6AA",
             palette: darkPalette(bg1: contrast.bg1),
@@ -45,6 +46,7 @@ extension AppTheme {
         return ThemeColors(
             accentColor: Color(hex: 0x8DA101),
             warningColor: Color(hex: 0xDFA000),
+            errorColor: Color(hex: 0xF85552),
             background: contrast.background,
             foreground: "#5C6A72",
             palette: lightPalette(bg1: contrast.bg1),

@@ -30,6 +30,7 @@ enum AppTheme: String, CaseIterable, Codable, Identifiable {
 struct ThemeColors {
     let accentColor: Color
     let warningColor: Color
+    let errorColor: Color
     let background: String
     let foreground: String
     let palette: [String]

@@ -21,17 +21,14 @@ import os.log
 /// The function returns only when the underlying `.run` effect is cancelled
 /// (i.e. when the app is shutting down).
 nonisolated private func debugLog(_ message: String) {
-    let line = "[\(Date())] \(message)\n"
     let path = "/tmp/klause-mcp-debug.log"
-    if FileManager.default.fileExists(atPath: path) {
-        if let handle = FileHandle(forWritingAtPath: path) {
-            handle.seekToEndOfFile()
-            handle.write(Data(line.utf8))
-            handle.closeFile()
-        }
-    } else {
-        FileManager.default.createFile(atPath: path, contents: Data(line.utf8))
-    }
+    guard let handle = FileHandle(forWritingAtPath: path) ?? {
+        FileManager.default.createFile(atPath: path, contents: nil)
+        return FileHandle(forWritingAtPath: path)
+    }() else { return }
+    handle.seekToEndOfFile()
+    handle.write(Data("[\(Date())] \(message)\n".utf8))
+    handle.closeFile()
 }
 
 actor MCPSocketListener {
@@ -133,9 +130,8 @@ actor MCPSocketListener {
     /// inside tmux) knows how to reach us.
     ///
     /// Two things happen here:
-    ///   1. A symlink at `~/Library/Application Support/Klausemeister/bin/
-    ///      klause-mcp-shim` is created pointing to the binary inside the
-    ///      app bundle. No-op if it already exists.
+    ///   1. A symlink at `~/.klausemeister/bin/klause-mcp-shim` is
+    ///      (re-)created pointing to the binary inside the app bundle.
     ///   2. The `klausemeister` MCP server entry is upserted into
     ///      `~/.claude/.mcp.json` with the fully resolved shim path.
     ///      Claude Code's MCP loader does NOT expand `${HOME}` or `~` in
@@ -147,21 +143,26 @@ actor MCPSocketListener {
     private static func installShimSymlink() {
         let fileManager = FileManager.default
         let symlinkURL = URL(fileURLWithPath: shimSymlinkPath)
-        if !fileManager.fileExists(atPath: symlinkURL.path) {
-            guard let helperURL = Bundle.main.url(forAuxiliaryExecutable: "klause-mcp-shim") else {
-                logger.warning("klause-mcp-shim helper not found in app bundle; symlink skipped")
-                return
+        guard let helperURL = Bundle.main.url(forAuxiliaryExecutable: "klause-mcp-shim") else {
+            logger.warning("klause-mcp-shim helper not found in app bundle; symlink skipped")
+            return
+        }
+        do {
+            try fileManager.createDirectory(
+                at: symlinkURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            // Always re-create the symlink so it tracks the current app
+            // bundle (e.g. after rebuilding in Xcode with a new DerivedData
+            // path). Removing first is required because createSymbolicLink
+            // fails if the destination already exists.
+            if fileManager.fileExists(atPath: symlinkURL.path) {
+                try fileManager.removeItem(at: symlinkURL)
             }
-            do {
-                try fileManager.createDirectory(
-                    at: symlinkURL.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
-                try fileManager.createSymbolicLink(at: symlinkURL, withDestinationURL: helperURL)
-            } catch {
-                logger.warning("Failed to create shim symlink: \(error.localizedDescription)")
-                return
-            }
+            try fileManager.createSymbolicLink(at: symlinkURL, withDestinationURL: helperURL)
+        } catch {
+            logger.warning("Failed to create shim symlink: \(error.localizedDescription)")
+            return
         }
         registerMCPServer()
     }

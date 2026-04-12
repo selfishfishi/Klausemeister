@@ -115,6 +115,10 @@ struct WorktreeFeature {
             forKey: WorktreeFeature.showBoardOverlayUserDefaultsKey
         )
 
+        /// Hello events that arrived before worktrees were loaded from DB.
+        /// Replayed once `worktreesLoaded` populates the worktree array.
+        var pendingHellos: Set<String> = []
+
         /// Which repo sections are collapsed in the swimlane view.
         var collapsedRepoIds: Set<String> = []
         /// Presented create-worktree sheet state, or nil when the sheet is hidden.
@@ -195,6 +199,7 @@ struct WorktreeFeature {
         // Tmux session reconciliation
         case reconcileTmuxSessions
         case tmuxSessionsReconciled([String: TmuxSessionStatus])
+        case shimsDiscovered([ShimDiscoveryResult])
 
         // Meister Claude Code lifecycle (KLA-74)
         case meisterSpawnFailed(worktreeId: String)
@@ -247,6 +252,7 @@ struct WorktreeFeature {
     @Dependency(\.ghClient) var ghClient
     @Dependency(\.surfaceManager) var surfaceManager
     @Dependency(\.continuousClock) var clock
+    @Dependency(\.mcpServerClient) var mcpServerClient
 
     /// Effect that loads the set of local branches for the given repo into the
     /// Create sheet's collision-check cache. Shared by `createSheetShown` and
@@ -567,6 +573,13 @@ struct WorktreeFeature {
                             .compactMap { issuesByLinearId[$0.issueLinearId] }
                     )
                 })
+                // Replay any meisterHelloReceived events that arrived
+                // before worktrees were loaded from the database.
+                for worktreeId in state.pendingHellos {
+                    state.worktrees[id: worktreeId]?.meisterStatus = .running
+                }
+                state.pendingHellos.removeAll()
+
                 let worktreePaths = state.worktrees.map { (id: $0.id, path: $0.gitWorktreePath) }
                 let worktreeInfo = Self.worktreeStatsInputs(from: state)
                 return .merge(
@@ -603,7 +616,13 @@ struct WorktreeFeature {
                     }
                     .cancellable(id: CancelID.prInfoPoll, cancelInFlight: true),
                     .send(.syncAllRepos),
-                    .send(.reconcileTmuxSessions)
+                    .send(.reconcileTmuxSessions),
+                    .run { [mcpServerClient] send in
+                        let results = await mcpServerClient.discoverActiveShims()
+                        if !results.isEmpty {
+                            await send(.shimsDiscovered(results))
+                        }
+                    }
                 )
 
             case let .branchesLoaded(branches):
@@ -1199,6 +1218,7 @@ struct WorktreeFeature {
                 return .none
 
             case let .loadFailed(message):
+                state.pendingHellos.removeAll()
                 return .send(.delegate(.errorOccurred(message: message)))
 
             case let .assignFailed(worktreeId, issueId):
@@ -1422,6 +1442,12 @@ struct WorktreeFeature {
                 }
                 return .none
 
+            case let .shimsDiscovered(results):
+                for result in results where result.status == "connected" {
+                    state.worktrees[id: result.worktreeId]?.meisterStatus = .running
+                }
+                return .none
+
             // MARK: - Meister Claude Code lifecycle (KLA-74)
 
             case let .meisterSpawnFailed(worktreeId):
@@ -1429,7 +1455,12 @@ struct WorktreeFeature {
                 return .none
 
             case let .meisterHelloReceived(worktreeId):
-                state.worktrees[id: worktreeId]?.meisterStatus = .running
+                if state.worktrees[id: worktreeId] != nil {
+                    state.worktrees[id: worktreeId]?.meisterStatus = .running
+                } else {
+                    // Worktrees not loaded yet — buffer for replay.
+                    state.pendingHellos.insert(worktreeId)
+                }
                 // Cancel the grace-period fallback — we now have proof the
                 // meister is alive and reachable.
                 return .cancel(id: CancelID.meisterSpawn(worktreeId))
