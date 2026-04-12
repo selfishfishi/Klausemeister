@@ -2,7 +2,7 @@
 import Foundation
 import Logging
 import MCP
-import Network
+import os.log
 
 /// Owns the Unix-domain-socket listener for the in-process MCP server.
 ///
@@ -19,6 +19,20 @@ import Network
 ///
 /// The function returns only when the underlying `.run` effect is cancelled
 /// (i.e. when the app is shutting down).
+private func debugLog(_ message: String) {
+    let line = "[\(Date())] \(message)\n"
+    let path = "/tmp/klause-mcp-debug.log"
+    if FileManager.default.fileExists(atPath: path) {
+        if let handle = FileHandle(forWritingAtPath: path) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            handle.closeFile()
+        }
+    } else {
+        FileManager.default.createFile(atPath: path, contents: Data(line.utf8))
+    }
+}
+
 enum MCPSocketListener {
     /// Hard-coded socket path. Klausemeister assumes a single instance per
     /// machine; if you ever run two copies they will fight for this path.
@@ -49,13 +63,17 @@ enum MCPSocketListener {
     static func run(
         eventContinuation: AsyncStream<MCPServerEvent>.Continuation
     ) async {
+        debugLog("MCPSocketListener.run() starting")
         do {
             try ensureAppSupportDirectory()
             installShimSymlink()
             try unlinkStaleSocket()
+            debugLog("socket unlinked, creating listener at \(socketPath)")
 
-            let listener = try makeListener()
-            await acceptLoop(listener: listener, eventContinuation: eventContinuation)
+            let listenFD = try makeListeningSocket()
+            debugLog("listening socket created fd=\(listenFD), entering acceptLoop")
+            await acceptLoop(listenFD: listenFD, eventContinuation: eventContinuation)
+            debugLog("acceptLoop returned (should never happen)")
         } catch {
             logger.error("MCP listener failed to start: \(error.localizedDescription)")
             eventContinuation.yield(.errorOccurred(message: "MCP server: \(error.localizedDescription)"))
@@ -143,79 +161,135 @@ enum MCPSocketListener {
         }
     }
 
-    private static func makeListener() throws -> NWListener {
-        let endpoint = NWEndpoint.unix(path: socketPath)
-        let parameters = NWParameters.tcp // any stream-based params; the unix endpoint forces UDS
-        parameters.requiredLocalEndpoint = endpoint
-        parameters.acceptLocalOnly = true
-        parameters.allowLocalEndpointReuse = true
-        return try NWListener(using: parameters)
+    /// Creates a POSIX Unix-domain-socket, binds, and listens. Returns the
+    /// file descriptor for the listening socket.
+    ///
+    /// Uses raw POSIX sockets instead of NWListener because the shim binary
+    /// connects with raw `socket()`/`connect()` — NWListener with
+    /// `NWParameters.tcp` adds a TCP protocol framer that never fires
+    /// `newConnectionHandler` for raw clients.
+    private static func makeListeningSocket() throws -> Int32 {
+        let listenFD = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard listenFD >= 0 else {
+            throw POSIXError(.init(rawValue: errno) ?? .ENOENT)
+        }
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let pathBytes = Array(socketPath.utf8)
+        guard pathBytes.count < MemoryLayout.size(ofValue: addr.sun_path) else {
+            Darwin.close(listenFD)
+            throw POSIXError(.ENAMETOOLONG)
+        }
+        withUnsafeMutablePointer(to: &addr.sun_path) { pathPtr in
+            pathPtr.withMemoryRebound(to: CChar.self, capacity: pathBytes.count + 1) { cPtr in
+                for (idx, byte) in pathBytes.enumerated() {
+                    cPtr[idx] = CChar(bitPattern: byte)
+                }
+                cPtr[pathBytes.count] = 0
+            }
+        }
+        let bindResult = withUnsafePointer(to: &addr) { addrPtr in
+            addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(listenFD, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        guard bindResult == 0 else {
+            let err = errno
+            Darwin.close(listenFD)
+            throw POSIXError(.init(rawValue: err) ?? .ENOENT)
+        }
+        guard listen(listenFD, /* backlog */ 5) == 0 else {
+            let err = errno
+            Darwin.close(listenFD)
+            throw POSIXError(.init(rawValue: err) ?? .ENOENT)
+        }
+        return listenFD
     }
 
     // MARK: - Accept loop
 
     private static func acceptLoop(
-        listener: NWListener,
+        listenFD: Int32,
         eventContinuation: AsyncStream<MCPServerEvent>.Continuation
     ) async {
-        let queue = DispatchQueue(label: "klausemeister.mcp.listener")
+        debugLog("acceptLoop: listening on fd=\(listenFD)")
 
-        listener.newConnectionHandler = { connection in
-            connection.start(queue: queue)
+        // Park on the listen socket using GCD. Fires when a connection is
+        // pending. Runs accept() then hands off to handleConnection.
+        let source = DispatchSource.makeReadSource(fileDescriptor: listenFD, queue: .global(qos: .userInitiated))
+        source.setEventHandler {
+            var clientAddr = sockaddr_un()
+            var clientLen = socklen_t(MemoryLayout<sockaddr_un>.size)
+            let clientFD = withUnsafeMutablePointer(to: &clientAddr) { addrPtr in
+                addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    accept(listenFD, $0, &clientLen)
+                }
+            }
+            guard clientFD >= 0 else { return }
+            debugLog("accepted connection fd=\(clientFD)")
             Task.detached {
                 await handleConnection(
-                    connection,
+                    socketFD: clientFD,
                     eventContinuation: eventContinuation
                 )
             }
         }
-
-        listener.start(queue: queue)
+        source.setCancelHandler {
+            Darwin.close(listenFD)
+        }
+        source.resume()
 
         // Park until the surrounding Task is cancelled (app shutdown).
         await withTaskCancellationHandler {
-            await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in
-                // Never resumed — cancellation handler tears down the listener.
-                // The continuation is intentionally leaked; Swift Concurrency
-                // cleans it up when the enclosing Task is cancelled.
-            }
+            await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
         } onCancel: {
-            listener.cancel()
+            source.cancel()
         }
     }
 
+    private static let mcpLog = OSLog(subsystem: "com.klausemeister", category: "MCPSocket")
+
     private static func handleConnection(
-        _ connection: NWConnection,
+        socketFD: Int32,
         eventContinuation: AsyncStream<MCPServerEvent>.Continuation
     ) async {
+        debugLog("handleConnection entered fd=\(socketFD)")
         var worktreeId: String?
         do {
-            let (helloLine, _) = try await SocketTransport.readHelloLine(from: connection)
+            let (helloLine, remainder) = try await SocketTransport.readHelloLine(from: socketFD)
+            debugLog("hello read, remainder=\(remainder.count) bytes")
             let hello = try JSONDecoder().decode(HelloFrame.self, from: helloLine)
             guard hello.isValidMeister else {
-                connection.cancel()
+                debugLog("invalid hello, closing")
+                Darwin.close(socketFD)
                 return
             }
             worktreeId = hello.klauseWorktreeId
+            debugLog("valid hello for wt=\(hello.klauseWorktreeId)")
 
             eventContinuation.yield(.meisterHelloReceived(worktreeId: hello.klauseWorktreeId))
 
             let transport = SocketTransport(
-                connection: connection,
-                logger: Logger(label: "klausemeister.mcp.transport.\(hello.klauseWorktreeId)")
+                socketFD: socketFD,
+                logger: Logger(label: "klausemeister.mcp.transport.\(hello.klauseWorktreeId)"),
+                initialData: remainder
             )
             let server = await makeServer(
                 worktreeId: hello.klauseWorktreeId,
                 eventContinuation: eventContinuation
             )
+            debugLog("starting MCP server")
             try await server.start(transport: transport)
+            debugLog("server.start returned, waiting")
             await server.waitUntilCompleted()
+            debugLog("server completed normally")
 
             // Server exited cleanly — the meister's transport closed. Treat
             // as a connection drop so `WorktreeFeature` flips state.
             eventContinuation.yield(.meisterConnectionClosed(worktreeId: hello.klauseWorktreeId))
         } catch {
-            connection.cancel()
+            debugLog("handleConnection threw: \(error)")
+            // fd is closed by SocketTransport.deinit or on early exit
             eventContinuation.yield(.errorOccurred(message: "MCP connection failed: \(error.localizedDescription)"))
             if let worktreeId {
                 eventContinuation.yield(.meisterConnectionClosed(worktreeId: worktreeId))
