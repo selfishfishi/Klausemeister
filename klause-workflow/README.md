@@ -3,7 +3,7 @@
 A Claude Code plugin loaded by the **meister Claude Code** in every Klausemeister session. It provides:
 
 - An MCP client wired to the local Klausemeister MCP server via a stdio shim (`klause-mcp-shim`) bridging to a Unix socket hosted by Klausemeister
-- Slash commands: `/klause-define`, `/klause-pull` (implemented), `/klause-review`, `/klause-verify` (placeholders)
+- Slash commands: `/klause-define`, `/klause-pull`, `/klause-execute` (implemented), `/klause-review`, `/klause-verify` (placeholders)
 - A meister-loop skill that auto-triggers when the session is a Klausemeister meister (env `KLAUSE_MEISTER=1`)
 - An `/open-pr` skill that runs the full PR lifecycle — detect format/lint tools, commit, rebase, push, create PR, poll via `/loop`, merge
 
@@ -21,6 +21,7 @@ klause-workflow/
 ├── .mcp.json                       # MCP client config (stdio → klause-mcp-shim)
 ├── commands/
 │   ├── klause-define.md            # Backlog → Todo (KLA-97)
+│   ├── klause-execute.md           # Todo → In Progress + feature-dev (KLA-98)
 │   ├── klause-pull.md              # Inbox → Processing + branch (KLA-102)
 │   ├── klause-review.md            # placeholder → KLA-76
 │   └── klause-verify.md            # placeholder → KLA-77
