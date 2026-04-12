@@ -43,7 +43,19 @@ struct SidebarView: View {
                     )
                 }
             } header: {
-                Text("Worktrees")
+                HStack {
+                    Text("Worktrees")
+                    Spacer()
+                    Button {
+                        store.send(.worktree(.refreshWorktreeInfo))
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Refresh branches and stats")
+                }
             }
         }
         .listStyle(.sidebar)

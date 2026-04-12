@@ -190,6 +190,7 @@ struct WorktreeFeature {
         case prInfoLoaded([String: GitStats.PRSummary])
         case refreshGitStats
         case refreshPRInfo
+        case refreshWorktreeInfo
         case addRepoFolderSelected(URL)
         case repoAdded(TaskResult<RepositoryRecord>)
         case removeRepoTapped(repoId: String)
@@ -697,6 +698,24 @@ struct WorktreeFeature {
             case .refreshPRInfo:
                 return loadPRInfoEffect(
                     worktrees: Self.worktreeStatsInputs(from: state)
+                )
+
+            case .refreshWorktreeInfo:
+                let worktreePaths = state.worktrees.map {
+                    (id: $0.id, path: $0.gitWorktreePath)
+                }
+                let worktreeInfo = Self.worktreeStatsInputs(from: state)
+                return .merge(
+                    .run { [gitClient] send in
+                        var branches: [String: String] = [:]
+                        for worktree in worktreePaths where !worktree.path.isEmpty {
+                            if let branch = try? await gitClient.currentBranch(worktree.path) {
+                                branches[worktree.id] = branch
+                            }
+                        }
+                        await send(.branchesLoaded(branches))
+                    },
+                    loadLocalGitStatsEffect(worktrees: worktreeInfo)
                 )
 
             case let .createWorktreeTapped(repoId, name):
