@@ -1,6 +1,9 @@
 // Klausemeister/Dependencies/MeisterClient.swift
 import Dependencies
 import Foundation
+import OSLog
+
+private let meisterLog = Logger(subsystem: "com.klausemeister", category: "MeisterClient")
 
 /// Dependency client that spawns and tears down the meister Claude Code
 /// process for a worktree. The meister lives inside window 0 of the worktree's
@@ -46,13 +49,58 @@ extension MeisterClient {
             return candidates.first { FileManager.default.isExecutableFile(atPath: $0) } ?? "claude"
         }()
 
+        // Foreground processes we treat as "shell waiting at a prompt" —
+        // safe targets for send-keys-ing the claude command. Anything else
+        // (node, claude, vim, ssh, etc.) is assumed to be doing something
+        // meaningful and must not be interrupted.
+        let shellProcesses: Set = ["bash", "zsh", "fish", "sh", "dash", "ksh"]
+
         return MeisterClient(
             ensureRunning: { worktreeId, workingDirectory, sessionName in
-                // Short-circuit if the backing session already exists. This
-                // is the "reuse" branch — the meister inside that session is
-                // either already running or will reconnect to the socket on
-                // its own when the app relaunches.
-                if try await tmux.hasSession(sessionName) {
+                meisterLog.info("ensureRunning start wt=\(worktreeId, privacy: .public) session=\(sessionName, privacy: .public)")
+                let exists: Bool
+                do {
+                    exists = try await tmux.hasSession(sessionName)
+                } catch {
+                    meisterLog.error("hasSession threw: \(error.localizedDescription, privacy: .public)")
+                    throw error
+                }
+                meisterLog.info("hasSession=\(exists, privacy: .public) for \(sessionName, privacy: .public)")
+                if exists {
+                    // The session exists. This can be a fresh session we
+                    // just created earlier in this app run (meister already
+                    // launched), a stale session from a prior app run whose
+                    // claude has since exited back to a shell, or a session
+                    // whose claude is still running but bound to a dead MCP
+                    // socket from the previous app run.
+                    //
+                    // Probe window 0's foreground process. If it's a shell,
+                    // claude is not present — send-keys to (re)start it.
+                    // Otherwise leave the session alone; attaching will show
+                    // the user whatever's running, and the grace-period
+                    // fallback in WorktreeFeature will mark us .disconnected
+                    // if no hello arrives (e.g., a stale claude bound to a
+                    // dead socket).
+                    let currentCommand: String?
+                    do {
+                        currentCommand = try await tmux.firstWindowCommand(sessionName)
+                    } catch {
+                        meisterLog.error("firstWindowCommand threw: \(error.localizedDescription, privacy: .public)")
+                        throw error
+                    }
+                    meisterLog.info("firstWindowCommand=\(currentCommand ?? "<nil>", privacy: .public)")
+                    if let currentCommand, shellProcesses.contains(currentCommand) {
+                        meisterLog.info("respawning claude into shell foreground: \(claudeCommand, privacy: .public)")
+                        do {
+                            try await tmux.sendKeys(sessionName, claudeCommand)
+                            meisterLog.info("sendKeys succeeded")
+                        } catch {
+                            meisterLog.error("sendKeys threw: \(error.localizedDescription, privacy: .public)")
+                            throw error
+                        }
+                    } else {
+                        meisterLog.info("skipping respawn (non-shell foreground)")
+                    }
                     return
                 }
 
@@ -60,6 +108,7 @@ extension MeisterClient {
                     "KLAUSE_MEISTER": "1",
                     "KLAUSE_WORKTREE_ID": worktreeId
                 ]
+                meisterLog.info("creating new session \(sessionName, privacy: .public) at \(workingDirectory, privacy: .public)")
                 try await tmux.createSession(sessionName, workingDirectory, env)
 
                 // Target the session by name and let tmux route to the
@@ -68,7 +117,9 @@ extension MeisterClient {
                 // in user `.tmux.conf`) make window 0 non-existent — which
                 // would silently fail send-keys and leave the meister
                 // disconnected despite the session being up.
-                try await tmux.sendKeys("=\(sessionName)", claudeCommand)
+                meisterLog.info("spawning claude via sendKeys: \(claudeCommand, privacy: .public)")
+                try await tmux.sendKeys(sessionName, claudeCommand)
+                meisterLog.info("ensureRunning done (fresh spawn)")
             },
             teardown: { sessionName in
                 try await tmux.killSession(sessionName)
