@@ -127,6 +127,8 @@ struct WorktreeFeature {
         case deleteWorktreeTapped(worktreeId: String)
         case worktreeDeleted(worktreeId: String)
         case worktreeDeleteFailed(worktree: Worktree)
+        case removeWorktreeTapped(worktreeId: String)
+        case removeWorktreeConfirmed(worktreeId: String)
         case worktreeSelected(String?)
         case detailTabSelected(WorktreeDetailTab)
         case repoCollapseToggled(repoId: String)
@@ -181,6 +183,7 @@ struct WorktreeFeature {
         // swiftlint:disable:next nesting
         enum Alert: Equatable {
             case confirmDelete(worktreeId: String)
+            case confirmRemoveWorktree(worktreeId: String)
             case confirmRemoveRepo(repoId: String)
             case confirmRemoveRepoAndKillTmux(repoId: String)
         }
@@ -569,9 +572,6 @@ struct WorktreeFeature {
 
             case let .confirmDeleteTapped(worktreeId):
                 guard let worktree = state.worktrees[id: worktreeId] else { return .none }
-                if worktree.inbox.isEmpty {
-                    return .send(.deleteWorktreeTapped(worktreeId: worktreeId))
-                }
                 state.alert = AlertState {
                     TextState("Delete \(worktree.name)?")
                 } actions: {
@@ -582,12 +582,47 @@ struct WorktreeFeature {
                         TextState("Cancel")
                     }
                 } message: {
-                    TextState("\(worktree.inbox.count) issue(s) in inbox will be returned to Meister.")
+                    TextState("This will permanently remove the worktree from disk.")
                 }
                 return .none
 
+            case let .removeWorktreeTapped(worktreeId):
+                guard let worktree = state.worktrees[id: worktreeId] else { return .none }
+                state.alert = AlertState {
+                    TextState("Remove \(worktree.name)?")
+                } actions: {
+                    ButtonState(role: .destructive, action: .confirmRemoveWorktree(worktreeId: worktreeId)) {
+                        TextState("Remove")
+                    }
+                    ButtonState(role: .cancel) {
+                        TextState("Cancel")
+                    }
+                } message: {
+                    TextState("\"\(worktree.name)\" will be removed from Klausemeister. The worktree on disk is not affected.")
+                }
+                return .none
+
+            case let .removeWorktreeConfirmed(worktreeId):
+                guard state.worktrees[id: worktreeId] != nil else { return .none }
+                if state.selectedWorktreeId == worktreeId {
+                    state.selectedWorktreeId = nil
+                }
+                state.worktrees.remove(id: worktreeId)
+                return .merge(
+                    .cancel(id: CancelID.meisterSpawn(worktreeId)),
+                    .run { [surfaceManager, worktreeClient] _ in
+                        try await worktreeClient.deleteWorktree(worktreeId)
+                        await MainActor.run { surfaceManager.destroySurface(worktreeId) }
+                    } catch: { _, send in
+                        await send(.onAppear)
+                    }
+                )
+
             case let .alert(.presented(.confirmDelete(worktreeId))):
                 return .send(.deleteWorktreeTapped(worktreeId: worktreeId))
+
+            case let .alert(.presented(.confirmRemoveWorktree(worktreeId))):
+                return .send(.removeWorktreeConfirmed(worktreeId: worktreeId))
 
             case let .alert(.presented(.confirmRemoveRepo(repoId))):
                 return .send(.removeRepoConfirmed(repoId: repoId))
