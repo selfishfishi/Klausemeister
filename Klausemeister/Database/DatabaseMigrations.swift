@@ -115,5 +115,13 @@ enum DatabaseMigrations {
                 t.column("repoId", .text).notNull()
             }
         }
+
+        migrator.registerMigration("v10-command-palette-history") { db in
+            try db.create(table: "command_palette_history") { table in
+                table.column("commandRawValue", .text).primaryKey()
+                table.column("usedAt", .text).notNull()
+                table.column("useCount", .integer).notNull().defaults(to: 1)
+            }
+        }
     }
 }
