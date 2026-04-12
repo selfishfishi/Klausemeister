@@ -25,6 +25,8 @@ struct DatabaseClient {
     var updateTeamFilterVisibility: @Sendable (_ teamId: String, _ isHiddenFromBoard: Bool) async throws -> Void
     var fetchCommandHistory: @Sendable () async throws -> [AppCommand]
     var recordCommandUsed: @Sendable (_ command: AppCommand) async throws -> Void
+    var fetchHiddenProjects: @Sendable () async throws -> Set<String>
+    var setProjectHidden: @Sendable (_ projectName: String, _ isHidden: Bool) async throws -> Void
 }
 
 extension DatabaseClient: DependencyKey {
@@ -202,6 +204,22 @@ extension DatabaseClient: DependencyKey {
                         try record.insert(db)
                     }
                 }
+            },
+            fetchHiddenProjects: {
+                try await dbQueue.read { db in
+                    let records = try HiddenProjectRecord.fetchAll(db)
+                    return Set(records.map(\.projectName))
+                }
+            },
+            setProjectHidden: { projectName, isHidden in
+                try await dbQueue.write { db in
+                    if isHidden {
+                        try HiddenProjectRecord(projectName: projectName)
+                            .insert(db, onConflict: .ignore)
+                    } else {
+                        _ = try HiddenProjectRecord.deleteOne(db, key: projectName)
+                    }
+                }
             }
         )
     }()
@@ -228,7 +246,9 @@ extension DatabaseClient: DependencyKey {
         deleteTeam: unimplemented("DatabaseClient.deleteTeam"),
         updateTeamFilterVisibility: unimplemented("DatabaseClient.updateTeamFilterVisibility"),
         fetchCommandHistory: unimplemented("DatabaseClient.fetchCommandHistory"),
-        recordCommandUsed: unimplemented("DatabaseClient.recordCommandUsed")
+        recordCommandUsed: unimplemented("DatabaseClient.recordCommandUsed"),
+        fetchHiddenProjects: unimplemented("DatabaseClient.fetchHiddenProjects"),
+        setProjectHidden: unimplemented("DatabaseClient.setProjectHidden")
     )
 }
 

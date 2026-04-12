@@ -28,6 +28,18 @@ struct MeisterView: View {
                         }
                     )
                 }
+                if store.allProjectNames.count > 1 {
+                    ProjectFilterMenu(
+                        projectNames: store.allProjectNames,
+                        hiddenProjectNames: store.hiddenProjectNames,
+                        onToggle: { projectName in
+                            store.send(
+                                .projectFilterToggled(projectName: projectName),
+                                animation: .smooth(duration: 0.2)
+                            )
+                        }
+                    )
+                }
                 Button {
                     store.send(.stateMappingButtonTapped)
                 } label: {
@@ -228,5 +240,41 @@ private struct TeamFilterMenu: View {
         .fixedSize()
         .tint(Color(nsColor: .secondaryLabelColor))
         .help("Filter visible teams")
+    }
+}
+
+// MARK: - Project Filter Menu
+
+private struct ProjectFilterMenu: View {
+    let projectNames: [String]
+    let hiddenProjectNames: Set<String>
+    let onToggle: (String) -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(projectNames, id: \.self) { name in
+                Button {
+                    onToggle(name)
+                } label: {
+                    let displayName = name == LinearIssue.noProjectName ? "(No project)" : name
+                    let isVisible = !hiddenProjectNames.contains(name)
+                    if isVisible {
+                        Label(displayName, systemImage: "checkmark")
+                    } else {
+                        Text(displayName)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "folder.circle")
+                .symbolRenderingMode(.monochrome)
+                .font(.system(size: 44, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .tint(Color(nsColor: .secondaryLabelColor))
+        .help("Filter visible projects")
     }
 }

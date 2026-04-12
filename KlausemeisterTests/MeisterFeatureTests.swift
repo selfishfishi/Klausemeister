@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import ComposableArchitecture
 import Foundation
 import IdentifiedCollections
@@ -269,6 +270,57 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
     await store.send(.stageVisibilityToggled(.backlog)) {
         $0.hiddenStages = []
     }
+}
+
+@Test func `toggling project filter hides and reveals project`() async {
+    let store = TestStore(initialState: MeisterFeature.State()) {
+        MeisterFeature()
+    } withDependencies: {
+        $0.databaseClient.setProjectHidden = { _, _ in }
+    }
+
+    // Hide "Klausemeister"
+    await store.send(.projectFilterToggled(projectName: "Klausemeister")) {
+        $0.hiddenProjectNames = ["Klausemeister"]
+    }
+
+    // Toggle again → visible
+    await store.send(.projectFilterToggled(projectName: "Klausemeister")) {
+        $0.hiddenProjectNames = []
+    }
+}
+
+@Test func `visibleColumns excludes hidden projects`() {
+    let issueWithProject = LinearIssue(
+        id: "i1", identifier: "KLA-1", title: "Has project",
+        status: "Todo", statusId: "s1", statusType: "unstarted",
+        teamId: "t1", projectName: "Alpha", labels: [],
+        description: nil, url: "", updatedAt: "", isOrphaned: false
+    )
+    let issueNoProject = LinearIssue(
+        id: "i2", identifier: "KLA-2", title: "No project",
+        status: "Todo", statusId: "s2", statusType: "unstarted",
+        teamId: "t1", projectName: nil, labels: [],
+        description: nil, url: "", updatedAt: "", isOrphaned: false
+    )
+
+    var state = MeisterFeature.State()
+    state.columns = MeisterFeature.rebuildColumns(from: [issueWithProject, issueNoProject])
+
+    // Both visible by default
+    let todoColumn = state.visibleColumns[id: .todo]
+    #expect(todoColumn?.issues.count == 2)
+
+    // Hide "Alpha" → only no-project issue remains
+    state.hiddenProjectNames = ["Alpha"]
+    let filtered = state.visibleColumns[id: .todo]
+    #expect(filtered?.issues.count == 1)
+    #expect(filtered?.issues.first?.id == "i2")
+
+    // Hide no-project issues too
+    state.hiddenProjectNames = ["Alpha", LinearIssue.noProjectName]
+    let allHidden = state.visibleColumns[id: .todo]
+    #expect(allHidden?.issues.count == 0)
 }
 
 // MARK: - Remove Tests
