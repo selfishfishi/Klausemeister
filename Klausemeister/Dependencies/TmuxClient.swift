@@ -12,6 +12,13 @@ struct TmuxClient {
     var hasSession: @Sendable (_ name: String) async throws -> Bool
     var killSession: @Sendable (_ name: String) async throws -> Void
     var listSessions: @Sendable () async throws -> [String]
+    /// Foreground command of the first pane in the session's current window
+    /// (typically `zsh`, `bash`, `node`, `claude`, etc.). Returns nil if the
+    /// session does not exist or tmux returns no panes. Used to decide
+    /// whether a respawn is safe: if the window is sitting at a shell
+    /// prompt, `claude` never started or already exited and we can safely
+    /// send-keys to restart it; if anything else is there, leave it alone.
+    var firstWindowCommand: @Sendable (_ sessionName: String) async throws -> String?
     /// Absolute path to the tmux binary probed at client construction, or
     /// nil if no known install location exists. Callers that hand tmux
     /// invocations to a PATH-stripped process (e.g. libghostty's
@@ -134,6 +141,22 @@ extension TmuxClient: DependencyKey {
                     return []
                 }
             },
+            firstWindowCommand: { name in
+                // Target the session by name (no `=` prefix — exact-match
+                // prefixes only work for session-level commands, not pane-
+                // targeting ones like `list-panes`) so tmux resolves to
+                // whatever its current/first window is. Avoids pinning to
+                // `:0` which breaks on `.tmux.conf` `base-index 1`.
+                do {
+                    let output = try shell([
+                        "list-panes", "-t", name,
+                        "-F", "#{pane_current_command}"
+                    ])
+                    return output.split(separator: "\n").first.map(String.init)
+                } catch TmuxClientError.commandFailed {
+                    return nil
+                }
+            },
             resolvedTmuxPath: { tmuxPath }
         )
     }()
@@ -144,6 +167,7 @@ extension TmuxClient: DependencyKey {
         hasSession: unimplemented("TmuxClient.hasSession"),
         killSession: unimplemented("TmuxClient.killSession"),
         listSessions: unimplemented("TmuxClient.listSessions"),
+        firstWindowCommand: unimplemented("TmuxClient.firstWindowCommand", placeholder: nil),
         resolvedTmuxPath: unimplemented("TmuxClient.resolvedTmuxPath", placeholder: nil)
     )
 }

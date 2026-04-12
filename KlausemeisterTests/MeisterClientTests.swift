@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import Klausemeister
 
-@Test func `ensureRunning short-circuits when session already exists`() async throws {
+@Test func `ensureRunning skips respawn when session exists with non-shell foreground`() async throws {
     let hasSessionCalls = LockIsolated<[String]>([])
     let createCalls = LockIsolated<Int>(0)
     let sendKeysCalls = LockIsolated<Int>(0)
@@ -21,6 +21,7 @@ import Testing
         },
         killSession: { _ in },
         listSessions: { [] },
+        firstWindowCommand: { _ in "node" },
         resolvedTmuxPath: { "/opt/homebrew/bin/tmux" }
     )
     let client = MeisterClient.live(tmux: tmux)
@@ -29,6 +30,33 @@ import Testing
     #expect(hasSessionCalls.value == ["klause-example"])
     #expect(createCalls.value == 0)
     #expect(sendKeysCalls.value == 0)
+}
+
+@Test func `ensureRunning respawns claude when session exists with shell foreground`() async throws {
+    let createCalls = LockIsolated<Int>(0)
+    let sendKeysTarget = LockIsolated<String?>(nil)
+    let sendKeysBody = LockIsolated<String?>(nil)
+
+    let tmux = TmuxClient(
+        createSession: { _, _, _ in
+            createCalls.withValue { $0 += 1 }
+        },
+        sendKeys: { target, keys in
+            sendKeysTarget.setValue(target)
+            sendKeysBody.setValue(keys)
+        },
+        hasSession: { _ in true },
+        killSession: { _ in },
+        listSessions: { [] },
+        firstWindowCommand: { _ in "zsh" },
+        resolvedTmuxPath: { "/opt/homebrew/bin/tmux" }
+    )
+    let client = MeisterClient.live(tmux: tmux)
+    try await client.ensureRunning("wt-1", "/tmp/worktree", "klause-example")
+
+    #expect(createCalls.value == 0)
+    #expect(sendKeysTarget.value == "=klause-example")
+    #expect(sendKeysBody.value?.hasSuffix("claude") == true)
 }
 
 @Test func `ensureRunning creates session with env vars when missing`() async throws {
@@ -49,6 +77,7 @@ import Testing
         hasSession: { _ in false },
         killSession: { _ in },
         listSessions: { [] },
+        firstWindowCommand: { _ in nil },
         resolvedTmuxPath: { "/opt/homebrew/bin/tmux" }
     )
     let client = MeisterClient.live(tmux: tmux)
@@ -73,6 +102,7 @@ import Testing
         hasSession: { _ in false },
         killSession: { name in killed.setValue(name) },
         listSessions: { [] },
+        firstWindowCommand: { _ in nil },
         resolvedTmuxPath: { "/opt/homebrew/bin/tmux" }
     )
     let client = MeisterClient.live(tmux: tmux)
