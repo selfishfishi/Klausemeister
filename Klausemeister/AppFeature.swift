@@ -205,6 +205,20 @@ struct AppFeature {
                         .send(.worktree(.meisterConnectionClosed(worktreeId: worktreeId))),
                         debugEffect
                     )
+                case let .itemMovedToProcessing(worktreeId, issueLinearId):
+                    return .merge(
+                        .send(.worktree(.mcpItemMovedToProcessing(
+                            worktreeId: worktreeId, issueLinearId: issueLinearId
+                        ))),
+                        debugEffect
+                    )
+                case let .itemMovedToOutbox(worktreeId, issueLinearId):
+                    return .merge(
+                        .send(.worktree(.mcpItemMovedToOutbox(
+                            worktreeId: worktreeId, issueLinearId: issueLinearId
+                        ))),
+                        debugEffect
+                    )
                 }
             }
         }

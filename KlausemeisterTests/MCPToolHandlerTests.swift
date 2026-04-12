@@ -106,6 +106,7 @@ private let processingItem = WorktreeQueueItemRecord(
 @Test func `getNextItem claims inbox item and updates Linear status`() async throws {
     var movedToProcessing: (issueId: String, worktreeId: String)?
     var linearUpdate: (issueId: String, statusId: String)?
+    let (stream, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
 
     let result = try await withDependencies {
         $0.worktreeClient.fetchQueueItems = { wid in
@@ -124,8 +125,12 @@ private let processingItem = WorktreeQueueItemRecord(
             linearUpdate = (issueId, stateId)
         }
     } operation: {
-        try await ToolHandlers.getNextItem(worktreeId: worktreeId)
+        try await ToolHandlers.getNextItem(
+            worktreeId: worktreeId,
+            eventContinuation: continuation
+        )
     }
+    continuation.finish()
 
     #expect(!result.isError)
     #expect(movedToProcessing?.issueId == issueRecord.linearId)
@@ -133,13 +138,25 @@ private let processingItem = WorktreeQueueItemRecord(
     #expect(linearUpdate?.issueId == issueRecord.linearId)
     #expect(linearUpdate?.statusId == inProgressState.id)
     #expect(result.text.contains("\"identifier\":\"KLA-70\""))
+
+    var events: [MCPServerEvent] = []
+    for await event in stream {
+        events.append(event)
+    }
+    #expect(events.contains(.itemMovedToProcessing(
+        worktreeId: worktreeId, issueLinearId: issueRecord.linearId
+    )))
 }
 
 @Test func `getNextItem returns null item when inbox is empty`() async throws {
+    let (_, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
     let result = try await withDependencies {
         $0.worktreeClient.fetchQueueItems = { _ in [processingItem] }
     } operation: {
-        try await ToolHandlers.getNextItem(worktreeId: worktreeId)
+        try await ToolHandlers.getNextItem(
+            worktreeId: worktreeId,
+            eventContinuation: continuation
+        )
     }
 
     #expect(!result.isError)
@@ -147,11 +164,15 @@ private let processingItem = WorktreeQueueItemRecord(
 }
 
 @Test func `getNextItem reports failure when imported issue is missing`() async throws {
+    let (_, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
     let result = try await withDependencies {
         $0.worktreeClient.fetchQueueItems = { _ in [inboxItem] }
         $0.databaseClient.fetchImportedIssue = { _ in nil }
     } operation: {
-        try await ToolHandlers.getNextItem(worktreeId: worktreeId)
+        try await ToolHandlers.getNextItem(
+            worktreeId: worktreeId,
+            eventContinuation: continuation
+        )
     }
 
     #expect(result.isError)
@@ -163,6 +184,7 @@ private let processingItem = WorktreeQueueItemRecord(
 @Test func `completeItem moves to outbox and updates Linear by name`() async throws {
     var movedToOutbox: (issueId: String, worktreeId: String)?
     var linearUpdate: (issueId: String, statusId: String)?
+    let (stream, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
 
     let result = try await withDependencies {
         $0.databaseClient.fetchImportedIssue = { _ in issueRecord }
@@ -177,17 +199,28 @@ private let processingItem = WorktreeQueueItemRecord(
         try await ToolHandlers.completeItem(
             issueLinearId: issueRecord.linearId,
             worktreeId: worktreeId,
-            nextLinearState: "Done"
+            nextLinearState: "Done",
+            eventContinuation: continuation
         )
     }
+    continuation.finish()
 
     #expect(!result.isError)
     #expect(movedToOutbox?.issueId == issueRecord.linearId)
     #expect(movedToOutbox?.worktreeId == worktreeId)
     #expect(linearUpdate?.statusId == doneState.id)
+
+    var events: [MCPServerEvent] = []
+    for await event in stream {
+        events.append(event)
+    }
+    #expect(events.contains(.itemMovedToOutbox(
+        worktreeId: worktreeId, issueLinearId: issueRecord.linearId
+    )))
 }
 
 @Test func `completeItem fails when state name does not exist`() async throws {
+    let (_, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
     let result = try await withDependencies {
         $0.databaseClient.fetchImportedIssue = { _ in issueRecord }
         $0.databaseClient.fetchWorkflowStates = { [inProgressState] }
@@ -195,7 +228,8 @@ private let processingItem = WorktreeQueueItemRecord(
         try await ToolHandlers.completeItem(
             issueLinearId: issueRecord.linearId,
             worktreeId: worktreeId,
-            nextLinearState: "Nonexistent"
+            nextLinearState: "Nonexistent",
+            eventContinuation: continuation
         )
     }
 

@@ -389,7 +389,10 @@ extension MCPSocketListener {
             let result: ToolResult
             switch name {
             case "getNextItem":
-                result = try await ToolHandlers.getNextItem(worktreeId: worktreeId)
+                result = try await ToolHandlers.getNextItem(
+                    worktreeId: worktreeId,
+                    eventContinuation: eventContinuation
+                )
             case "completeItem":
                 guard let issueLinearId = arguments?["issueLinearId"]?.stringValue,
                       let nextLinearState = arguments?["nextLinearState"]?.stringValue
@@ -399,7 +402,8 @@ extension MCPSocketListener {
                 result = try await ToolHandlers.completeItem(
                     issueLinearId: issueLinearId,
                     worktreeId: worktreeId,
-                    nextLinearState: nextLinearState
+                    nextLinearState: nextLinearState,
+                    eventContinuation: eventContinuation
                 )
             case "reportProgress":
                 guard let issueLinearId = arguments?["issueLinearId"]?.stringValue,
@@ -423,7 +427,8 @@ extension MCPSocketListener {
                 }
                 result = try await ToolHandlers.transition(
                     commandName: command,
-                    worktreeId: worktreeId
+                    worktreeId: worktreeId,
+                    eventContinuation: eventContinuation
                 )
             default:
                 return errorResult("Unknown tool: \(name)")
