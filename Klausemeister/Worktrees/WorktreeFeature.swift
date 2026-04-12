@@ -1147,9 +1147,8 @@ struct WorktreeFeature {
 
             case let .worktreeRowMoved(movedId, targetId):
                 guard movedId != targetId,
-                      let moved = state.worktrees[id: movedId],
-                      let target = state.worktrees[id: targetId],
-                      moved.repoId == target.repoId
+                      state.worktrees[id: movedId] != nil,
+                      state.worktrees[id: targetId] != nil
                 else { return .none }
                 var orderedIds = state.worktrees.map(\.id)
                 orderedIds.removeAll { $0 == movedId }

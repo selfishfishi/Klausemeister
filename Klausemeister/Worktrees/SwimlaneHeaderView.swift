@@ -29,6 +29,7 @@ struct SwimlaneHeaderView: View {
         }
         .padding(10)
         .frame(minWidth: 140, idealWidth: 160, alignment: .topLeading)
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder
