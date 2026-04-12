@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "klausemeister",
+  "description": "Klausemeister workflow plugins",
+  "owner": {
+    "name": "Ali Fathalian"
+  },
+  "plugins": [
+    {
+      "name": "klause-workflow",
+      "description": "Meister-loop workflow plugin for Klausemeister sessions. Provides the MCP bridge between the meister Claude Code and the Klausemeister app.",
+      "source": "./klause-workflow",
+      "category": "development"
+    }
+  ]
+}
