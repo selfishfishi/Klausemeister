@@ -186,6 +186,15 @@ struct SidebarLinearStatusView: View {
                 }
                 Spacer()
                 Button {
+                    store.send(.teamSettingsButtonTapped)
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Manage teams")
+                Button {
                     store.send(.linearAuth(.logoutButtonTapped))
                 } label: {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -199,5 +208,19 @@ struct SidebarLinearStatusView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
         .task { store.send(.linearAuth(.onAppear)) }
+        .sheet(
+            isPresented: Binding(
+                get: { store.teamSettings != nil },
+                set: { newValue in
+                    if !newValue { store.send(.teamSettingsDismissed) }
+                }
+            )
+        ) {
+            if let settingsStore = store.scope(
+                state: \.teamSettings, action: \.teamSettings
+            ) {
+                TeamSettingsView(store: settingsStore)
+            }
+        }
     }
 }

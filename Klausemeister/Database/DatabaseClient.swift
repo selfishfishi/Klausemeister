@@ -20,6 +20,8 @@ struct DatabaseClient {
     var fetchTeams: @Sendable () async throws -> [LinearTeamRecord]
     var saveTeams: @Sendable (_ records: [LinearTeamRecord]) async throws -> Void
     var deleteAllTeams: @Sendable () async throws -> Void
+    var deleteIssuesByTeam: @Sendable (_ teamId: String) async throws -> Void
+    var deleteTeam: @Sendable (_ teamId: String) async throws -> Void
     var updateTeamFilterVisibility: @Sendable (_ teamId: String, _ isHiddenFromBoard: Bool) async throws -> Void
 }
 
@@ -142,6 +144,19 @@ extension DatabaseClient: DependencyKey {
                     try db.execute(sql: "DELETE FROM linear_teams")
                 }
             },
+            deleteIssuesByTeam: { teamId in
+                try await dbQueue.write { db in
+                    try db.execute(
+                        sql: "DELETE FROM imported_issues WHERE teamId = ?",
+                        arguments: [teamId]
+                    )
+                }
+            },
+            deleteTeam: { teamId in
+                try await dbQueue.write { db in
+                    _ = try LinearTeamRecord.deleteOne(db, key: teamId)
+                }
+            },
             updateTeamFilterVisibility: { teamId, isHiddenFromBoard in
                 try await dbQueue.write { db in
                     if var record = try LinearTeamRecord.fetchOne(db, key: teamId) {
@@ -171,6 +186,8 @@ extension DatabaseClient: DependencyKey {
         fetchTeams: unimplemented("DatabaseClient.fetchTeams"),
         saveTeams: unimplemented("DatabaseClient.saveTeams"),
         deleteAllTeams: unimplemented("DatabaseClient.deleteAllTeams"),
+        deleteIssuesByTeam: unimplemented("DatabaseClient.deleteIssuesByTeam"),
+        deleteTeam: unimplemented("DatabaseClient.deleteTeam"),
         updateTeamFilterVisibility: unimplemented("DatabaseClient.updateTeamFilterVisibility")
     )
 }

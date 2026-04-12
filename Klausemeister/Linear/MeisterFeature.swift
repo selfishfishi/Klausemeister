@@ -376,6 +376,15 @@ struct MeisterFeature {
                 return .send(.delegate(.issueReturnedFromWorktreeByDrop(issueId: issue.id)))
 
             case let .teamsConfirmed(teams):
+                // Clear issues from teams that are no longer enabled
+                let newEnabledIds = Set(teams.filter(\.isEnabled).map(\.id))
+                let previousEnabledIds = Set(state.teams.filter(\.isEnabled).map(\.id))
+                let removedTeamIds = previousEnabledIds.subtracting(newEnabledIds)
+                if !removedTeamIds.isEmpty {
+                    for index in state.columns.indices {
+                        state.columns[index].issues.removeAll { removedTeamIds.contains($0.teamId) }
+                    }
+                }
                 state.teams = teams
                 state.syncStatus = .syncing
                 let shouldFetchStates = MeisterFeature.shouldFetchWorkflowStates(
