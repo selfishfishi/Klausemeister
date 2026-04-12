@@ -1,27 +1,40 @@
 ---
-description: Placeholder — review a PR for an In Review ticket (KLA-76)
+description: Optional code review — prompts before transitioning to In Review
 argument-hint: [linear-ticket-id]
 ---
 
-# /klause-review — placeholder
+# /klause-review
 
-**Status:** stub. The real design lives in [KLA-76](https://linear.app/selfishfish/issue/KLA-76).
+Optionally review the current work before opening a PR. This is a manual-only command — `/klause:next` skips it and goes straight to `/klause:open-pr`.
 
-## Planned contract
+## Precondition
 
-**Invoked when:** the meister loop pulls a queue item whose linked Linear ticket is in `In Review`.
+The ticket must be in **In Progress** kanban state AND the worktree must be in **Processing**.
 
-**Input:** the queue item (Linear ticket reference + PR URL if available).
+Check by calling `getProductState`:
+- If `state.kanban` is not `"inProgress"` — refuse and explain which state the ticket is in.
+- If `state.queue` is not `"processing"` — refuse.
 
-**Output:** a PR review — comments, approvals, or change requests — plus a Linear state transition to `Testing` or `Done` depending on what's found.
+## Behavior
 
-**Behavior (high level):**
+1. **Ask the user.** Prompt: "Do you want to run a code review before opening a PR?" Wait for confirmation.
 
-- May wrap `pr-review-toolkit:code-reviewer` or do an in-house review
-- Reads the diff, checks against the spec, looks for bugs and convention violations
-- Posts the review on the PR
-- When done, calls `completeItem(itemId, <next-state>)`
+2. **If the user says no:** do nothing. Tell them they can proceed with `/klause:open-pr` directly.
 
-## What to do if invoked today
+3. **If the user says yes:**
 
-This command is not implemented yet. If the meister loop reaches an In Review item, explain the situation to the user and wait for direction. The real prompt will be added under KLA-76.
+   a. **Transition to In Review.** Call `transition(command: "review")`. This validates the state machine and updates the Linear issue status.
+
+   b. **Report progress.** Call `reportProgress(issueLinearId, "klause-review — reviewing branch diff")`.
+
+   c. **Run the review.** Invoke `/pr-review-toolkit:review-pr` to review the diff between the current branch and main. If the skill is not available, perform the review directly:
+      - Read the diff (`git diff main...HEAD`)
+      - Check for bugs, logic errors, convention violations
+      - Report findings to the user
+
+   d. **Report completion.** Summarize the review findings. The ticket stays in **In Review** — the user makes any fixes manually, then proceeds to `/klause:open-pr`.
+
+## Error handling
+
+- If `transition("review")` fails — report the error message (includes valid commands for the current state).
+- If `/pr-review-toolkit:review-pr` is not available — fall back to a direct diff review.

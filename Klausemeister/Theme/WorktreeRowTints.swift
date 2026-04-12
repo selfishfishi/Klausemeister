@@ -17,4 +17,10 @@ extension ThemeColors {
             return Color(hexString: hex)
         }
     }
+
+    func teamTint(colorIndex: Int) -> Color {
+        let tints = swimlaneRowTints
+        guard !tints.isEmpty else { return accentColor }
+        return tints[colorIndex % tints.count]
+    }
 }

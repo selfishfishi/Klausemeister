@@ -8,6 +8,7 @@ struct KanbanColumnView: View {
     let worktrees: [Worktree]
     let repositories: [Repository]
     var assignedWorktreeNames: [String: String] = [:]
+    var teams: [LinearTeam] = []
     let onMoveToStatus: (_ issueId: String, _ target: MeisterState) -> Void
     let onAssignToWorktree: (_ issue: LinearIssue, _ worktreeId: String) -> Void
     let onRemove: (_ issueId: String) -> Void
@@ -17,6 +18,14 @@ struct KanbanColumnView: View {
 
     private var tint: Color {
         column.id.tint
+    }
+
+    private var showTeamBadges: Bool {
+        teams.count > 1
+    }
+
+    private var teamsByID: [String: LinearTeam] {
+        Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0) })
     }
 
     var body: some View {
@@ -87,12 +96,15 @@ struct KanbanColumnView: View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 10) {
                 ForEach(column.issues, id: \.id) { issue in
+                    let team = showTeamBadges ? teamsByID[issue.teamId] : nil
                     KanbanIssueCardView(
                         issue: issue,
                         tint: tint,
                         worktrees: worktrees,
                         repositories: repositories,
                         worktreeName: assignedWorktreeNames[issue.id],
+                        teamKey: team?.key,
+                        teamTint: team.map { themeColors.teamTint(colorIndex: $0.colorIndex) },
                         onMoveToStatus: onMoveToStatus,
                         onAssignToWorktree: onAssignToWorktree,
                         onRemove: onRemove

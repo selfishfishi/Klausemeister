@@ -12,6 +12,7 @@ struct AppFeature {
         var linearAuth = LinearAuthFeature.State()
         var statusBar = StatusBarFeature.State()
         var debugPanel = DebugPanelFeature.State()
+        var teamSettings: TeamSettingsFeature.State?
     }
 
     enum Action {
@@ -25,6 +26,9 @@ struct AppFeature {
         case linearAuth(LinearAuthFeature.Action)
         case statusBar(StatusBarFeature.Action)
         case debugPanel(DebugPanelFeature.Action)
+        case teamSettingsButtonTapped
+        case teamSettingsDismissed
+        case teamSettings(TeamSettingsFeature.Action)
         case mcpServerEvent(MCPServerEvent)
     }
 
@@ -52,6 +56,9 @@ struct AppFeature {
         }
         Scope(state: \.debugPanel, action: \.debugPanel) {
             DebugPanelFeature()
+        }
+        .ifLet(\.teamSettings, action: \.teamSettings) {
+            TeamSettingsFeature()
         }
         Reduce { state, action in
             switch action {
@@ -137,10 +144,36 @@ struct AppFeature {
                     oauthClient.handleCallback(url)
                 }
 
+            case let .linearAuth(.delegate(.teamsConfirmed(teams))):
+                state.linearAuth.status = .authenticated
+                return .send(.meister(.teamsConfirmed(teams)))
+
             case let .linearAuth(.delegate(.errorOccurred(message))):
                 return .send(.statusBar(.errorReported(source: .linearAuth, message: message)))
 
             case .linearAuth:
+                return .none
+
+            case .teamSettingsButtonTapped:
+                state.teamSettings = TeamSettingsFeature.State()
+                return .none
+
+            case .teamSettingsDismissed:
+                state.teamSettings = nil
+                return .none
+
+            case let .teamSettings(.delegate(.teamsUpdated(teams))):
+                state.teamSettings = nil
+                return .merge(
+                    .send(.meister(.teamsConfirmed(teams))),
+                    .send(.worktree(.onAppear))
+                )
+
+            case .teamSettings(.delegate(.dismissed)):
+                state.teamSettings = nil
+                return .none
+
+            case .teamSettings:
                 return .none
 
             case .statusBar:

@@ -4,9 +4,18 @@ import SwiftUI
 
 struct WorktreeSwimlaneView: View {
     @Bindable var store: StoreOf<WorktreeFeature>
+    var teams: [LinearTeam] = []
 
     @Environment(\.themeColors) private var themeColors
     @State private var isPanelVisible = false
+
+    private var showTeamBadges: Bool {
+        teams.count > 1
+    }
+
+    private var teamsByID: [String: LinearTeam] {
+        Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0) })
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -165,6 +174,7 @@ struct WorktreeSwimlaneView: View {
 
     private func swimlaneRow(worktree: Worktree, tints: [Color]) -> some View {
         let rowTint = rowTint(for: worktree, palette: tints)
+        let cachedTeamsByID = teamsByID
         return SwimlaneRowView(
             worktree: worktree,
             tint: rowTint,
@@ -174,6 +184,11 @@ struct WorktreeSwimlaneView: View {
             onRemove: {
                 store.send(.removeWorktreeTapped(worktreeId: worktree.id))
             },
+            teamFor: showTeamBadges ? { issueId in
+                let allIssues = worktree.inbox + [worktree.processing].compactMap(\.self) + worktree.outbox
+                guard let issue = allIssues.first(where: { $0.id == issueId }) else { return nil }
+                return cachedTeamsByID[issue.teamId]
+            } : nil,
             onMarkComplete: {
                 store.send(.markAsCompleteTapped(worktreeId: worktree.id))
             },

@@ -5,18 +5,32 @@ import SwiftUI
 struct WorktreeDetailView: View {
     @Bindable var store: StoreOf<WorktreeFeature>
     let surfaceStore: SurfaceStore
+    var teams: [LinearTeam] = []
 
     @Environment(\.themeColors) private var themeColors
+
+    private var showTeamBadges: Bool {
+        teams.count > 1
+    }
+
+    private var teamsByID: [String: LinearTeam] {
+        Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0) })
+    }
 
     var body: some View {
         Group {
             if let worktreeId = store.selectedWorktreeId,
                let worktree = store.worktrees[id: worktreeId]
             {
+                let cachedTeamsByID = teamsByID
                 WorktreeDetailPaneView(
                     worktree: worktree,
-                    activeTab: store.activeDetailTab,
+                    showBoardOverlay: store.showBoardOverlay,
                     surfaceView: surfaceStore.surface(for: worktreeId),
+                    teamFor: showTeamBadges ? { issue in
+                        guard let team = cachedTeamsByID[issue.teamId] else { return nil }
+                        return (key: team.key, tint: themeColors.teamTint(colorIndex: team.colorIndex))
+                    } : nil,
                     onMarkComplete: {
                         store.send(.markAsCompleteTapped(worktreeId: worktreeId))
                     },
@@ -33,24 +47,16 @@ struct WorktreeDetailView: View {
                 )
             }
         }
-        .background {
-            Color(hexString: themeColors.background)
-                .ignoresSafeArea()
-        }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Picker("", selection: Binding(
-                    get: { store.activeDetailTab },
-                    set: { store.send(.detailTabSelected($0)) }
-                )) {
-                    Image(systemName: "list.bullet.rectangle")
-                        .tag(WorktreeDetailTab.queue)
-                    Image(systemName: "terminal")
-                        .tag(WorktreeDetailTab.terminal)
+                Button {
+                    store.send(.boardOverlayToggled)
+                } label: {
+                    Image(systemName: store.showBoardOverlay
+                        ? "terminal"
+                        : "list.bullet.rectangle")
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 120)
+                .help(store.showBoardOverlay ? "Hide Board" : "Show Board")
             }
         }
         .tint(themeColors.accentColor)
@@ -63,6 +69,7 @@ struct WorktreeQueueColumn: View {
     let icon: String
     let issues: [LinearIssue]
     let emptyText: String
+    var teamFor: ((_ issue: LinearIssue) -> (key: String, tint: Color)?)?
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
 
@@ -92,8 +99,11 @@ struct WorktreeQueueColumn: View {
                 ScrollView {
                     LazyVStack(spacing: 6) {
                         ForEach(issues, id: \.id) { issue in
+                            let teamInfo = teamFor?(issue)
                             WorktreeIssueRow(
                                 issue: issue,
+                                teamKey: teamInfo?.key,
+                                teamTint: teamInfo?.tint,
                                 onMarkComplete: issue.id == issues.first?.id ? onMarkComplete : nil,
                                 onReturnToMeister: onReturnToMeister.map { callback in
                                     { callback(issue.id) }
@@ -112,12 +122,22 @@ struct WorktreeQueueColumn: View {
 
 struct WorktreeIssueRow: View {
     let issue: LinearIssue
+    var teamKey: String?
+    var teamTint: Color?
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
+                if let teamKey, let teamTint {
+                    Text(teamKey)
+                        .font(.system(.caption2, design: .monospaced).weight(.bold))
+                        .foregroundStyle(teamTint)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(teamTint.opacity(0.15), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+                }
                 Text(issue.identifier)
                     .font(.caption)
                     .foregroundStyle(.secondary)

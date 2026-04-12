@@ -56,14 +56,18 @@ struct LinearConnectView: View {
 
     // MARK: - Button
 
+    private var isLoading: Bool {
+        status == .authenticating || status == .fetchingTeams
+    }
+
     private var connectButton: some View {
         Button(action: onConnect) {
             HStack(spacing: 8) {
-                if status == .authenticating {
+                if isLoading {
                     ProgressView()
                         .controlSize(.small)
                         .tint(Color(hexString: themeColors.background))
-                    Text("Connecting...")
+                    Text(status == .fetchingTeams ? "Loading teams..." : "Connecting...")
                         .font(.body.weight(.semibold))
                 } else {
                     Text("Connect to Linear")
@@ -77,6 +81,6 @@ struct LinearConnectView: View {
             .shadow(color: themeColors.accentColor.opacity(0.3 * themeColors.glowIntensity), radius: 12)
         }
         .buttonStyle(.plain)
-        .disabled(status == .authenticating)
+        .disabled(isLoading)
     }
 }

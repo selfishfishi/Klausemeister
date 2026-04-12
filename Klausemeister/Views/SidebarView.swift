@@ -87,6 +87,9 @@ struct SidebarWorktreeRow: View {
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
+                    if let stats = worktree.gitStats, !stats.isEmpty {
+                        GitStatsLineView(stats: stats)
+                    }
                 }
                 Spacer()
                 if worktree.totalIssueCount > 0 {
@@ -156,13 +159,21 @@ struct SidebarLinearStatusView: View {
                 }
                 .buttonStyle(.plain)
 
-            case .authenticating:
+            case .authenticating, .fetchingTeams:
                 ProgressView()
                     .controlSize(.mini)
                     .tint(themeColors.accentColor)
-                Text("Connecting...")
+                Text(authState.status == .fetchingTeams ? "Loading teams..." : "Connecting...")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
+
+            case .teamSelection:
+                Circle()
+                    .fill(themeColors.accentColor.opacity(0.6))
+                    .frame(width: 6, height: 6)
+                Text("Select teams...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
             case .authenticated:
                 Circle()
@@ -175,6 +186,15 @@ struct SidebarLinearStatusView: View {
                         .lineLimit(1)
                 }
                 Spacer()
+                Button {
+                    store.send(.teamSettingsButtonTapped)
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Manage teams")
                 Button {
                     store.send(.linearAuth(.logoutButtonTapped))
                 } label: {
@@ -189,5 +209,19 @@ struct SidebarLinearStatusView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
         .task { store.send(.linearAuth(.onAppear)) }
+        .sheet(
+            isPresented: Binding(
+                get: { store.teamSettings != nil },
+                set: { newValue in
+                    if !newValue { store.send(.teamSettingsDismissed) }
+                }
+            )
+        ) {
+            if let settingsStore = store.scope(
+                state: \.teamSettings, action: \.teamSettings
+            ) {
+                TeamSettingsView(store: settingsStore)
+            }
+        }
     }
 }

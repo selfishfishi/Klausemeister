@@ -11,6 +11,8 @@ struct IssueCardView: View {
     let issue: LinearIssue
     var tint: Color?
     var worktreeName: String?
+    var teamKey: String?
+    var teamTint: Color?
 
     @Environment(\.themeColors) private var themeColors
 
@@ -21,6 +23,9 @@ struct IssueCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
+                if let teamKey, let teamTint {
+                    teamBadge(key: teamKey, color: teamTint)
+                }
                 Text(issue.identifier)
                     .font(.system(.footnote, design: .monospaced).weight(.semibold))
                     .foregroundStyle(resolvedTint)
@@ -62,6 +67,15 @@ struct IssueCardView: View {
 
     // MARK: - Pieces
 
+    private func teamBadge(key: String, color: Color) -> some View {
+        Text(key)
+            .font(.system(.caption2, design: .monospaced).weight(.bold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+    }
+
     private var cardBackground: some View {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
             .fill(.ultraThinMaterial)
@@ -100,6 +114,8 @@ struct KanbanIssueCardView: View {
     let worktrees: [Worktree]
     let repositories: [Repository]
     var worktreeName: String?
+    var teamKey: String?
+    var teamTint: Color?
     let onMoveToStatus: (_ issueId: String, _ target: MeisterState) -> Void
     let onAssignToWorktree: (_ issue: LinearIssue, _ worktreeId: String) -> Void
     let onRemove: (_ issueId: String) -> Void
@@ -112,43 +128,49 @@ struct KanbanIssueCardView: View {
     }
 
     var body: some View {
-        IssueCardView(issue: issue, tint: tint, worktreeName: worktreeName)
-            .draggable(issue.id)
-            .contextMenu {
-                Menu("Move to...") {
-                    ForEach(movableStates) { state in
-                        Button {
-                            onMoveToStatus(issue.id, state)
-                        } label: {
-                            Label(state.displayName, systemImage: "arrow.right.circle")
-                        }
+        IssueCardView(
+            issue: issue,
+            tint: tint,
+            worktreeName: worktreeName,
+            teamKey: teamKey,
+            teamTint: teamTint
+        )
+        .draggable(issue.id)
+        .contextMenu {
+            Menu("Move to...") {
+                ForEach(movableStates) { state in
+                    Button {
+                        onMoveToStatus(issue.id, state)
+                    } label: {
+                        Label(state.displayName, systemImage: "arrow.right.circle")
                     }
                 }
-                if !worktrees.isEmpty {
-                    Menu("Move to Worktree") {
-                        let grouped = repositories.filter { repo in
-                            worktrees.contains { $0.repoId == repo.id }
-                        }
-                        ForEach(grouped) { repo in
-                            Section(repo.name) {
-                                ForEach(worktrees.filter { $0.repoId == repo.id }) { worktree in
-                                    Button(worktree.name) { onAssignToWorktree(issue, worktree.id) }
-                                }
-                            }
-                        }
-                        let ungrouped = worktrees.filter { $0.repoId == nil }
-                        if !ungrouped.isEmpty {
-                            if !grouped.isEmpty { Divider() }
-                            ForEach(ungrouped) { worktree in
+            }
+            if !worktrees.isEmpty {
+                Menu("Move to Worktree") {
+                    let grouped = repositories.filter { repo in
+                        worktrees.contains { $0.repoId == repo.id }
+                    }
+                    ForEach(grouped) { repo in
+                        Section(repo.name) {
+                            ForEach(worktrees.filter { $0.repoId == repo.id }) { worktree in
                                 Button(worktree.name) { onAssignToWorktree(issue, worktree.id) }
                             }
                         }
                     }
-                }
-                Divider()
-                Button("Remove from board", role: .destructive) {
-                    onRemove(issue.id)
+                    let ungrouped = worktrees.filter { $0.repoId == nil }
+                    if !ungrouped.isEmpty {
+                        if !grouped.isEmpty { Divider() }
+                        ForEach(ungrouped) { worktree in
+                            Button(worktree.name) { onAssignToWorktree(issue, worktree.id) }
+                        }
+                    }
                 }
             }
+            Divider()
+            Button("Remove from board", role: .destructive) {
+                onRemove(issue.id)
+            }
+        }
     }
 }

@@ -26,7 +26,7 @@ struct WorktreeClient {
     var removeFromQueue: @Sendable (_ queueItemId: String) async throws -> Void
     var moveToProcessing: @Sendable (_ queueItemId: String) async throws -> Void
     var findQueueItemId: @Sendable (_ issueLinearId: String, _ worktreeId: String) async throws -> String?
-    var reorderQueue: @Sendable (_ worktreeId: String, _ queuePosition: String, _ itemIds: [String]) async throws -> Void
+    var reorderQueue: @Sendable (_ worktreeId: String, _ queuePosition: QueuePosition, _ itemIds: [String]) async throws -> Void
 
     // MARK: - Convenience (issue-ID-based, for drag-and-drop)
 
@@ -148,20 +148,19 @@ extension WorktreeClient: DependencyKey {
                     let alreadyQueued = try WorktreeQueueItemRecord
                         .filter(Column("worktreeId") == worktreeId)
                         .filter(Column("issueLinearId") == issueLinearId)
-                        .filter(sql: "queuePosition IN ('inbox', 'processing', 'outbox')")
                         .fetchCount(db) > 0
                     guard !alreadyQueued else { return }
 
                     let maxSort = try Int.fetchOne(
                         db,
-                        sql: "SELECT MAX(sortOrder) FROM worktree_queue_items WHERE worktreeId = ? AND queuePosition = 'inbox'",
-                        arguments: [worktreeId]
+                        sql: "SELECT MAX(sortOrder) FROM worktree_queue_items WHERE worktreeId = ? AND queuePosition = ?",
+                        arguments: [worktreeId, QueuePosition.inbox]
                     ) ?? -1
                     let record = WorktreeQueueItemRecord(
                         id: UUID().uuidString,
                         worktreeId: worktreeId,
                         issueLinearId: issueLinearId,
-                        queuePosition: "inbox",
+                        queuePosition: QueuePosition.inbox,
                         sortOrder: maxSort + 1,
                         assignedAt: ISO8601DateFormatter().string(from: Date()),
                         completedAt: nil
@@ -175,7 +174,7 @@ extension WorktreeClient: DependencyKey {
                     guard var record = try WorktreeQueueItemRecord.fetchOne(db, key: queueItemId) else {
                         throw WorktreeClientError.queueItemNotFound(queueItemId)
                     }
-                    record.queuePosition = "outbox"
+                    record.queuePosition = QueuePosition.outbox
                     record.completedAt = ISO8601DateFormatter().string(from: Date())
                     try record.update(db)
                 }
@@ -192,7 +191,7 @@ extension WorktreeClient: DependencyKey {
                     guard var record = try WorktreeQueueItemRecord.fetchOne(db, key: queueItemId) else {
                         throw WorktreeClientError.queueItemNotFound(queueItemId)
                     }
-                    record.queuePosition = "processing"
+                    record.queuePosition = QueuePosition.processing
                     try record.update(db)
                 }
             },
@@ -202,7 +201,6 @@ extension WorktreeClient: DependencyKey {
                     try WorktreeQueueItemRecord
                         .filter(Column("worktreeId") == worktreeId)
                         .filter(Column("issueLinearId") == issueLinearId)
-                        .filter(sql: "queuePosition IN ('inbox', 'processing', 'outbox')")
                         .fetchOne(db)?
                         .id
                 }
@@ -224,12 +222,12 @@ extension WorktreeClient: DependencyKey {
                     guard var record = try WorktreeQueueItemRecord
                         .filter(Column("worktreeId") == worktreeId)
                         .filter(Column("issueLinearId") == issueLinearId)
-                        .filter(Column("queuePosition") == "inbox")
+                        .filter(Column("queuePosition") == QueuePosition.inbox)
                         .fetchOne(db)
                     else {
                         throw WorktreeClientError.queueItemNotFound(issueLinearId)
                     }
-                    record.queuePosition = "processing"
+                    record.queuePosition = QueuePosition.processing
                     try record.update(db)
                 }
             },
@@ -239,12 +237,15 @@ extension WorktreeClient: DependencyKey {
                     guard var record = try WorktreeQueueItemRecord
                         .filter(Column("worktreeId") == worktreeId)
                         .filter(Column("issueLinearId") == issueLinearId)
-                        .filter(sql: "queuePosition IN ('inbox', 'processing')")
+                        .filter(sql: "queuePosition IN (?, ?)", arguments: [
+                            QueuePosition.inbox,
+                            QueuePosition.processing
+                        ])
                         .fetchOne(db)
                     else {
                         throw WorktreeClientError.queueItemNotFound(issueLinearId)
                     }
-                    record.queuePosition = "outbox"
+                    record.queuePosition = QueuePosition.outbox
                     record.completedAt = ISO8601DateFormatter().string(from: Date())
                     try record.update(db)
                 }

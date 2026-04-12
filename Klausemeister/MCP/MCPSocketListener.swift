@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 // Klausemeister/MCP/MCPSocketListener.swift
 import Foundation
 import Logging
@@ -377,6 +378,7 @@ extension MCPSocketListener {
         return server
     }
 
+    // swiftlint:disable:next cyclomatic_complexity
     fileprivate static func dispatchTool(
         name: String,
         arguments: [String: Value]?,
@@ -413,6 +415,16 @@ extension MCPSocketListener {
                 )
             case "getStatus":
                 result = try await ToolHandlers.getStatus(worktreeId: worktreeId)
+            case "getProductState":
+                result = try await ToolHandlers.getProductState(worktreeId: worktreeId)
+            case "transition":
+                guard let command = arguments?["command"]?.stringValue else {
+                    return errorResult("transition requires command")
+                }
+                result = try await ToolHandlers.transition(
+                    commandName: command,
+                    worktreeId: worktreeId
+                )
             default:
                 return errorResult("Unknown tool: \(name)")
             }
@@ -480,7 +492,7 @@ private enum ToolCatalog {
                     ]),
                     "statusText": .object([
                         "type": .string("string"),
-                        "description": .string("Free-form short status, e.g. 'running klause-spec — exploring codebase'")
+                        "description": .string("Free-form short status, e.g. 'running klause-define — exploring codebase'")
                     ])
                 ]),
                 "required": .array([.string("issueLinearId"), .string("statusText")]),
@@ -493,6 +505,36 @@ private enum ToolCatalog {
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([:]),
+                "additionalProperties": .bool(false)
+            ])
+        ),
+        Tool(
+            name: "getProductState",
+            // swiftlint:disable:next line_length
+            description: "Returns the current product state (kanban stage + queue position) for the active item in this worktree. Includes the next recommended command and all valid commands. Returns {\"state\":null} if no items are queued.",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([:]),
+                "additionalProperties": .bool(false)
+            ])
+        ),
+        Tool(
+            name: "transition",
+            // swiftlint:disable:next line_length
+            description: "Execute a workflow command to advance the product state. Validates the transition against the state machine before applying. Use getProductState first to see which commands are valid.",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "command": .object([
+                        "type": .string("string"),
+                        "description": .string("Workflow command: define, execute, review, openPR, babysit, pull, push"),
+                        "enum": .array([
+                            .string("define"), .string("execute"), .string("review"),
+                            .string("openPR"), .string("babysit"), .string("pull"), .string("push")
+                        ])
+                    ])
+                ]),
+                "required": .array([.string("command")]),
                 "additionalProperties": .bool(false)
             ])
         )

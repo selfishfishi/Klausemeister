@@ -3,7 +3,7 @@
 A Claude Code plugin loaded by the **meister Claude Code** in every Klausemeister session. It provides:
 
 - An MCP client wired to the local Klausemeister MCP server via a stdio shim (`klause-mcp-shim`) bridging to a Unix socket hosted by Klausemeister
-- Three placeholder slash commands (`/klause-spec`, `/klause-review`, `/klause-verify`) that will become the per-state workhorses
+- Slash commands: `/klause-next` (meta-dispatcher), `/klause-define`, `/klause-pull`, `/klause-execute`, `/klause-review`, `/klause-open-pr`, `/klause-babysit`, `/klause-push` (implemented), `/klause-verify` (placeholder)
 - A meister-loop skill that auto-triggers when the session is a Klausemeister meister (env `KLAUSE_MEISTER=1`)
 - An `/open-pr` skill that runs the full PR lifecycle — detect format/lint tools, commit, rebase, push, create PR, poll via `/loop`, merge
 
@@ -20,8 +20,14 @@ klause-workflow/
 ├── .claude-plugin/plugin.json      # manifest
 ├── .mcp.json                       # MCP client config (stdio → klause-mcp-shim)
 ├── commands/
-│   ├── klause-spec.md              # placeholder → KLA-75
-│   ├── klause-review.md            # placeholder → KLA-76
+│   ├── klause-define.md            # Backlog → Todo (KLA-97)
+│   ├── klause-execute.md           # Todo → In Progress + feature-dev (KLA-98)
+│   ├── klause-next.md              # Meta-dispatcher — invokes next command (KLA-104)
+│   ├── klause-pull.md              # Inbox → Processing + branch (KLA-102)
+│   ├── klause-babysit.md           # Testing → Done + merge PR (KLA-101)
+│   ├── klause-open-pr.md           # (In Progress|In Review) → Testing + PR (KLA-100)
+│   ├── klause-push.md              # Completed/Processing → Completed/Outbox (KLA-103)
+│   ├── klause-review.md            # In Progress → In Review + review (KLA-99)
 │   └── klause-verify.md            # placeholder → KLA-77
 ├── skills/
 │   ├── klause-workflow/SKILL.md    # meister-loop autoloader
@@ -74,7 +80,7 @@ Not yet published — this is a placeholder for when the plugin ships.
 - [KLA-71](https://linear.app/selfishfish/issue/KLA-71) — tmux session lifecycle
 - [KLA-72](https://linear.app/selfishfish/issue/KLA-72) — this scaffold
 - [KLA-74](https://linear.app/selfishfish/issue/KLA-74) — meister spawn + env vars
-- [KLA-75](https://linear.app/selfishfish/issue/KLA-75) — `/klause-spec`
+- [KLA-75](https://linear.app/selfishfish/issue/KLA-75) — `/klause-define`
 - [KLA-76](https://linear.app/selfishfish/issue/KLA-76) — `/klause-review`
 - [KLA-77](https://linear.app/selfishfish/issue/KLA-77) — `/klause-verify`
 - [KLA-78](https://linear.app/selfishfish/issue/KLA-78) — Sessions sidebar rebuild

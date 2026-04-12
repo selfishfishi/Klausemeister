@@ -8,6 +8,7 @@ import SwiftUI
 /// three logical zones is still an independent drop target.
 struct SwimlaneBarRow: View {
     let worktree: Worktree
+    var teamFor: ((_ issueId: String) -> LinearTeam?)?
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
     var onDropToInbox: ((_ issueId: String) -> Void)?
@@ -17,6 +18,8 @@ struct SwimlaneBarRow: View {
     @State private var inboxTargeted = false
     @State private var processingTargeted = false
     @State private var outboxTargeted = false
+
+    @Environment(\.themeColors) private var themeColors
 
     private let queuedTint: Color = MeisterState.todo.tint
     private let activeTint: Color = MeisterState.inProgress.tint
@@ -96,47 +99,60 @@ struct SwimlaneBarRow: View {
     // MARK: - Pills
 
     private func queuedPill(_ issue: LinearIssue) -> some View {
-        Text(issue.identifier)
-            .font(.system(.caption, design: .monospaced).weight(.medium))
-            .foregroundStyle(queuedTint.opacity(0.85))
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(queuedTint.opacity(0.1))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .strokeBorder(queuedTint.opacity(0.45), lineWidth: 0.75)
-            )
-            .draggable(issue.id)
-            .contextMenu {
-                if let onReturnToMeister {
-                    Button("Return to Meister") { onReturnToMeister(issue.id) }
-                }
+        HStack(spacing: 3) {
+            if let team = teamFor?(issue.id) {
+                teamKeyLabel(team, opacity: 0.85)
             }
+            Text(issue.identifier)
+                .font(.system(.caption, design: .monospaced).weight(.medium))
+                .foregroundStyle(queuedTint.opacity(0.85))
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(queuedTint.opacity(0.1))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .strokeBorder(queuedTint.opacity(0.45), lineWidth: 0.75)
+        )
+        .draggable(issue.id)
+        .contextMenu {
+            if let onReturnToMeister {
+                Button("Return to Meister") { onReturnToMeister(issue.id) }
+            }
+        }
     }
 
     private func donePill(_ issue: LinearIssue) -> some View {
-        Text(issue.identifier)
-            .font(.system(.caption2, design: .monospaced).weight(.medium))
-            .foregroundStyle(doneTint.opacity(0.55))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(doneTint.opacity(0.08))
-            )
-            .draggable(issue.id)
-            .contextMenu {
-                if let onReturnToMeister {
-                    Button("Return to Meister") { onReturnToMeister(issue.id) }
-                }
+        HStack(spacing: 3) {
+            if let team = teamFor?(issue.id) {
+                teamKeyLabel(team, opacity: 0.55)
             }
+            Text(issue.identifier)
+                .font(.system(.caption2, design: .monospaced).weight(.medium))
+                .foregroundStyle(doneTint.opacity(0.55))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(doneTint.opacity(0.08))
+        )
+        .draggable(issue.id)
+        .contextMenu {
+            if let onReturnToMeister {
+                Button("Return to Meister") { onReturnToMeister(issue.id) }
+            }
+        }
     }
 
     private func activeBox(_ issue: LinearIssue) -> some View {
         HStack(spacing: 10) {
+            if let team = teamFor?(issue.id) {
+                teamKeyLabel(team, opacity: 1.0)
+            }
             Text(issue.identifier)
                 .font(.system(.caption, design: .monospaced).weight(.semibold))
                 .foregroundStyle(activeTint)
@@ -191,5 +207,14 @@ struct SwimlaneBarRow: View {
     private func targetingRing(isOn: Bool, tint: Color) -> some View {
         RoundedRectangle(cornerRadius: 4, style: .continuous)
             .strokeBorder(tint.opacity(isOn ? 0.7 : 0), lineWidth: 2)
+    }
+
+    // MARK: - Team badge helper
+
+    private func teamKeyLabel(_ team: LinearTeam, opacity: Double) -> some View {
+        let color = themeColors.teamTint(colorIndex: team.colorIndex)
+        return Text(team.key)
+            .font(.system(.caption2, design: .monospaced).weight(.bold))
+            .foregroundStyle(color.opacity(opacity))
     }
 }

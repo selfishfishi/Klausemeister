@@ -11,6 +11,36 @@ struct Repository: Equatable, Identifiable {
     var sortOrder: Int
 }
 
+struct GitStats: Equatable {
+    var uncommittedFiles: Int = 0
+    var additions: Int = 0
+    var deletions: Int = 0
+    var commitsAhead: Int = 0
+    var prSummary: PRSummary?
+
+    var isEmpty: Bool {
+        uncommittedFiles == 0 && additions == 0 && deletions == 0
+            && commitsAhead == 0 && prSummary == nil
+    }
+
+    nonisolated init(
+        from diff: GitClient.DiffStats,
+        commitsAhead: Int = 0
+    ) {
+        uncommittedFiles = diff.uncommittedFiles
+        additions = diff.additions
+        deletions = diff.deletions
+        self.commitsAhead = commitsAhead
+    }
+
+    nonisolated init() {}
+
+    struct PRSummary: Equatable {
+        let number: Int
+        let state: PRState
+    }
+}
+
 struct Worktree: Equatable, Identifiable {
     let id: String
     var name: String
@@ -21,6 +51,7 @@ struct Worktree: Equatable, Identifiable {
     var currentBranch: String?
     var tmuxSessionStatus: TmuxSessionStatus = .unknown
     var meisterStatus: MeisterStatus = .none
+    var gitStats: GitStats?
     var inbox: [LinearIssue] = []
     var processing: LinearIssue?
     var outbox: [LinearIssue] = []
@@ -55,14 +86,6 @@ enum MeisterStatus: Equatable {
     case disconnected
 }
 
-/// Which sub-tab of the worktree detail pane is currently active.
-/// Persisted to UserDefaults so selection survives relaunch — future KLA-87
-/// will move this into per-window state.
-enum WorktreeDetailTab: String, Equatable {
-    case queue
-    case terminal
-}
-
 /// State for the Create Worktree sheet presented from the Meister swimlane
 /// header. Holds the repo pick, the free-form name, and the set of existing
 /// local branches for the selected repo (used for the inline collision check).
@@ -86,13 +109,11 @@ struct WorktreeFeature {
         var worktrees: IdentifiedArrayOf<Worktree> = []
         var isCreatingWorktree: Bool = false
         var selectedWorktreeId: String?
-        /// Which tab (Queue or Terminal) the detail pane is currently showing.
-        /// Single shared value across worktrees — the last-selected tab wins.
-        /// Initialised from UserDefaults once at store construction so visits
-        /// to the Meister tab (which re-fire `onAppear`) do not clobber in-
-        /// memory edits. Writes happen inside `detailTabSelected`'s effect.
-        var activeDetailTab: WorktreeDetailTab = UserDefaults.standard.string(forKey: WorktreeFeature.activeDetailTabUserDefaultsKey)
-            .flatMap(WorktreeDetailTab.init(rawValue:)) ?? .queue
+        /// Whether the board overlay (inbox/processing/outbox columns) is
+        /// showing on top of the terminal. Persisted to UserDefaults.
+        var showBoardOverlay: Bool = UserDefaults.standard.bool(
+            forKey: WorktreeFeature.showBoardOverlayUserDefaultsKey
+        )
 
         /// Hello events that arrived before worktrees were loaded from DB.
         /// Replayed once `worktreesLoaded` populates the worktree array.
@@ -134,7 +155,7 @@ struct WorktreeFeature {
         case removeWorktreeTapped(worktreeId: String)
         case removeWorktreeConfirmed(worktreeId: String)
         case worktreeSelected(String?)
-        case detailTabSelected(WorktreeDetailTab)
+        case boardOverlayToggled
         case repoCollapseToggled(repoId: String)
         case renameWorktreeTapped(worktreeId: String, newName: String)
         case worktreeRenamed(worktreeId: String, newName: String)
@@ -144,7 +165,7 @@ struct WorktreeFeature {
         case issueReturnedToMeister(issueId: String, worktreeId: String)
         case issueMovedToProcessing(queueItemId: String, issueId: String, worktreeId: String)
         case issueMovedToOutbox(queueItemId: String, issueId: String, worktreeId: String)
-        case queueReordered(worktreeId: String, queuePosition: String, itemIds: [String])
+        case queueReordered(worktreeId: String, queuePosition: QueuePosition, itemIds: [String])
 
         // Drag-and-drop (issue-ID-based, no queueItemId needed)
         case issueDroppedOnInbox(issueId: String, worktreeId: String)
@@ -160,6 +181,10 @@ struct WorktreeFeature {
         case returnToMeisterFailed(issueId: String, worktreeId: String, issue: LinearIssue)
         case branchSwitched(worktreeId: String, branchName: String)
         case branchesLoaded([String: String])
+        case gitStatsLoaded([String: GitStats])
+        case prInfoLoaded([String: GitStats.PRSummary])
+        case refreshGitStats
+        case refreshPRInfo
         case addRepoFolderSelected(URL)
         case repoAdded(TaskResult<RepositoryRecord>)
         case removeRepoTapped(repoId: String)
@@ -206,6 +231,9 @@ struct WorktreeFeature {
         case syncRepo(String)
         case reconcileTmux
         case meisterSpawn(String)
+        case gitFSWatcher(String)
+        case refreshLocalStats
+        case prInfoPoll
     }
 
     /// How long to wait for the meister's MCP HelloFrame after a spawn before
@@ -214,13 +242,14 @@ struct WorktreeFeature {
     /// during startup or the shell rc files blocked the send-keys input.
     nonisolated private static let meisterHelloGracePeriod: Duration = .seconds(8)
 
-    nonisolated fileprivate static let activeDetailTabUserDefaultsKey = "activeDetailTab"
+    nonisolated fileprivate static let showBoardOverlayUserDefaultsKey = "showBoardOverlay"
 
     @Dependency(\.worktreeClient) var worktreeClient
     @Dependency(\.databaseClient) var databaseClient
     @Dependency(\.gitClient) var gitClient
     @Dependency(\.tmuxClient) var tmuxClient
     @Dependency(\.meisterClient) var meisterClient
+    @Dependency(\.ghClient) var ghClient
     @Dependency(\.surfaceManager) var surfaceManager
     @Dependency(\.continuousClock) var clock
     @Dependency(\.mcpServerClient) var mcpServerClient
@@ -240,6 +269,82 @@ struct WorktreeFeature {
                     repoId: repoId, error: error.localizedDescription
                 ))
             }
+        }
+    }
+
+    private struct WorktreeStatsInput {
+        let id: String
+        let path: String
+        let branch: String?
+        let repoPath: String?
+    }
+
+    private static func worktreeStatsInputs(from state: State) -> [WorktreeStatsInput] {
+        state.worktrees.map { entry in
+            WorktreeStatsInput(
+                id: entry.id, path: entry.gitWorktreePath,
+                branch: entry.currentBranch,
+                repoPath: entry.repoId.flatMap { state.repositories[id: $0]?.path }
+            )
+        }
+    }
+
+    /// Loads local git stats (uncommitted, +/-, commits ahead) for every
+    /// worktree. Triggered by FS-change events, not by a timer.
+    private func loadLocalGitStatsEffect(
+        worktrees: [WorktreeStatsInput]
+    ) -> Effect<Action> {
+        .run { [gitClient] send in
+            var map: [String: GitStats] = [:]
+            for input in worktrees where !input.path.isEmpty {
+                do {
+                    let diff = try await gitClient.diffStats(input.path)
+                    var ahead = 0
+                    if let repoPath = input.repoPath {
+                        do {
+                            let defaultBranch = try await gitClient.resolveDefaultBranch(repoPath)
+                            ahead = try await gitClient.commitsAhead(input.path, defaultBranch.name)
+                        } catch {
+                            Self.log.warning(
+                                "commitsAhead failed for \(input.id): \(error.localizedDescription)"
+                            )
+                        }
+                    }
+                    map[input.id] = GitStats(from: diff, commitsAhead: ahead)
+                } catch {
+                    Self.log.warning(
+                        "diffStats failed for \(input.id): \(error.localizedDescription)"
+                    )
+                }
+            }
+            await send(.gitStatsLoaded(map))
+        }
+    }
+
+    /// Loads PR info for every worktree that has a branch. Triggered by a 60s
+    /// polling timer since PR status is remote state with no local signal.
+    private func loadPRInfoEffect(
+        worktrees: [WorktreeStatsInput]
+    ) -> Effect<Action> {
+        .run { [ghClient] send in
+            var map: [String: GitStats.PRSummary] = [:]
+            for input in worktrees {
+                guard let repoPath = input.repoPath,
+                      let branch = input.branch
+                else { continue }
+                do {
+                    if let info = try await ghClient.prForBranch(repoPath, branch) {
+                        map[input.id] = GitStats.PRSummary(
+                            number: info.number, state: info.state
+                        )
+                    }
+                } catch {
+                    Self.log.warning(
+                        "PR lookup failed for \(branch) in \(repoPath): \(error.localizedDescription)"
+                    )
+                }
+            }
+            await send(.prInfoLoaded(map))
         }
     }
 
@@ -268,6 +373,7 @@ struct WorktreeFeature {
         return .merge(
             .cancel(id: CancelID.syncRepo(repoId)),
             .merge(worktreeIds.map { .cancel(id: CancelID.meisterSpawn($0)) }),
+            .merge(worktreeIds.map { .cancel(id: CancelID.gitFSWatcher($0)) }),
             .run { [surfaceManager, worktreeClient, tmuxClient] _ in
                 if killTmux {
                     for sessionName in tmuxSessionNames {
@@ -455,14 +561,14 @@ struct WorktreeFeature {
                         repoId: record.repoId,
                         repoName: record.repoId.flatMap { repoNames[$0] },
                         inbox: items
-                            .filter { $0.queuePosition == "inbox" }
+                            .filter { $0.queuePosition == .inbox }
                             .sorted { $0.sortOrder < $1.sortOrder }
                             .compactMap { issuesByLinearId[$0.issueLinearId] },
                         processing: items
-                            .first { $0.queuePosition == "processing" }
+                            .first { $0.queuePosition == .processing }
                             .flatMap { issuesByLinearId[$0.issueLinearId] },
                         outbox: items
-                            .filter { $0.queuePosition == "outbox" }
+                            .filter { $0.queuePosition == .outbox }
                             .sorted { $0.sortOrder < $1.sortOrder }
                             .compactMap { issuesByLinearId[$0.issueLinearId] }
                     )
@@ -475,6 +581,7 @@ struct WorktreeFeature {
                 state.pendingHellos.removeAll()
 
                 let worktreePaths = state.worktrees.map { (id: $0.id, path: $0.gitWorktreePath) }
+                let worktreeInfo = Self.worktreeStatsInputs(from: state)
                 return .merge(
                     .run { send in
                         var branches: [String: String] = [:]
@@ -485,6 +592,29 @@ struct WorktreeFeature {
                         }
                         await send(.branchesLoaded(branches))
                     },
+                    // Initial load of local git stats
+                    loadLocalGitStatsEffect(worktrees: worktreeInfo),
+                    // Initial load of PR info
+                    loadPRInfoEffect(worktrees: worktreeInfo),
+                    // FS watchers: one per worktree, debounced 2s, fires refreshGitStats
+                    .merge(worktreePaths.filter { !$0.path.isEmpty }.map { entry in
+                        Effect<Action>.run { [gitClient] send in
+                            for await _ in gitClient.watchForChanges(entry.path) {
+                                await send(.refreshGitStats)
+                            }
+                        }
+                        .cancellable(
+                            id: CancelID.gitFSWatcher(entry.id),
+                            cancelInFlight: false
+                        )
+                    }),
+                    // 60s polling for PR info (remote state, no FS signal)
+                    .run { [clock] send in
+                        for await _ in clock.timer(interval: .seconds(60)) {
+                            await send(.refreshPRInfo)
+                        }
+                    }
+                    .cancellable(id: CancelID.prInfoPoll, cancelInFlight: true),
                     .send(.syncAllRepos),
                     .send(.reconcileTmuxSessions),
                     .run { [mcpServerClient] send in
@@ -504,6 +634,35 @@ struct WorktreeFeature {
             case let .branchSwitched(worktreeId, branchName):
                 state.worktrees[id: worktreeId]?.currentBranch = branchName
                 return .none
+
+            case let .gitStatsLoaded(statsByWorktreeId):
+                for (worktreeId, stats) in statsByWorktreeId {
+                    // Merge: preserve PR info from separate poll
+                    var merged = stats
+                    merged.prSummary = state.worktrees[id: worktreeId]?.gitStats?.prSummary
+                    state.worktrees[id: worktreeId]?.gitStats = merged
+                }
+                return .none
+
+            case let .prInfoLoaded(prInfoByWorktreeId):
+                for (worktreeId, prInfo) in prInfoByWorktreeId {
+                    if state.worktrees[id: worktreeId]?.gitStats == nil {
+                        state.worktrees[id: worktreeId]?.gitStats = GitStats()
+                    }
+                    state.worktrees[id: worktreeId]?.gitStats?.prSummary = prInfo
+                }
+                return .none
+
+            case .refreshGitStats:
+                return loadLocalGitStatsEffect(
+                    worktrees: Self.worktreeStatsInputs(from: state)
+                )
+                .cancellable(id: CancelID.refreshLocalStats, cancelInFlight: true)
+
+            case .refreshPRInfo:
+                return loadPRInfoEffect(
+                    worktrees: Self.worktreeStatsInputs(from: state)
+                )
 
             case let .createWorktreeTapped(repoId, name):
                 guard let repo = state.repositories[id: repoId] else { return .none }
@@ -629,6 +788,7 @@ struct WorktreeFeature {
                 state.worktrees.remove(id: worktreeId)
                 return .merge(
                     .cancel(id: CancelID.meisterSpawn(worktreeId)),
+                    .cancel(id: CancelID.gitFSWatcher(worktreeId)),
                     .run { [surfaceManager, worktreeClient] _ in
                         try await worktreeClient.deleteWorktree(worktreeId)
                         await MainActor.run { surfaceManager.destroySurface(worktreeId) }
@@ -661,24 +821,27 @@ struct WorktreeFeature {
                 let repoPath = worktree.repoId.flatMap { state.repositories[id: $0]?.path }
                 let tmuxSessionName = WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name)
                 state.worktrees.remove(id: worktreeId)
-                return .run { [surfaceManager] send in
-                    // Destroy the libghostty surface FIRST. If the DB delete
-                    // throws and we restore the worktree row, the stale
-                    // SurfaceStore record would otherwise satisfy `create`'s
-                    // idempotency guard and the Terminal tab would be blank
-                    // forever. Dropping it first means the next visit to a
-                    // restored row builds a fresh surface.
-                    await MainActor.run { surfaceManager.destroySurface(worktreeId) }
-                    try await worktreeClient.deleteWorktree(worktreeId)
-                    if let repoPath, !worktreePath.isEmpty {
-                        try? await gitClient.removeWorktree(repoPath, worktreePath)
+                return .merge(
+                    .cancel(id: CancelID.gitFSWatcher(worktreeId)),
+                    .run { [surfaceManager] send in
+                        // Destroy the libghostty surface FIRST. If the DB delete
+                        // throws and we restore the worktree row, the stale
+                        // SurfaceStore record would otherwise satisfy `create`'s
+                        // idempotency guard and the Terminal tab would be blank
+                        // forever. Dropping it first means the next visit to a
+                        // restored row builds a fresh surface.
+                        await MainActor.run { surfaceManager.destroySurface(worktreeId) }
+                        try await worktreeClient.deleteWorktree(worktreeId)
+                        if let repoPath, !worktreePath.isEmpty {
+                            try? await gitClient.removeWorktree(repoPath, worktreePath)
+                        }
+                        // Soft-fail: a missing tmux session must not block deletion.
+                        try? await tmuxClient.killSession(tmuxSessionName)
+                        await send(.worktreeDeleted(worktreeId: worktreeId))
+                    } catch: { _, send in
+                        await send(.worktreeDeleteFailed(worktree: worktree))
                     }
-                    // Soft-fail: a missing tmux session must not block deletion.
-                    try? await tmuxClient.killSession(tmuxSessionName)
-                    await send(.worktreeDeleted(worktreeId: worktreeId))
-                } catch: { _, send in
-                    await send(.worktreeDeleteFailed(worktree: worktree))
-                }
+                )
 
             case .worktreeDeleted:
                 return .none
@@ -696,30 +859,19 @@ struct WorktreeFeature {
             case let .worktreeSelected(worktreeId):
                 state.selectedWorktreeId = worktreeId
                 if let worktreeId,
-                   state.activeDetailTab == .terminal,
                    let worktree = state.worktrees[id: worktreeId]
                 {
                     return terminalActivationEffect(state: &state, worktree: worktree)
                 }
                 return .none
 
-            case let .detailTabSelected(tab):
-                state.activeDetailTab = tab
-                let persistTab = Effect<Action>.run { _ in
+            case .boardOverlayToggled:
+                state.showBoardOverlay.toggle()
+                return .run { [show = state.showBoardOverlay] _ in
                     UserDefaults.standard.set(
-                        tab.rawValue, forKey: Self.activeDetailTabUserDefaultsKey
+                        show, forKey: Self.showBoardOverlayUserDefaultsKey
                     )
                 }
-                guard tab == .terminal,
-                      let worktreeId = state.selectedWorktreeId,
-                      let worktree = state.worktrees[id: worktreeId]
-                else {
-                    return persistTab
-                }
-                return .merge(
-                    persistTab,
-                    terminalActivationEffect(state: &state, worktree: worktree)
-                )
 
             case let .repoCollapseToggled(repoId):
                 if state.collapsedRepoIds.contains(repoId) {
@@ -1207,46 +1359,48 @@ struct WorktreeFeature {
                         repoName: repoName
                     ))
                 }
+                var cancelEffects: [Effect<Action>] = []
                 for worktreeId in result.deletedWorktreeIds {
                     state.worktrees.remove(id: worktreeId)
                     if state.selectedWorktreeId == worktreeId {
                         state.selectedWorktreeId = nil
                     }
+                    cancelEffects.append(.cancel(id: CancelID.gitFSWatcher(worktreeId)))
                 }
                 if !result.deletedWorktreeIds.isEmpty {
                     Self.log.info("Auto-removed \(result.deletedWorktreeIds.count) orphaned worktree(s) for repo \(repoId)")
                 }
                 // Background: fetch branches for new worktrees + auto-link issues
                 let inserted = result.inserted
-                guard !inserted.isEmpty else { return .none }
-                return .merge(
-                    .run { send in
-                        var branches: [String: String] = [:]
-                        for record in inserted {
-                            guard !record.gitWorktreePath.isEmpty else { continue }
-                            if let branch = try? await gitClient.currentBranch(record.gitWorktreePath) {
-                                branches[record.worktreeId] = branch
-                                if let identifier = WorktreeConfig.extractIssueIdentifier(fromBranchName: branch),
-                                   let issueRecord = try? await databaseClient.fetchImportedIssueByIdentifier(identifier)
-                                {
-                                    // Use the issueAssignedToWorktree action which both updates state
-                                    // and persists via worktreeClient.assignIssueToWorktree
-                                    let issue = LinearIssue(from: issueRecord)
-                                    await send(.issueAssignedToWorktree(worktreeId: record.worktreeId, issue: issue))
-                                }
+                guard !inserted.isEmpty else {
+                    return cancelEffects.isEmpty ? .none : .merge(cancelEffects)
+                }
+                var effects: [Effect<Action>] = cancelEffects
+                effects.append(.run { send in
+                    var branches: [String: String] = [:]
+                    for record in inserted {
+                        guard !record.gitWorktreePath.isEmpty else { continue }
+                        if let branch = try? await gitClient.currentBranch(record.gitWorktreePath) {
+                            branches[record.worktreeId] = branch
+                            if let identifier = WorktreeConfig.extractIssueIdentifier(fromBranchName: branch),
+                               let issueRecord = try? await databaseClient.fetchImportedIssueByIdentifier(identifier)
+                            {
+                                let issue = LinearIssue(from: issueRecord)
+                                await send(.issueAssignedToWorktree(worktreeId: record.worktreeId, issue: issue))
                             }
                         }
-                        if !branches.isEmpty {
-                            await send(.branchesLoaded(branches))
-                        }
-                    },
-                    // Reconcile tmux for newly-discovered worktrees. Without
-                    // this, sync-imported worktrees stay `.unknown` indefinitely
-                    // because the boot reconciliation already ran before sync
-                    // completed. The CancelID makes concurrent reconciliations
-                    // safe — only the most recent one wins.
-                    .send(.reconcileTmuxSessions)
-                )
+                    }
+                    if !branches.isEmpty {
+                        await send(.branchesLoaded(branches))
+                    }
+                })
+                // Reconcile tmux for newly-discovered worktrees. Without
+                // this, sync-imported worktrees stay `.unknown` indefinitely
+                // because the boot reconciliation already ran before sync
+                // completed. The CancelID makes concurrent reconciliations
+                // safe — only the most recent one wins.
+                effects.append(.send(.reconcileTmuxSessions))
+                return .merge(effects)
 
             case let .repoSynced(_, .failure(error)):
                 Self.log.warning("Repo sync failed: \(error.localizedDescription)")
