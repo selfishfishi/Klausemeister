@@ -76,7 +76,7 @@ struct SwimlaneRowView: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .padding(10)
+            .padding(16)
         }
         .glassEffect(
             .regular.tint(tint.opacity(0.04)),
