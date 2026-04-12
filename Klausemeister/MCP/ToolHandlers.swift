@@ -38,7 +38,7 @@ enum ToolHandlers {
         let items = try await worktreeClient.fetchQueueItems(worktreeId)
         // Explicitly sort by sortOrder rather than relying on DB ordering contract.
         guard let inboxItem = items
-            .filter({ $0.queuePosition == "inbox" })
+            .filter({ $0.queuePosition == .inbox })
             .min(by: { $0.sortOrder < $1.sortOrder })
         else {
             return .success(#"{"item":null}"#)
@@ -138,9 +138,9 @@ enum ToolHandlers {
         @Dependency(\.worktreeClient) var worktreeClient
 
         let items = try await worktreeClient.fetchQueueItems(worktreeId)
-        let inboxCount = items.count(where: { $0.queuePosition == "inbox" })
-        let processingItem = items.first { $0.queuePosition == "processing" }
-        let outboxCount = items.count(where: { $0.queuePosition == "outbox" })
+        let inboxCount = items.count(where: { $0.queuePosition == .inbox })
+        let processingItem = items.first { $0.queuePosition == .processing }
+        let outboxCount = items.count(where: { $0.queuePosition == .outbox })
 
         let snapshot = StatusSnapshot(
             inboxCount: inboxCount,
