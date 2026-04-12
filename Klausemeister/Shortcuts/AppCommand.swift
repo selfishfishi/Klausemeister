@@ -1,39 +1,39 @@
 import Foundation
 
-enum AppCommand: String, CaseIterable, Hashable, Sendable {
+enum AppCommand: String, CaseIterable, Hashable {
     case toggleSidebar
     case showMeister
 
-    enum Category: String, CaseIterable, Sendable {
+    enum Category: String, CaseIterable {
         case view
         case navigation
     }
 
     var displayName: String {
         switch self {
-        case .toggleSidebar: return "Toggle Sidebar"
-        case .showMeister:   return "Show Meister"
+        case .toggleSidebar: "Toggle Sidebar"
+        case .showMeister: "Show Meister"
         }
     }
 
     var category: Category {
         switch self {
-        case .toggleSidebar: return .view
-        case .showMeister:   return .navigation
+        case .toggleSidebar: .view
+        case .showMeister: .navigation
         }
     }
 
     var helpText: String {
         switch self {
-        case .toggleSidebar: return "Show or hide the sidebar"
-        case .showMeister:   return "Switch to the Meister view"
+        case .toggleSidebar: "Show or hide the sidebar"
+        case .showMeister: "Switch to the Meister view"
         }
     }
 
     nonisolated var defaultBinding: KeyBinding? {
         switch self {
-        case .toggleSidebar: return KeyBinding(key: "\\", modifiers: .command)
-        case .showMeister:   return nil
+        case .toggleSidebar: KeyBinding(key: "\\", modifiers: .command)
+        case .showMeister: nil
         }
     }
 }

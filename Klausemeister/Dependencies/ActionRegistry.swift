@@ -1,6 +1,6 @@
 import Dependencies
 
-struct ActionRegistry: Sendable {
+struct ActionRegistry {
     var resolvedBindings: @Sendable () -> [AppCommand: KeyBinding]
 }
 
