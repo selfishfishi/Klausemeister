@@ -13,6 +13,7 @@ struct AppFeature {
         var statusBar = StatusBarFeature.State()
         var debugPanel = DebugPanelFeature.State()
         var teamSettings: TeamSettingsFeature.State?
+        var commandPalette: CommandPaletteFeature.State?
         var keyBindings: [AppCommand: KeyBinding] = [:]
     }
 
@@ -30,6 +31,8 @@ struct AppFeature {
         case teamSettingsButtonTapped
         case teamSettingsDismissed
         case teamSettings(TeamSettingsFeature.Action)
+        case openCommandPalette
+        case commandPalette(CommandPaletteFeature.Action)
         case mcpServerEvent(MCPServerEvent)
     }
 
@@ -61,6 +64,9 @@ struct AppFeature {
         }
         .ifLet(\.teamSettings, action: \.teamSettings) {
             TeamSettingsFeature()
+        }
+        .ifLet(\.commandPalette, action: \.commandPalette) {
+            CommandPaletteFeature()
         }
         Reduce { state, action in
             switch action {
@@ -157,6 +163,23 @@ struct AppFeature {
             case .linearAuth:
                 return .none
 
+            case .openCommandPalette:
+                state.commandPalette = CommandPaletteFeature.State(
+                    keyBindings: state.keyBindings
+                )
+                return .none
+
+            case let .commandPalette(.delegate(.commandInvoked(command))):
+                state.commandPalette = nil
+                return executeCommand(command, state: &state)
+
+            case .commandPalette(.delegate(.dismissed)):
+                state.commandPalette = nil
+                return .none
+
+            case .commandPalette:
+                return .none
+
             case .teamSettingsButtonTapped:
                 state.teamSettings = TeamSettingsFeature.State()
                 return .none
@@ -221,6 +244,39 @@ struct AppFeature {
                     )
                 }
             }
+        }
+    }
+
+    /// Routes a command palette selection to the appropriate child action.
+    private func executeCommand(
+        _ command: AppCommand,
+        state: inout State
+    ) -> Effect<Action> {
+        switch command {
+        case .toggleSidebar:
+            state.showSidebar.toggle()
+            return .none
+        case .showMeister:
+            state.showMeister = true
+            state.worktree.selectedWorktreeId = nil
+            return .none
+        case .showWorktrees:
+            state.showMeister = false
+            return .none
+        case .openCommandPalette:
+            // No-op: handled by the parent action, not re-entrant from the palette
+            return .none
+        case .syncLinearIssues:
+            return .send(.meister(.refreshTapped))
+        case .openLinearAuth:
+            return .send(.linearAuth(.loginButtonTapped))
+        case .openTeamSettings:
+            state.teamSettings = TeamSettingsFeature.State()
+            return .none
+        case .newWorktree:
+            return .send(.worktree(.createSheetShown(prefilledRepoId: nil)))
+        case .toggleDebugPanel:
+            return .send(.debugPanel(.panelToggled))
         }
     }
 }

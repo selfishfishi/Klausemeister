@@ -60,13 +60,25 @@ struct KlausemeisterApp: App {
                     store.send(.toggleSidebar)
                 }
                 .keyboardShortcut(for: .toggleSidebar, in: bindings)
+
+                Button(AppCommand.openCommandPalette.displayName) {
+                    store.send(.openCommandPalette)
+                }
+                .keyboardShortcut(for: .openCommandPalette, in: bindings)
+
+                // VS Code compat shortcut (hidden from menu, shortcut still active)
+                Button(AppCommand.openCommandPalette.displayName) {
+                    store.send(.openCommandPalette)
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .hidden()
             }
 
             CommandMenu("Debug") {
-                Button("MCP Diagnostics") {
+                Button(AppCommand.toggleDebugPanel.displayName) {
                     store.send(.debugPanel(.panelToggled))
                 }
-                .keyboardShortcut("d", modifiers: [.command, .shift])
+                .keyboardShortcut(for: .toggleDebugPanel, in: store.keyBindings)
             }
             CommandMenu("Theme") {
                 Section("Dark") {

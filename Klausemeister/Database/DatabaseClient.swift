@@ -23,6 +23,8 @@ struct DatabaseClient {
     var deleteIssuesByTeam: @Sendable (_ teamId: String) async throws -> Void
     var deleteTeam: @Sendable (_ teamId: String) async throws -> Void
     var updateTeamFilterVisibility: @Sendable (_ teamId: String, _ isHiddenFromBoard: Bool) async throws -> Void
+    var fetchCommandHistory: @Sendable () async throws -> [AppCommand]
+    var recordCommandUsed: @Sendable (_ command: AppCommand) async throws -> Void
 }
 
 extension DatabaseClient: DependencyKey {
@@ -164,6 +166,42 @@ extension DatabaseClient: DependencyKey {
                         try record.update(db)
                     }
                 }
+            },
+            fetchCommandHistory: {
+                try await dbQueue.read { db in
+                    let records = try CommandPaletteHistoryRecord
+                        .order(Column("usedAt").desc)
+                        .limit(10)
+                        .fetchAll(db)
+                    return records.compactMap { record in
+                        guard let command = AppCommand(rawValue: record.commandRawValue) else {
+                            print(
+                                "[CommandPalette] Ignoring unrecognized command in history: '\(record.commandRawValue)'"
+                            )
+                            return nil
+                        }
+                        return command
+                    }
+                }
+            },
+            recordCommandUsed: { command in
+                try await dbQueue.write { db in
+                    let now = ISO8601DateFormatter().string(from: Date())
+                    if var existing = try CommandPaletteHistoryRecord
+                        .fetchOne(db, key: command.rawValue)
+                    {
+                        existing.usedAt = now
+                        existing.useCount += 1
+                        try existing.update(db)
+                    } else {
+                        let record = CommandPaletteHistoryRecord(
+                            commandRawValue: command.rawValue,
+                            usedAt: now,
+                            useCount: 1
+                        )
+                        try record.insert(db)
+                    }
+                }
             }
         )
     }()
@@ -188,7 +226,9 @@ extension DatabaseClient: DependencyKey {
         deleteAllTeams: unimplemented("DatabaseClient.deleteAllTeams"),
         deleteIssuesByTeam: unimplemented("DatabaseClient.deleteIssuesByTeam"),
         deleteTeam: unimplemented("DatabaseClient.deleteTeam"),
-        updateTeamFilterVisibility: unimplemented("DatabaseClient.updateTeamFilterVisibility")
+        updateTeamFilterVisibility: unimplemented("DatabaseClient.updateTeamFilterVisibility"),
+        fetchCommandHistory: unimplemented("DatabaseClient.fetchCommandHistory"),
+        recordCommandUsed: unimplemented("DatabaseClient.recordCommandUsed")
     )
 }
 
