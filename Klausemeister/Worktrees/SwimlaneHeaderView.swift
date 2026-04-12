@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SwimlaneHeaderView: View {
     let worktree: Worktree
-    let onDelete: () -> Void
 
     @Environment(\.themeColors) private var themeColors
 
@@ -14,14 +13,6 @@ struct SwimlaneHeaderView: View {
                 Text(worktree.name)
                     .font(.body)
                     .lineLimit(1)
-                Spacer()
-                Menu {
-                    Button("Delete worktree", role: .destructive) { onDelete() }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
             }
 
             if let branch = worktree.currentBranch {

@@ -30,7 +30,6 @@ struct WorktreeSwimlaneView: View {
                 CreateWorktreeSheetView(
                     repositories: Array(store.repositories),
                     sheetState: sheetState,
-                    onRepoChanged: { store.send(.createSheetRepoChanged(repoId: $0)) },
                     onNameChanged: { store.send(.createSheetNameChanged($0)) },
                     onSubmit: { store.send(.createSheetSubmitted) },
                     onCancel: { store.send(.createSheetDismissed) }
@@ -46,18 +45,6 @@ struct WorktreeSwimlaneView: View {
                 ProgressView()
                     .controlSize(.small)
             }
-            Button {
-                store.send(.createSheetShown(prefilledRepoId: nil))
-            } label: {
-                Label("New Worktree", systemImage: "plus")
-                    .font(.body)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-            }
-            .buttonStyle(.plain)
-            .glassEffect(.regular.interactive(), in: Capsule())
-            .help("New Worktree")
-            .disabled(store.repositories.isEmpty)
             Button {
                 openRepoFolderPicker()
             } label: {
@@ -97,7 +84,7 @@ struct WorktreeSwimlaneView: View {
         let isCollapsed = store.collapsedRepoIds.contains(repo.id)
         let repoWorktrees = store.worktrees.filter { $0.repoId == repo.id }
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 6) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -106,16 +93,15 @@ struct WorktreeSwimlaneView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                            .font(.footnote.weight(.semibold))
+                            .font(.callout.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .frame(width: 10)
                         Image(systemName: "folder")
-                            .font(.footnote)
+                            .font(.callout)
                             .foregroundStyle(.secondary)
                         Text(repo.name)
-                            .font(.callout.weight(.semibold))
+                            .font(.title2.weight(.semibold))
                             .foregroundStyle(.primary)
-                            .tracking(0.3)
                         if isCollapsed {
                             Text("\(repoWorktrees.count)")
                                 .font(.caption.weight(.semibold).monospacedDigit())
@@ -129,33 +115,25 @@ struct WorktreeSwimlaneView: View {
                 .buttonStyle(.plain)
                 Spacer()
                 if !isCollapsed {
-                    AddWorktreeInlineButton { name in
-                        store.send(.createWorktreeTapped(
-                            repoId: repo.id, name: name
-                        ))
+                    Button {
+                        store.send(.createSheetShown(prefilledRepoId: repo.id))
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
                     }
+                    .buttonStyle(.plain)
+                    .help("New worktree")
                 }
                 Button {
                     store.send(.removeRepoTapped(repoId: repo.id))
                 } label: {
                     Image(systemName: "trash")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
                 .help("Remove repository")
-                Menu {
-                    Button {
-                        store.send(.syncRepo(repoId: repo.id))
-                    } label: {
-                        Label("Refresh worktrees", systemImage: "arrow.clockwise")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, 4)
 
@@ -192,6 +170,9 @@ struct WorktreeSwimlaneView: View {
             tint: rowTint,
             onDelete: {
                 store.send(.confirmDeleteTapped(worktreeId: worktree.id))
+            },
+            onRemove: {
+                store.send(.removeWorktreeTapped(worktreeId: worktree.id))
             },
             onMarkComplete: {
                 store.send(.markAsCompleteTapped(worktreeId: worktree.id))

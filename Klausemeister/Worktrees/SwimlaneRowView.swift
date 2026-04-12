@@ -8,6 +8,7 @@ struct SwimlaneRowView: View {
     /// "work is happening" cues read the same across rows.
     let tint: Color
     let onDelete: () -> Void
+    let onRemove: () -> Void
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
     var onDropToInbox: ((_ issueId: String) -> Void)?
@@ -49,10 +50,7 @@ struct SwimlaneRowView: View {
 
     private var rowContent: some View {
         HStack(alignment: .center, spacing: 10) {
-            SwimlaneHeaderView(
-                worktree: worktree,
-                onDelete: onDelete
-            )
+            SwimlaneHeaderView(worktree: worktree)
 
             SwimlaneBarRow(
                 worktree: worktree,
@@ -64,6 +62,22 @@ struct SwimlaneRowView: View {
             )
         }
         .padding(10)
+        .overlay(alignment: .topTrailing) {
+            Menu {
+                Button(role: .destructive) { onDelete() } label: {
+                    Label("Delete worktree", systemImage: "trash")
+                }
+                Button { onRemove() } label: {
+                    Label("Remove from Klausemeister", systemImage: "minus.circle")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .padding(10)
+        }
         .glassEffect(
             .regular.tint(tint.opacity(0.04)),
             in: RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)

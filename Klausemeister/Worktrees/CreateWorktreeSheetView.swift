@@ -8,7 +8,6 @@ import SwiftUI
 struct CreateWorktreeSheetView: View {
     let repositories: [Repository]
     let sheetState: CreateWorktreeSheetState
-    var onRepoChanged: (String) -> Void
     var onNameChanged: (String) -> Void
     var onSubmit: () -> Void
     var onCancel: () -> Void
@@ -70,19 +69,11 @@ struct CreateWorktreeSheetView: View {
         HStack(alignment: .firstTextBaseline, spacing: 14) {
             fieldLabel("Repository")
                 .frame(width: Self.labelColumnWidth, alignment: .leading)
-            Picker(
-                "Repository",
-                selection: Binding(
-                    get: { sheetState.repoId ?? "" },
-                    set: { onRepoChanged($0) }
-                )
-            ) {
-                ForEach(repositories) { repo in
-                    Text(repo.name).tag(repo.id)
-                }
+            if let repo = repositories.first(where: { $0.id == sheetState.repoId }) {
+                Text(repo.name)
+                    .font(.body)
+                    .foregroundStyle(.primary)
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
         }
     }
 
