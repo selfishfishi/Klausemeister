@@ -38,7 +38,7 @@ struct SidebarView: View {
                             store.send(.worktree(.worktreeSelected(worktree.id)))
                         },
                         onDelete: {
-                            store.send(.worktree(.confirmDeleteTapped(worktreeId: worktree.id)))
+                            store.send(.worktree(.removeWorktreeTapped(worktreeId: worktree.id)))
                         }
                     )
                 }
