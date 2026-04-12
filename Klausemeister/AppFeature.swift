@@ -14,6 +14,7 @@ struct AppFeature {
         var debugPanel = DebugPanelFeature.State()
         var teamSettings: TeamSettingsFeature.State?
         var commandPalette: CommandPaletteFeature.State?
+        var shortcutCenter: ShortcutCenterFeature.State?
         var keyBindings: [AppCommand: KeyBinding] = [:]
     }
 
@@ -33,6 +34,10 @@ struct AppFeature {
         case teamSettings(TeamSettingsFeature.Action)
         case openCommandPalette
         case commandPalette(CommandPaletteFeature.Action)
+        case openShortcutCenter
+        case shortcutCenterDismissed
+        case shortcutCenter(ShortcutCenterFeature.Action)
+        case keyBindingsLoaded([AppCommand: KeyBinding?])
         case mcpServerEvent(MCPServerEvent)
     }
 
@@ -41,6 +46,7 @@ struct AppFeature {
     }
 
     @Dependency(\.actionRegistry) var actionRegistry
+    @Dependency(\.keyBindingsClient) var keyBindingsClient
     @Dependency(\.surfaceManager) var surfaceManager
     @Dependency(\.ghosttyApp) var ghosttyApp
     @Dependency(\.oauthClient) var oauthClient
@@ -68,11 +74,18 @@ struct AppFeature {
         .ifLet(\.commandPalette, action: \.commandPalette) {
             CommandPaletteFeature()
         }
+        .ifLet(\.shortcutCenter, action: \.shortcutCenter) {
+            ShortcutCenterFeature()
+        }
         Reduce { state, action in
             switch action {
             case .onAppear:
                 state.keyBindings = actionRegistry.resolvedBindings()
                 return .merge(
+                    .run { [keyBindingsClient] send in
+                        let overrides = await (try? keyBindingsClient.loadOverrides()) ?? [:]
+                        await send(.keyBindingsLoaded(overrides))
+                    },
                     .run { [mcpServerClient] _ in
                         await mcpServerClient.start()
                     }
@@ -180,6 +193,39 @@ struct AppFeature {
             case .commandPalette:
                 return .none
 
+            case let .keyBindingsLoaded(overrides):
+                for (command, binding) in overrides {
+                    if let binding {
+                        state.keyBindings[command] = binding
+                    } else {
+                        // nil = user explicitly cleared this shortcut
+                        state.keyBindings.removeValue(forKey: command)
+                    }
+                }
+                return .none
+
+            case .openShortcutCenter:
+                state.shortcutCenter = ShortcutCenterFeature.State(
+                    keyBindings: state.keyBindings
+                )
+                return .none
+
+            case .shortcutCenterDismissed:
+                state.shortcutCenter = nil
+                return .none
+
+            case let .shortcutCenter(.delegate(.bindingsSaved(newBindings))):
+                state.shortcutCenter = nil
+                state.keyBindings = newBindings
+                return .none
+
+            case .shortcutCenter(.delegate(.dismissed)):
+                state.shortcutCenter = nil
+                return .none
+
+            case .shortcutCenter:
+                return .none
+
             case .teamSettingsButtonTapped:
                 state.teamSettings = TeamSettingsFeature.State()
                 return .none
@@ -277,6 +323,8 @@ struct AppFeature {
             return .send(.worktree(.createSheetShown(prefilledRepoId: nil)))
         case .toggleDebugPanel:
             return .send(.debugPanel(.panelToggled))
+        case .openShortcutCenter:
+            return .send(.openShortcutCenter)
         }
     }
 }
