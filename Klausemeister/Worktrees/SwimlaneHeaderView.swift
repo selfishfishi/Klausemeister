@@ -8,8 +8,6 @@ struct SwimlaneHeaderView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "arrow.triangle.branch")
-                    .foregroundStyle(.secondary)
                 MeisterStatusDot(status: worktree.meisterStatus)
                 Text(worktree.name)
                     .font(.body)
