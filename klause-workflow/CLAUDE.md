@@ -42,18 +42,18 @@ forever:
     loop
 ```
 
-Call `reportProgress` liberally — once per meaningful sub-step of each command. The UI shows the latest string per session, so terse present-tense descriptions work best: `"klause-spec — exploring codebase"`, `"klause-review — reading diff"`, `"waiting for user confirmation"`.
+Call `reportProgress` liberally — once per meaningful sub-step of each command. The UI shows the latest string per session, so terse present-tense descriptions work best: `"klause-define — exploring codebase"`, `"klause-review — reading diff"`, `"waiting for user confirmation"`.
 
 ## 3. Dispatch table
 
 | Pulled Linear state | Command | Next state on success |
 |---|---|---|
-| `Backlog` | `/klause-spec` | `Todo` |
+| `Backlog` | `/klause-define` | `Todo` |
 | `In Review` | `/klause-review` | `Testing` or `Done` (the command decides) |
 | `Testing` | `/klause-verify` | `Done` |
 | *(any other state)* | No `klause-*` command exists yet. Do the work directly — use `/feature-dev` or plain conversation. | Whatever state the work advanced to. |
 
-The three `/klause-*` commands are **placeholders** in this version of the plugin (KLA-75, KLA-76, KLA-77). When they are invoked, they describe the planned contract and wait for user direction instead of silently guessing. See `commands/` for details.
+`/klause-define` is implemented and uses the `getProductState` / `transition` MCP tools for state validation. `/klause-review` and `/klause-verify` are still placeholders (KLA-76, KLA-77). See `commands/` for details.
 
 For states without a dedicated command — `Definition`, `Todo`, `Spec`, `In Progress` — pick the best tool for the work and report back. Typical fits:
 
@@ -90,14 +90,14 @@ Do not busy-loop on `getNextItem`. Idle is a valid state.
 - Do not touch the local MCP server's underlying state directly (SQLite, Linear GraphQL). Always go through the MCP tools.
 - Do not claim items for other worktrees — only call `getNextItem(KLAUSE_WORKTREE_ID)` with your own ID.
 - Do not silently skip stages. If you move a ticket multiple states forward in one `completeItem` call, tell the user what you did and why.
-- Do not run any `/klause-*` command as if it were implemented — they are placeholders until KLA-75/76/77 land.
+- Do not run `/klause-review` or `/klause-verify` as if implemented — they are placeholders until KLA-76/77 land.
 
 ## 8. Related tickets
 
 - [KLA-70](https://linear.app/selfishfish/issue/KLA-70) — Klausemeister local MCP server (the server this plugin talks to)
 - [KLA-72](https://linear.app/selfishfish/issue/KLA-72) — this scaffold
 - [KLA-74](https://linear.app/selfishfish/issue/KLA-74) — meister spawn + env vars
-- [KLA-75](https://linear.app/selfishfish/issue/KLA-75) — `/klause-spec`
+- [KLA-75](https://linear.app/selfishfish/issue/KLA-75) — `/klause-define`
 - [KLA-76](https://linear.app/selfishfish/issue/KLA-76) — `/klause-review`
 - [KLA-77](https://linear.app/selfishfish/issue/KLA-77) — `/klause-verify`
 - [KLA-80](https://linear.app/selfishfish/issue/KLA-80) — `reportProgress` wired into the UI
