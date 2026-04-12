@@ -100,5 +100,13 @@ enum DatabaseMigrations {
                 t.column("isHiddenFromBoard", .boolean).notNull().defaults(to: false)
             }
         }
+
+        migrator.registerMigration("v8-team-ingestion-strategy") { db in
+            try db.alter(table: "linear_teams") { t in
+                t.add(column: "ingestionStrategy", .text)
+                    .notNull()
+                    .defaults(to: IngestionStrategy.labelFiltered.rawValue)
+            }
+        }
     }
 }

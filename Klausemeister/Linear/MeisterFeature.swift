@@ -34,6 +34,8 @@ struct MeisterFeature {
         let workflowStatesByTeam: WorkflowStatesByTeam?
         let orphanedIds: Set<String>
         let restoredIds: Set<String>
+        /// Team IDs whose fetch failed during this sync. Empty on full success.
+        let failedTeamIds: Set<String>
     }
 
     struct KanbanColumn: Equatable, Identifiable {
@@ -88,14 +90,14 @@ struct MeisterFeature {
     @Dependency(\.date) var date
     @Dependency(\.continuousClock) var clock
 
-    private func syncEffect(shouldFetchStates: Bool, enabledTeamIds: [String] = []) -> Effect<Action> {
+    private func syncEffect(shouldFetchStates: Bool, enabledTeams: [LinearTeam] = []) -> Effect<Action> {
         .run { [linearAPIClient, databaseClient] send in
             await send(.syncCompleted(TaskResult {
                 try await performSync(
                     linearAPIClient: linearAPIClient,
                     databaseClient: databaseClient,
                     fetchWorkflowStates: shouldFetchStates,
-                    enabledTeamIds: enabledTeamIds
+                    enabledTeams: enabledTeams
                 )
             }))
         }
@@ -106,7 +108,7 @@ struct MeisterFeature {
     /// the network fetch is needed based on the cache's `fetchedAt` timestamp.
     /// This is sequential (read cache → decide TTL → run sync) to avoid the race
     /// where in-memory state is empty and we always fetch fresh.
-    private func onAppearEffect(enabledTeamIds: [String] = []) -> Effect<Action> {
+    private func onAppearEffect(enabledTeams: [LinearTeam] = []) -> Effect<Action> {
         .run { [linearAPIClient, databaseClient, currentNow = date.now] send in
             // 1. Load persisted cache (if any)
             let records = await (try? databaseClient.fetchWorkflowStates()) ?? []
@@ -139,7 +141,7 @@ struct MeisterFeature {
                     linearAPIClient: linearAPIClient,
                     databaseClient: databaseClient,
                     fetchWorkflowStates: shouldFetchStates,
-                    enabledTeamIds: enabledTeamIds
+                    enabledTeams: enabledTeams
                 )
             }))
         }
@@ -164,11 +166,11 @@ struct MeisterFeature {
                 // yet to avoid a race with the workspace-wide fallback query.
                 guard !state.teams.isEmpty else { return .none }
                 state.syncStatus = .syncing
-                let enabledTeamIds = state.teams.filter(\.isEnabled).map(\.id)
+                let enabledTeams = state.teams.filter(\.isEnabled)
                 return .merge(
                     .send(.delegate(.syncStarted)),
                     .cancel(id: "MeisterFeature.syncIndicatorReset"),
-                    onAppearEffect(enabledTeamIds: enabledTeamIds)
+                    onAppearEffect(enabledTeams: enabledTeams)
                 )
 
             case .refreshTapped:
@@ -177,21 +179,21 @@ struct MeisterFeature {
                     lastFetched: state.workflowStatesLastFetched,
                     now: date.now
                 )
-                let enabledTeamIds = state.teams.filter(\.isEnabled).map(\.id)
+                let enabledTeams = state.teams.filter(\.isEnabled)
                 return .merge(
                     .send(.delegate(.syncStarted)),
                     .cancel(id: "MeisterFeature.syncIndicatorReset"),
-                    syncEffect(shouldFetchStates: shouldFetchStates, enabledTeamIds: enabledTeamIds)
+                    syncEffect(shouldFetchStates: shouldFetchStates, enabledTeams: enabledTeams)
                 )
 
             case .refreshLinearMetadataTapped:
                 state.workflowStatesLastFetched = nil
                 state.syncStatus = .syncing
-                let enabledTeamIds = state.teams.filter(\.isEnabled).map(\.id)
+                let enabledTeams = state.teams.filter(\.isEnabled)
                 return .merge(
                     .send(.delegate(.syncStarted)),
                     .cancel(id: "MeisterFeature.syncIndicatorReset"),
-                    syncEffect(shouldFetchStates: true, enabledTeamIds: enabledTeamIds)
+                    syncEffect(shouldFetchStates: true, enabledTeams: enabledTeams)
                 )
 
             case let .workflowStatesLoadedFromCache(states, fetchedAt):
@@ -224,7 +226,8 @@ struct MeisterFeature {
                         )
                     }
                 }
-                return .merge(
+                let failedTeamIds = result.failedTeamIds
+                var effects: [Effect<Action>] = [
                     .send(.delegate(.syncSucceeded)),
                     .run { [databaseClient] send in
                         do {
@@ -245,7 +248,19 @@ struct MeisterFeature {
                         await send(.syncIndicatorReset)
                     }
                     .cancellable(id: "MeisterFeature.syncIndicatorReset", cancelInFlight: true)
-                )
+                ]
+                if !failedTeamIds.isEmpty {
+                    let teamNames = failedTeamIds.compactMap { id in
+                        state.teams.first { $0.id == id }?.key
+                    }
+                    let names = teamNames.isEmpty
+                        ? failedTeamIds.joined(separator: ", ")
+                        : teamNames.joined(separator: ", ")
+                    effects.append(.send(.delegate(.errorOccurred(
+                        message: "Sync partially failed for: \(names)"
+                    ))))
+                }
+                return .merge(effects)
 
             case let .syncCompleted(.failure(error)):
                 state.syncStatus = .idle
@@ -396,7 +411,7 @@ struct MeisterFeature {
                     .cancel(id: "MeisterFeature.syncIndicatorReset"),
                     syncEffect(
                         shouldFetchStates: shouldFetchStates,
-                        enabledTeamIds: teams.filter(\.isEnabled).map(\.id)
+                        enabledTeams: teams.filter(\.isEnabled)
                     )
                 )
 
@@ -449,40 +464,57 @@ struct MeisterFeature {
 
 // MARK: - Sync logic
 
+nonisolated private struct TeamFetchResult {
+    let teamId: String
+    let issues: [LinearIssue]
+    let failed: Bool
+}
+
 nonisolated private func performSync(
     linearAPIClient: LinearAPIClient,
     databaseClient: DatabaseClient,
     fetchWorkflowStates: Bool,
-    enabledTeamIds: [String]
+    enabledTeams: [LinearTeam]
 ) async throws -> MeisterFeature.SyncResult {
-    // Fetch issues — per-team parallel when team IDs are available,
+    // Fetch issues — per-team parallel when teams are available,
     // otherwise fall back to the workspace-wide single fetch.
-    async let issuesTask: [LinearIssue] = {
-        if enabledTeamIds.isEmpty {
-            return try await linearAPIClient.fetchLabeledIssues(MeisterFeature.syncLabel, nil)
+    async let issuesTask: ([LinearIssue], Set<String>) = {
+        if enabledTeams.isEmpty {
+            let issues = try await linearAPIClient.fetchLabeledIssues(MeisterFeature.syncLabel, nil)
+            return (issues, [])
         }
-        return try await withThrowingTaskGroup(of: [LinearIssue].self) { group in
-            for teamId in enabledTeamIds {
+        return try await withThrowingTaskGroup(of: TeamFetchResult.self) { group in
+            for team in enabledTeams {
                 group.addTask {
                     do {
-                        return try await linearAPIClient.fetchLabeledIssues(
-                            MeisterFeature.syncLabel, teamId
-                        )
+                        let issues: [LinearIssue] = switch team.ingestionStrategy {
+                        case .labelFiltered:
+                            try await linearAPIClient.fetchLabeledIssues(
+                                MeisterFeature.syncLabel, team.id
+                            )
+                        case .allIssues:
+                            try await linearAPIClient.fetchAllTeamIssues(team.id)
+                        }
+                        return TeamFetchResult(teamId: team.id, issues: issues, failed: false)
                     } catch {
                         // Isolated failure — this team's issues are skipped,
                         // other teams continue. The next sync will retry.
-                        return []
+                        return TeamFetchResult(teamId: team.id, issues: [], failed: true)
                     }
                 }
             }
             var allIssues: [LinearIssue] = []
             var seenIds = Set<String>()
-            for try await teamIssues in group {
-                for issue in teamIssues where seenIds.insert(issue.id).inserted {
+            var failedIds = Set<String>()
+            for try await result in group {
+                if result.failed {
+                    failedIds.insert(result.teamId)
+                }
+                for issue in result.issues where seenIds.insert(issue.id).inserted {
                     allIssues.append(issue)
                 }
             }
-            return allIssues
+            return (allIssues, failedIds)
         }
     }()
 
@@ -491,7 +523,7 @@ nonisolated private func performSync(
         return try await linearAPIClient.fetchWorkflowStatesByTeam()
     }()
 
-    let fetchedIssues = try await issuesTask
+    let (fetchedIssues, failedTeamIds) = try await issuesTask
     let workflowStatesByTeam = try await statesTask
     let dbRecords = try await databaseClient.fetchUnqueuedImportedIssues()
 
@@ -518,7 +550,8 @@ nonisolated private func performSync(
         issues: mergedIssues,
         workflowStatesByTeam: workflowStatesByTeam,
         orphanedIds: orphanedIds,
-        restoredIds: restoredIds
+        restoredIds: restoredIds,
+        failedTeamIds: failedTeamIds
     )
 }
 

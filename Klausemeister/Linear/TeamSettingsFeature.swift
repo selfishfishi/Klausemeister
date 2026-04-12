@@ -7,6 +7,7 @@ struct TeamSettingsFeature {
     struct State: Equatable {
         var allTeams: [LinearTeam] = []
         var enabledTeamIds: Set<String> = []
+        var originalStrategies: [String: IngestionStrategy] = [:]
         var teamsToRemove: Set<String> = []
         var loadingStatus: LoadingStatus = .idle
         @Presents var alert: AlertState<Action.Alert>?
@@ -28,6 +29,7 @@ struct TeamSettingsFeature {
         case onAppear
         case teamsLoaded(TaskResult<TeamSettingsData>)
         case enableTeamToggled(teamId: String)
+        case ingestionStrategyChanged(teamId: String, strategy: IngestionStrategy)
         case removeTeamTapped(teamId: String)
         case saveTapped
         case saveCompleted(TaskResult<[LinearTeam]>)
@@ -84,7 +86,8 @@ struct TeamSettingsFeature {
                             name: apiTeam.name,
                             colorIndex: persisted.colorIndex,
                             isEnabled: persisted.isEnabled,
-                            isHiddenFromBoard: persisted.isHiddenFromBoard
+                            isHiddenFromBoard: persisted.isHiddenFromBoard,
+                            ingestionStrategy: persisted.ingestionStrategy
                         )
                     }
                     var newTeam = apiTeam
@@ -93,6 +96,9 @@ struct TeamSettingsFeature {
                 }
                 state.enabledTeamIds = Set(
                     state.allTeams.filter(\.isEnabled).map(\.id)
+                )
+                state.originalStrategies = Dictionary(
+                    uniqueKeysWithValues: state.allTeams.map { ($0.id, $0.ingestionStrategy) }
                 )
                 return .none
 
@@ -108,6 +114,13 @@ struct TeamSettingsFeature {
                     // If the team was previously marked for removal, cancel that
                     state.teamsToRemove.remove(teamId)
                 }
+                return .none
+
+            case let .ingestionStrategyChanged(teamId, strategy):
+                guard let index = state.allTeams.firstIndex(where: { $0.id == teamId }) else {
+                    return .none
+                }
+                state.allTeams[index].ingestionStrategy = strategy
                 return .none
 
             case let .removeTeamTapped(teamId):

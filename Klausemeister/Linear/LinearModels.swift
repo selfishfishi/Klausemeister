@@ -49,6 +49,11 @@ struct LinearWorkflowState: Equatable, Identifiable {
 
 typealias WorkflowStatesByTeam = [String: [LinearWorkflowState]]
 
+enum IngestionStrategy: String, Equatable, Codable, CaseIterable, Hashable {
+    case labelFiltered
+    case allIssues
+}
+
 struct LinearTeam: Equatable, Identifiable, Codable {
     let id: String
     let key: String
@@ -56,4 +61,5 @@ struct LinearTeam: Equatable, Identifiable, Codable {
     var colorIndex: Int
     var isEnabled: Bool
     var isHiddenFromBoard: Bool
+    var ingestionStrategy: IngestionStrategy = .labelFiltered
 }

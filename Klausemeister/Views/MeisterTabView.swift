@@ -32,7 +32,11 @@ struct MeisterTabView: View {
                 TeamPickerView(
                     teams: authStore.availableTeams,
                     selectedTeamIds: authStore.selectedTeamIds,
+                    teamStrategies: authStore.teamStrategies,
                     onToggle: { id in authStore.send(.teamToggled(id: id)) },
+                    onStrategyChange: { id, strategy in
+                        authStore.send(.teamStrategyChanged(teamId: id, strategy: strategy))
+                    },
                     onConfirm: { authStore.send(.teamSelectionConfirmed) }
                 )
             case .unauthenticated, .authenticating, .fetchingTeams:
