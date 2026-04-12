@@ -54,7 +54,7 @@ Call `reportProgress` liberally — once per meaningful sub-step of each command
 | `Testing` | `/klause-verify` | `Done` |
 | *(any other state)* | No `klause-*` command exists yet. Do the work directly — use `/feature-dev` or plain conversation. | Whatever state the work advanced to. |
 
-`/klause-define`, `/klause-pull`, and `/klause-execute` are implemented and use the `getProductState` / `transition` MCP tools for state validation. `/klause-pull` is not state-dispatched — it is invoked explicitly or by `/klause:next` when the queue position is `inbox`. `/klause-execute` transitions Todo → In Progress and invokes `/feature-dev:feature-dev`. `/klause-review` and `/klause-verify` are still placeholders (KLA-76, KLA-77). See `commands/` for details.
+`/klause-define`, `/klause-pull`, `/klause-execute`, and `/klause-review` are implemented and use the `getProductState` / `transition` MCP tools for state validation. `/klause-pull` is not state-dispatched — it is invoked explicitly or by `/klause:next` when the queue position is `inbox`. `/klause-execute` transitions Todo → In Progress and invokes `/feature-dev:feature-dev`. `/klause-review` is manual-only (not invoked by `/klause:next`) — it prompts before transitioning In Progress → In Review. `/klause-verify` is still a placeholder (KLA-77). See `commands/` for details.
 
 For states without a dedicated command — `Definition`, `Spec`, `In Progress` — pick the best tool for the work and report back. Typical fits:
 
@@ -91,7 +91,7 @@ Do not busy-loop on `getNextItem`. Idle is a valid state.
 - Do not touch the local MCP server's underlying state directly (SQLite, Linear GraphQL). Always go through the MCP tools.
 - Do not claim items for other worktrees — only call `getNextItem(KLAUSE_WORKTREE_ID)` with your own ID.
 - Do not silently skip stages. If you move a ticket multiple states forward in one `completeItem` call, tell the user what you did and why.
-- Do not run `/klause-review` or `/klause-verify` as if implemented — they are placeholders until KLA-76/77 land.
+- Do not run `/klause-verify` as if implemented — it is a placeholder until KLA-77 lands.
 
 ## 8. Related tickets
 
