@@ -35,6 +35,17 @@ struct KlausemeisterApp: App {
                     store.send(.oauthCallbackReceived(url))
                 }
                 .preferredColorScheme(selectedTheme.isDark ? .dark : .light)
+                .sheet(isPresented: Binding(
+                    get: { store.debugPanel.showPanel },
+                    set: { newValue in
+                        if !newValue { store.send(.debugPanel(.panelToggled)) }
+                    }
+                )) {
+                    DebugPanelView(
+                        store: store.scope(state: \.debugPanel, action: \.debugPanel),
+                        worktrees: Array(store.worktree.worktrees)
+                    )
+                }
         }
         .defaultSize(width: 900, height: 600)
         .environment(\.themeColors, selectedTheme.colors)
@@ -42,6 +53,12 @@ struct KlausemeisterApp: App {
             store.send(.themeChanged(newTheme))
         }
         .commands {
+            CommandMenu("Debug") {
+                Button("MCP Diagnostics") {
+                    store.send(.debugPanel(.panelToggled))
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+            }
             CommandMenu("Theme") {
                 Section("Dark") {
                     ForEach([AppTheme.darkHard, .darkMedium, .darkSoft]) { theme in

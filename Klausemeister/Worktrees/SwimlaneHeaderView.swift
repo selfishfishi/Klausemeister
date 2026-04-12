@@ -10,6 +10,7 @@ struct SwimlaneHeaderView: View {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.branch")
                     .foregroundStyle(.secondary)
+                MeisterStatusDot(status: worktree.meisterStatus)
                 Text(worktree.name)
                     .font(.body)
                     .lineLimit(1)

@@ -72,6 +72,7 @@ struct SidebarWorktreeRow: View {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.branch")
                     .foregroundStyle(.secondary)
+                MeisterStatusDot(status: worktree.meisterStatus)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(worktree.name)
                         .lineLimit(1)

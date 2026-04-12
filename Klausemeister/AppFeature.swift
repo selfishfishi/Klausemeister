@@ -11,6 +11,7 @@ struct AppFeature {
         var worktree = WorktreeFeature.State()
         var linearAuth = LinearAuthFeature.State()
         var statusBar = StatusBarFeature.State()
+        var debugPanel = DebugPanelFeature.State()
     }
 
     enum Action {
@@ -23,6 +24,7 @@ struct AppFeature {
         case worktree(WorktreeFeature.Action)
         case linearAuth(LinearAuthFeature.Action)
         case statusBar(StatusBarFeature.Action)
+        case debugPanel(DebugPanelFeature.Action)
         case mcpServerEvent(MCPServerEvent)
     }
 
@@ -47,6 +49,9 @@ struct AppFeature {
         }
         Scope(state: \.statusBar, action: \.statusBar) {
             StatusBarFeature()
+        }
+        Scope(state: \.debugPanel, action: \.debugPanel) {
+            DebugPanelFeature()
         }
         Reduce { state, action in
             switch action {
@@ -141,20 +146,30 @@ struct AppFeature {
             case .statusBar:
                 return .none
 
-            case let .mcpServerEvent(.errorOccurred(message)):
-                return .send(.statusBar(.errorReported(source: .mcpServer, message: message)))
-
-            case .mcpServerEvent(.progressReported):
-                // KLA-80 will route per-session progress into the sidebar.
-                // For v1, we accept the event and surface nothing — the
-                // meister sees its own status, and errors take a different path.
+            case .debugPanel:
                 return .none
 
-            case let .mcpServerEvent(.meisterHelloReceived(worktreeId)):
-                return .send(.worktree(.meisterHelloReceived(worktreeId: worktreeId)))
-
-            case let .mcpServerEvent(.meisterConnectionClosed(worktreeId)):
-                return .send(.worktree(.meisterConnectionClosed(worktreeId: worktreeId)))
+            case let .mcpServerEvent(event):
+                let debugEffect = Effect<Action>.send(.debugPanel(.eventReceived(event)))
+                switch event {
+                case let .errorOccurred(message):
+                    return .merge(
+                        .send(.statusBar(.errorReported(source: .mcpServer, message: message))),
+                        debugEffect
+                    )
+                case .progressReported:
+                    return debugEffect
+                case let .meisterHelloReceived(worktreeId):
+                    return .merge(
+                        .send(.worktree(.meisterHelloReceived(worktreeId: worktreeId))),
+                        debugEffect
+                    )
+                case let .meisterConnectionClosed(worktreeId):
+                    return .merge(
+                        .send(.worktree(.meisterConnectionClosed(worktreeId: worktreeId))),
+                        debugEffect
+                    )
+                }
             }
         }
     }
