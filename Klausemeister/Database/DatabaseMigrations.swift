@@ -108,5 +108,12 @@ enum DatabaseMigrations {
                     .defaults(to: IngestionStrategy.labelFiltered.rawValue)
             }
         }
+
+        migrator.registerMigration("v9-ignored-worktree-paths") { db in
+            try db.create(table: "ignored_worktree_paths") { t in
+                t.column("path", .text).primaryKey()
+                t.column("repoId", .text).notNull()
+            }
+        }
     }
 }

@@ -17,6 +17,7 @@ struct WorktreeClient {
     var deleteWorktree: @Sendable (_ worktreeId: String) async throws -> Void
     var renameWorktree: @Sendable (_ worktreeId: String, _ newName: String) async throws -> Void
     var updateWorktreeOrder: @Sendable (_ orderedIds: [String]) async throws -> Void
+    var ignoreWorktreePath: @Sendable (_ path: String, _ repoId: String) async throws -> Void
 
     // MARK: - Queue Management
 
@@ -82,6 +83,10 @@ extension WorktreeClient: DependencyKey {
                         sql: "DELETE FROM worktrees WHERE repoId = ?",
                         arguments: [repoId]
                     )
+                    try db.execute(
+                        sql: "DELETE FROM ignored_worktree_paths WHERE repoId = ?",
+                        arguments: [repoId]
+                    )
                     _ = try RepositoryRecord.deleteOne(db, key: ["repoId": repoId])
                 }
             },
@@ -131,6 +136,15 @@ extension WorktreeClient: DependencyKey {
                             arguments: [index, worktreeId]
                         )
                     }
+                }
+            },
+
+            ignoreWorktreePath: { path, repoId in
+                try await dbQueue.write { db in
+                    try db.execute(
+                        sql: "INSERT OR IGNORE INTO ignored_worktree_paths (path, repoId) VALUES (?, ?)",
+                        arguments: [path, repoId]
+                    )
                 }
             },
 
@@ -272,6 +286,15 @@ extension WorktreeClient: DependencyKey {
                     )
                     let entryPaths = Set(secondaryEntries.map(\.path))
 
+                    // Paths the user explicitly removed — never re-import these
+                    let ignoredPaths = try Set(
+                        String.fetchAll(
+                            db,
+                            sql: "SELECT path FROM ignored_worktree_paths WHERE repoId = ?",
+                            arguments: [repoId]
+                        )
+                    )
+
                     // Delete orphaned records (in DB, no longer on disk)
                     var deletedIds: [String] = []
                     for record in existing where !entryPaths.contains(record.gitWorktreePath) {
@@ -279,10 +302,12 @@ extension WorktreeClient: DependencyKey {
                         deletedIds.append(record.worktreeId)
                     }
 
-                    // Insert new records (on disk, not in DB)
+                    // Insert new records (on disk, not in DB, not ignored)
                     var inserted: [WorktreeRecord] = []
                     var maxSort = try Int.fetchOne(db, sql: "SELECT MAX(sortOrder) FROM worktrees") ?? -1
-                    for entry in secondaryEntries where existingByPath[entry.path] == nil {
+                    for entry in secondaryEntries
+                        where existingByPath[entry.path] == nil && !ignoredPaths.contains(entry.path)
+                    {
                         maxSort += 1
                         let name = URL(fileURLWithPath: entry.path).lastPathComponent
                         let record = WorktreeRecord(
@@ -312,6 +337,7 @@ extension WorktreeClient: DependencyKey {
         deleteWorktree: unimplemented("WorktreeClient.deleteWorktree"),
         renameWorktree: unimplemented("WorktreeClient.renameWorktree"),
         updateWorktreeOrder: unimplemented("WorktreeClient.updateWorktreeOrder"),
+        ignoreWorktreePath: unimplemented("WorktreeClient.ignoreWorktreePath"),
         fetchQueueItems: unimplemented("WorktreeClient.fetchQueueItems"),
         assignIssueToWorktree: unimplemented("WorktreeClient.assignIssueToWorktree"),
         moveToOutbox: unimplemented("WorktreeClient.moveToOutbox"),
