@@ -11,6 +11,7 @@ struct AppFeature {
         var worktree = WorktreeFeature.State()
         var linearAuth = LinearAuthFeature.State()
         var statusBar = StatusBarFeature.State()
+        var teamSettings: TeamSettingsFeature.State?
     }
 
     enum Action {
@@ -23,6 +24,9 @@ struct AppFeature {
         case worktree(WorktreeFeature.Action)
         case linearAuth(LinearAuthFeature.Action)
         case statusBar(StatusBarFeature.Action)
+        case teamSettingsButtonTapped
+        case teamSettingsDismissed
+        case teamSettings(TeamSettingsFeature.Action)
         case mcpServerEvent(MCPServerEvent)
     }
 
@@ -47,6 +51,9 @@ struct AppFeature {
         }
         Scope(state: \.statusBar, action: \.statusBar) {
             StatusBarFeature()
+        }
+        .ifLet(\.teamSettings, action: \.teamSettings) {
+            TeamSettingsFeature()
         }
         Reduce { state, action in
             switch action {
@@ -140,6 +147,28 @@ struct AppFeature {
                 return .send(.statusBar(.errorReported(source: .linearAuth, message: message)))
 
             case .linearAuth:
+                return .none
+
+            case .teamSettingsButtonTapped:
+                state.teamSettings = TeamSettingsFeature.State()
+                return .none
+
+            case .teamSettingsDismissed:
+                state.teamSettings = nil
+                return .none
+
+            case let .teamSettings(.delegate(.teamsUpdated(teams))):
+                state.teamSettings = nil
+                return .merge(
+                    .send(.meister(.teamsConfirmed(teams))),
+                    .send(.worktree(.onAppear))
+                )
+
+            case .teamSettings(.delegate(.dismissed)):
+                state.teamSettings = nil
+                return .none
+
+            case .teamSettings:
                 return .none
 
             case .statusBar:
