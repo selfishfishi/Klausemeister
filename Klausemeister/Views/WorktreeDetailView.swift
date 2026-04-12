@@ -6,6 +6,8 @@ struct WorktreeDetailView: View {
     @Bindable var store: StoreOf<WorktreeFeature>
     let surfaceStore: SurfaceStore
 
+    @Environment(\.themeColors) private var themeColors
+
     var body: some View {
         Group {
             if let worktreeId = store.selectedWorktreeId,
@@ -15,20 +17,11 @@ struct WorktreeDetailView: View {
                     worktree: worktree,
                     activeTab: store.activeDetailTab,
                     surfaceView: surfaceStore.surface(for: worktreeId),
-                    onTabChange: { tab in
-                        store.send(.detailTabSelected(tab))
-                    },
-                    onRename: { newName in
-                        store.send(.renameWorktreeTapped(worktreeId: worktreeId, newName: newName))
-                    },
                     onMarkComplete: {
                         store.send(.markAsCompleteTapped(worktreeId: worktreeId))
                     },
                     onReturnToMeister: { issueId in
                         store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktreeId))
-                    },
-                    onDelete: {
-                        store.send(.confirmDeleteTapped(worktreeId: worktreeId))
                     }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -40,6 +33,27 @@ struct WorktreeDetailView: View {
                 )
             }
         }
+        .background {
+            Color(hexString: themeColors.background)
+                .ignoresSafeArea()
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("", selection: Binding(
+                    get: { store.activeDetailTab },
+                    set: { store.send(.detailTabSelected($0)) }
+                )) {
+                    Image(systemName: "list.bullet.rectangle")
+                        .tag(WorktreeDetailTab.queue)
+                    Image(systemName: "terminal")
+                        .tag(WorktreeDetailTab.terminal)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 120)
+            }
+        }
+        .tint(themeColors.accentColor)
         .alert($store.scope(state: \.alert, action: \.alert))
     }
 }
