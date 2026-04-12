@@ -8,7 +8,7 @@ struct WorktreeQueueItemRecord: Codable, Equatable, FetchableRecord, Persistable
     var id: String
     var worktreeId: String
     var issueLinearId: String
-    var queuePosition: String
+    var queuePosition: QueuePosition
     var sortOrder: Int
     var assignedAt: String
     var completedAt: String?

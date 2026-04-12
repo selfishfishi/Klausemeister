@@ -53,7 +53,7 @@ private let inboxItem = WorktreeQueueItemRecord(
     id: "qi-1",
     worktreeId: worktreeId,
     issueLinearId: issueRecord.linearId,
-    queuePosition: "inbox",
+    queuePosition: .inbox,
     sortOrder: 0,
     assignedAt: "2026-04-06",
     completedAt: nil
@@ -63,7 +63,7 @@ private let processingItem = WorktreeQueueItemRecord(
     id: "qi-2",
     worktreeId: worktreeId,
     issueLinearId: "issue-other",
-    queuePosition: "processing",
+    queuePosition: .processing,
     sortOrder: 0,
     assignedAt: "2026-04-06",
     completedAt: nil

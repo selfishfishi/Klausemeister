@@ -140,7 +140,7 @@ struct WorktreeFeature {
         case issueReturnedToMeister(issueId: String, worktreeId: String)
         case issueMovedToProcessing(queueItemId: String, issueId: String, worktreeId: String)
         case issueMovedToOutbox(queueItemId: String, issueId: String, worktreeId: String)
-        case queueReordered(worktreeId: String, queuePosition: String, itemIds: [String])
+        case queueReordered(worktreeId: String, queuePosition: QueuePosition, itemIds: [String])
 
         // Drag-and-drop (issue-ID-based, no queueItemId needed)
         case issueDroppedOnInbox(issueId: String, worktreeId: String)
@@ -449,14 +449,14 @@ struct WorktreeFeature {
                         repoId: record.repoId,
                         repoName: record.repoId.flatMap { repoNames[$0] },
                         inbox: items
-                            .filter { $0.queuePosition == "inbox" }
+                            .filter { $0.queuePosition == .inbox }
                             .sorted { $0.sortOrder < $1.sortOrder }
                             .compactMap { issuesByLinearId[$0.issueLinearId] },
                         processing: items
-                            .first { $0.queuePosition == "processing" }
+                            .first { $0.queuePosition == .processing }
                             .flatMap { issuesByLinearId[$0.issueLinearId] },
                         outbox: items
-                            .filter { $0.queuePosition == "outbox" }
+                            .filter { $0.queuePosition == .outbox }
                             .sorted { $0.sortOrder < $1.sortOrder }
                             .compactMap { issuesByLinearId[$0.issueLinearId] }
                     )
