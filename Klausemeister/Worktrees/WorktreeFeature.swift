@@ -86,14 +86,6 @@ enum MeisterStatus: Equatable {
     case disconnected
 }
 
-/// Which sub-tab of the worktree detail pane is currently active.
-/// Persisted to UserDefaults so selection survives relaunch — future KLA-87
-/// will move this into per-window state.
-enum WorktreeDetailTab: String, Equatable {
-    case queue
-    case terminal
-}
-
 /// State for the Create Worktree sheet presented from the Meister swimlane
 /// header. Holds the repo pick, the free-form name, and the set of existing
 /// local branches for the selected repo (used for the inline collision check).
@@ -117,13 +109,11 @@ struct WorktreeFeature {
         var worktrees: IdentifiedArrayOf<Worktree> = []
         var isCreatingWorktree: Bool = false
         var selectedWorktreeId: String?
-        /// Which tab (Queue or Terminal) the detail pane is currently showing.
-        /// Single shared value across worktrees — the last-selected tab wins.
-        /// Initialised from UserDefaults once at store construction so visits
-        /// to the Meister tab (which re-fire `onAppear`) do not clobber in-
-        /// memory edits. Writes happen inside `detailTabSelected`'s effect.
-        var activeDetailTab: WorktreeDetailTab = UserDefaults.standard.string(forKey: WorktreeFeature.activeDetailTabUserDefaultsKey)
-            .flatMap(WorktreeDetailTab.init(rawValue:)) ?? .queue
+        /// Whether the board overlay (inbox/processing/outbox columns) is
+        /// showing on top of the terminal. Persisted to UserDefaults.
+        var showBoardOverlay: Bool = UserDefaults.standard.bool(
+            forKey: WorktreeFeature.showBoardOverlayUserDefaultsKey
+        )
 
         /// Which repo sections are collapsed in the swimlane view.
         var collapsedRepoIds: Set<String> = []
@@ -161,7 +151,7 @@ struct WorktreeFeature {
         case removeWorktreeTapped(worktreeId: String)
         case removeWorktreeConfirmed(worktreeId: String)
         case worktreeSelected(String?)
-        case detailTabSelected(WorktreeDetailTab)
+        case boardOverlayToggled
         case repoCollapseToggled(repoId: String)
         case renameWorktreeTapped(worktreeId: String, newName: String)
         case worktreeRenamed(worktreeId: String, newName: String)
@@ -247,7 +237,7 @@ struct WorktreeFeature {
     /// during startup or the shell rc files blocked the send-keys input.
     nonisolated private static let meisterHelloGracePeriod: Duration = .seconds(8)
 
-    nonisolated fileprivate static let activeDetailTabUserDefaultsKey = "activeDetailTab"
+    nonisolated fileprivate static let showBoardOverlayUserDefaultsKey = "showBoardOverlay"
 
     @Dependency(\.worktreeClient) var worktreeClient
     @Dependency(\.databaseClient) var databaseClient
@@ -850,30 +840,19 @@ struct WorktreeFeature {
             case let .worktreeSelected(worktreeId):
                 state.selectedWorktreeId = worktreeId
                 if let worktreeId,
-                   state.activeDetailTab == .terminal,
                    let worktree = state.worktrees[id: worktreeId]
                 {
                     return terminalActivationEffect(state: &state, worktree: worktree)
                 }
                 return .none
 
-            case let .detailTabSelected(tab):
-                state.activeDetailTab = tab
-                let persistTab = Effect<Action>.run { _ in
+            case .boardOverlayToggled:
+                state.showBoardOverlay.toggle()
+                return .run { [show = state.showBoardOverlay] _ in
                     UserDefaults.standard.set(
-                        tab.rawValue, forKey: Self.activeDetailTabUserDefaultsKey
+                        show, forKey: Self.showBoardOverlayUserDefaultsKey
                     )
                 }
-                guard tab == .terminal,
-                      let worktreeId = state.selectedWorktreeId,
-                      let worktree = state.worktrees[id: worktreeId]
-                else {
-                    return persistTab
-                }
-                return .merge(
-                    persistTab,
-                    terminalActivationEffect(state: &state, worktree: worktree)
-                )
 
             case let .repoCollapseToggled(repoId):
                 if state.collapsedRepoIds.contains(repoId) {

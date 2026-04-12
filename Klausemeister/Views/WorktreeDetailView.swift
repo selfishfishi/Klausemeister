@@ -25,7 +25,7 @@ struct WorktreeDetailView: View {
                 let cachedTeamsByID = teamsByID
                 WorktreeDetailPaneView(
                     worktree: worktree,
-                    activeTab: store.activeDetailTab,
+                    showBoardOverlay: store.showBoardOverlay,
                     surfaceView: surfaceStore.surface(for: worktreeId),
                     teamFor: showTeamBadges ? { issue in
                         guard let team = cachedTeamsByID[issue.teamId] else { return nil }
@@ -47,24 +47,16 @@ struct WorktreeDetailView: View {
                 )
             }
         }
-        .background {
-            Color(hexString: themeColors.background)
-                .ignoresSafeArea()
-        }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Picker("", selection: Binding(
-                    get: { store.activeDetailTab },
-                    set: { store.send(.detailTabSelected($0)) }
-                )) {
-                    Image(systemName: "list.bullet.rectangle")
-                        .tag(WorktreeDetailTab.queue)
-                    Image(systemName: "terminal")
-                        .tag(WorktreeDetailTab.terminal)
+                Button {
+                    store.send(.boardOverlayToggled)
+                } label: {
+                    Image(systemName: store.showBoardOverlay
+                        ? "terminal"
+                        : "list.bullet.rectangle")
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 120)
+                .help(store.showBoardOverlay ? "Hide Board" : "Show Board")
             }
         }
         .tint(themeColors.accentColor)
