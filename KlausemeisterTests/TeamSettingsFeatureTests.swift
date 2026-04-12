@@ -38,6 +38,11 @@ private let persistedMOB = LinearTeamRecord(from: teamMOB)
         // KLA and MOB are enabled (from DB), INF is new and disabled
         $0.allTeams = [teamKLA, teamMOB, teamINF]
         $0.enabledTeamIds = ["team-kla", "team-mob"]
+        $0.originalStrategies = [
+            "team-kla": .labelFiltered,
+            "team-mob": .labelFiltered,
+            "team-inf": .labelFiltered
+        ]
     }
 }
 
@@ -141,4 +146,64 @@ private let persistedMOB = LinearTeamRecord(from: teamMOB)
 
     await store.send(.cancelTapped)
     await store.receive(\.delegate.dismissed)
+}
+
+// MARK: - Ingestion Strategy Tests
+
+@Test func `ingestion strategy change updates team`() async {
+    var state = TeamSettingsFeature.State()
+    state.allTeams = [teamKLA, teamMOB]
+    state.enabledTeamIds = ["team-kla", "team-mob"]
+    state.originalStrategies = [
+        "team-kla": .labelFiltered,
+        "team-mob": .labelFiltered
+    ]
+
+    let store = TestStore(initialState: state) {
+        TeamSettingsFeature()
+    }
+
+    await store.send(.ingestionStrategyChanged(teamId: "team-kla", strategy: .allIssues)) {
+        $0.allTeams[0].ingestionStrategy = .allIssues
+    }
+}
+
+@Test func `ingestion strategy change with unknown team ID is no-op`() async {
+    var state = TeamSettingsFeature.State()
+    state.allTeams = [teamKLA]
+    state.enabledTeamIds = ["team-kla"]
+
+    let store = TestStore(initialState: state) {
+        TeamSettingsFeature()
+    }
+
+    await store.send(.ingestionStrategyChanged(teamId: "nonexistent", strategy: .allIssues))
+}
+
+@Test func `save persists changed ingestion strategy`() async {
+    var klaAllIssues = teamKLA
+    klaAllIssues.ingestionStrategy = .allIssues
+
+    var state = TeamSettingsFeature.State()
+    state.allTeams = [klaAllIssues]
+    state.enabledTeamIds = ["team-kla"]
+    state.originalStrategies = ["team-kla": .labelFiltered]
+    state.loadingStatus = .loaded
+
+    var savedRecords: [LinearTeamRecord] = []
+
+    let store = TestStore(initialState: state) {
+        TeamSettingsFeature()
+    } withDependencies: {
+        $0.databaseClient.saveTeams = { records in
+            savedRecords = records
+        }
+    }
+
+    await store.send(.saveTapped)
+    await store.receive(\.saveCompleted.success)
+    await store.receive(\.delegate.teamsUpdated)
+
+    #expect(savedRecords.count == 1)
+    #expect(savedRecords.first?.ingestionStrategy == .allIssues)
 }
