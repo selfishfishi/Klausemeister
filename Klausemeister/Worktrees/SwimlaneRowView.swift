@@ -76,9 +76,11 @@ struct SwimlaneRowView: View {
                 Image(systemName: "ellipsis")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .frame(minWidth: 28, minHeight: 28)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(16)
+            .padding(6)
         }
         .glassEffect(
             .regular.tint(tint.opacity(0.04)),
