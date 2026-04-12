@@ -24,7 +24,7 @@ struct GitStatsLineView: View {
     var body: some View {
         HStack(spacing: 6) {
             if stats.uncommittedFiles > 0 {
-                Label("\(stats.uncommittedFiles)", systemImage: "doc.badge.ellipsis")
+                Text("\(stats.uncommittedFiles) files")
                     .foregroundStyle(.secondary)
             }
 
@@ -39,21 +39,30 @@ struct GitStatsLineView: View {
             }
 
             if let prInfo = stats.prSummary {
-                HStack(spacing: 2) {
+                HStack(spacing: 3) {
                     Text("#\(prInfo.number)")
-                    Text(prInfo.state.label)
-                        .foregroundStyle(prColor(prInfo.state))
+                    prStateView(prInfo.state)
                 }
+                .foregroundStyle(prColor(prInfo.state))
             }
 
             if stats.commitsAhead > 0 {
-                Label("\(stats.commitsAhead)↑", systemImage: "arrow.up")
+                Text("\(stats.commitsAhead)↑")
                     .foregroundStyle(.secondary)
-                    .labelStyle(.titleOnly)
             }
         }
         .font(.caption2)
         .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private func prStateView(_ state: PRState) -> some View {
+        switch state {
+        case .merged:
+            Image(systemName: "arrow.triangle.merge")
+        case .open, .closed:
+            Text(state.label)
+        }
     }
 
     private func prColor(_ state: PRState) -> Color {
