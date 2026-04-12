@@ -1,6 +1,18 @@
 import AppKit
 import ComposableArchitecture
 import SwiftUI
+import UniformTypeIdentifiers
+
+private extension UTType {
+    static let worktreeDragItem = UTType(exportedAs: "com.klausemeister.worktree-drag-item")
+}
+
+private struct WorktreeDragItem: Codable, Transferable {
+    let worktreeId: String
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .worktreeDragItem)
+    }
+}
 
 struct WorktreeSwimlaneView: View {
     @Bindable var store: StoreOf<WorktreeFeature>
@@ -205,6 +217,12 @@ struct WorktreeSwimlaneView: View {
                 store.send(.issueDroppedOnOutbox(issueId: issueId, worktreeId: worktree.id))
             }
         )
+        .draggable(WorktreeDragItem(worktreeId: worktree.id))
+        .dropDestination(for: WorktreeDragItem.self) { items, _ in
+            guard let movedId = items.first?.worktreeId, movedId != worktree.id else { return false }
+            store.send(.worktreeRowMoved(movedId: movedId, targetId: worktree.id))
+            return true
+        }
     }
 
     private func openRepoFolderPicker() {
