@@ -48,7 +48,7 @@ struct TerminalContainerView: View {
         .onChange(of: columnVisibility) { _, newVisibility in
             let shouldShow = (newVisibility != .detailOnly)
             if shouldShow != store.showSidebar {
-                store.send(.sidebarTogglePressed)
+                store.send(.toggleSidebar)
             }
         }
         .navigationTitle("")

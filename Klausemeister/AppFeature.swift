@@ -13,14 +13,15 @@ struct AppFeature {
         var statusBar = StatusBarFeature.State()
         var debugPanel = DebugPanelFeature.State()
         var teamSettings: TeamSettingsFeature.State?
+        var keyBindings: [AppCommand: KeyBinding] = [:]
     }
 
     enum Action {
         case onAppear
-        case sidebarTogglePressed
+        case toggleSidebar
         case themeChanged(AppTheme)
         case oauthCallbackReceived(URL)
-        case meisterTapped
+        case showMeister
         case meister(MeisterFeature.Action)
         case worktree(WorktreeFeature.Action)
         case linearAuth(LinearAuthFeature.Action)
@@ -36,6 +37,7 @@ struct AppFeature {
         case mcpServer
     }
 
+    @Dependency(\.actionRegistry) var actionRegistry
     @Dependency(\.surfaceManager) var surfaceManager
     @Dependency(\.ghosttyApp) var ghosttyApp
     @Dependency(\.oauthClient) var oauthClient
@@ -63,6 +65,7 @@ struct AppFeature {
         Reduce { state, action in
             switch action {
             case .onAppear:
+                state.keyBindings = actionRegistry.resolvedBindings()
                 return .merge(
                     .run { [mcpServerClient] _ in
                         await mcpServerClient.start()
@@ -76,7 +79,7 @@ struct AppFeature {
                     .cancellable(id: CancelID.mcpServer)
                 )
 
-            case .meisterTapped:
+            case .showMeister:
                 state.showMeister = true
                 state.worktree.selectedWorktreeId = nil
                 return .none
@@ -127,7 +130,7 @@ struct AppFeature {
             case .worktree:
                 return .none
 
-            case .sidebarTogglePressed:
+            case .toggleSidebar:
                 state.showSidebar.toggle()
                 return .none
 
