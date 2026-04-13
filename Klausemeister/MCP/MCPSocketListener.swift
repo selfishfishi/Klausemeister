@@ -456,6 +456,19 @@ extension MCPSocketListener {
                     worktreeId: worktreeId,
                     eventContinuation: eventContinuation
                 )
+            case "listWorktrees":
+                result = try await ToolHandlers.listWorktrees()
+            case "enqueueItem":
+                guard let issueLinearId = arguments?["issueLinearId"]?.stringValue,
+                      let targetWorktreeId = arguments?["targetWorktreeId"]?.stringValue
+                else {
+                    return errorResult("enqueueItem requires issueLinearId and targetWorktreeId")
+                }
+                result = try await ToolHandlers.enqueueItem(
+                    issueLinearId: issueLinearId,
+                    targetWorktreeId: targetWorktreeId,
+                    eventContinuation: eventContinuation
+                )
             default:
                 return errorResult("Unknown tool: \(name)")
             }
@@ -546,6 +559,36 @@ private enum ToolCatalog {
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([:]),
+                "additionalProperties": .bool(false)
+            ])
+        ),
+        Tool(
+            name: "listWorktrees",
+            // swiftlint:disable:next line_length
+            description: "Returns all Klausemeister-tracked worktrees with their queue state: inbox items (with sort order), processing item, and outbox count. Use this to discover available worktrees and their capacity.",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([:]),
+                "additionalProperties": .bool(false)
+            ])
+        ),
+        Tool(
+            name: "enqueueItem",
+            // swiftlint:disable:next line_length
+            description: "Add an issue to a worktree's inbox queue. Appends to the end (FIFO). Idempotent — no-op if the issue is already queued on that worktree. The issue must exist in the local imported-issues cache.",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "issueLinearId": .object([
+                        "type": .string("string"),
+                        "description": .string("Linear UUID of the issue to enqueue")
+                    ]),
+                    "targetWorktreeId": .object([
+                        "type": .string("string"),
+                        "description": .string("Klausemeister worktree ID to add the issue to")
+                    ])
+                ]),
+                "required": .array([.string("issueLinearId"), .string("targetWorktreeId")]),
                 "additionalProperties": .bool(false)
             ])
         ),

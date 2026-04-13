@@ -345,6 +345,72 @@ enum ToolHandlers {
         return try .success(Self.encodeJSON(["state": payload]))
     }
 
+    // MARK: - listWorktrees
+
+    /// Returns all Klausemeister-tracked worktrees with their queue state.
+    static func listWorktrees() async throws -> ToolResult {
+        @Dependency(\.worktreeClient) var worktreeClient
+
+        let worktreeRecords = try await worktreeClient.fetchWorktrees()
+        var entries: [WorktreeEntry] = []
+        for record in worktreeRecords {
+            let items = try await worktreeClient.fetchQueueItems(record.worktreeId)
+            let inboxItems = items
+                .filter { $0.queuePosition == .inbox }
+                .sorted { $0.sortOrder < $1.sortOrder }
+                .map { InboxEntry(issueLinearId: $0.issueLinearId, sortOrder: $0.sortOrder) }
+            let processingItem = items.first { $0.queuePosition == .processing }
+            let outboxCount = items.count(where: { $0.queuePosition == .outbox })
+            entries.append(WorktreeEntry(
+                worktreeId: record.worktreeId,
+                name: record.name,
+                inboxCount: inboxItems.count,
+                inboxItems: inboxItems,
+                processingIssueLinearId: processingItem?.issueLinearId,
+                outboxCount: outboxCount
+            ))
+        }
+        return try .success(Self.encodeJSON(["worktrees": entries]))
+    }
+
+    // MARK: - enqueueItem
+
+    /// Add an issue to a worktree's inbox queue. Idempotent — no-op if the
+    /// issue is already queued on that worktree. Appends to the end (FIFO).
+    static func enqueueItem(
+        issueLinearId: String,
+        targetWorktreeId: String,
+        eventContinuation: AsyncStream<MCPServerEvent>.Continuation
+    ) async throws -> ToolResult {
+        @Dependency(\.worktreeClient) var worktreeClient
+        @Dependency(\.databaseClient) var databaseClient
+
+        // Verify the issue exists in the local cache.
+        guard try await databaseClient.fetchImportedIssue(issueLinearId) != nil else {
+            return .failure("Issue \(issueLinearId) not found in local cache — import it first")
+        }
+
+        // Verify the worktree exists.
+        let worktrees = try await worktreeClient.fetchWorktrees()
+        guard worktrees.contains(where: { $0.worktreeId == targetWorktreeId }) else {
+            return .failure("Worktree \(targetWorktreeId) not found")
+        }
+
+        // Check if already queued before writing — only yield the UI event
+        // when a new row is actually inserted.
+        let existingItems = try await worktreeClient.fetchQueueItems(targetWorktreeId)
+        let alreadyQueued = existingItems.contains { $0.issueLinearId == issueLinearId }
+
+        try await worktreeClient.assignIssueToWorktree(issueLinearId, targetWorktreeId)
+
+        if !alreadyQueued {
+            eventContinuation.yield(.itemAddedToInbox(
+                worktreeId: targetWorktreeId, issueLinearId: issueLinearId
+            ))
+        }
+        return .success(#"{"ok":true}"#)
+    }
+
     // MARK: - JSON helpers
 
     private static let encoder: JSONEncoder = {
@@ -380,6 +446,20 @@ extension ToolHandlers {
         let inboxCount: Int
         let processingIssueLinearId: String?
         let outboxCount: Int
+    }
+
+    struct WorktreeEntry: Encodable, Equatable {
+        let worktreeId: String
+        let name: String
+        let inboxCount: Int
+        let inboxItems: [InboxEntry]
+        let processingIssueLinearId: String?
+        let outboxCount: Int
+    }
+
+    struct InboxEntry: Encodable, Equatable {
+        let issueLinearId: String
+        let sortOrder: Int
     }
 
     struct ProductStatePayload: Encodable, Equatable {

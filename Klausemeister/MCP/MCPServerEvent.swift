@@ -34,4 +34,9 @@ enum MCPServerEvent: Equatable {
     /// `completeItem` or `transition("push")`). `WorktreeFeature` uses
     /// this to sync its in-memory state with the DB mutation.
     case itemMovedToOutbox(worktreeId: String, issueLinearId: String)
+
+    /// An MCP tool added a new item to a worktree's inbox (e.g.
+    /// `enqueueItem`). `WorktreeFeature` uses this to sync its
+    /// in-memory state with the DB mutation.
+    case itemAddedToInbox(worktreeId: String, issueLinearId: String)
 }

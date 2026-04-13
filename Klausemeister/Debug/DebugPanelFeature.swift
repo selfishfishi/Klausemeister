@@ -82,6 +82,8 @@ struct DebugPanelFeature {
             "Item → processing [\(worktreeId.prefix(8))]: \(issueLinearId)"
         case let .itemMovedToOutbox(worktreeId, issueLinearId):
             "Item → outbox [\(worktreeId.prefix(8))]: \(issueLinearId)"
+        case let .itemAddedToInbox(worktreeId, issueLinearId):
+            "Item → inbox [\(worktreeId.prefix(8))]: \(issueLinearId)"
         }
     }
 }

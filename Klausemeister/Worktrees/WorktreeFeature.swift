@@ -215,6 +215,8 @@ struct WorktreeFeature {
         // MCP queue sync (KLA-107)
         case mcpItemMovedToProcessing(worktreeId: String, issueLinearId: String)
         case mcpItemMovedToOutbox(worktreeId: String, issueLinearId: String)
+        case mcpItemAddedToInbox(worktreeId: String, issueLinearId: String)
+        case mcpItemAddedToInboxResolved(worktreeId: String, issue: LinearIssue)
 
         case alert(PresentationAction<Alert>)
         case delegate(Delegate)
@@ -629,6 +631,14 @@ struct WorktreeFeature {
                         {
                             state.worktrees[wtIndex].processing = nil
                             state.worktrees[wtIndex].outbox.append(proc)
+                        }
+                    case let .itemAddedToInbox(worktreeId, issueLinearId):
+                        if let wtIndex = state.worktrees.index(id: worktreeId) {
+                            let alreadyQueued = state.worktrees[wtIndex].inbox
+                                .contains { $0.id == issueLinearId }
+                            if !alreadyQueued, let issue = issuesByLinearId[issueLinearId] {
+                                state.worktrees[wtIndex].inbox.append(issue)
+                            }
                         }
                     default:
                         break
@@ -1589,6 +1599,44 @@ struct WorktreeFeature {
                 {
                     state.worktrees[wtIndex].processing = nil
                     state.worktrees[wtIndex].outbox.append(proc)
+                }
+                return .none
+
+            case let .mcpItemAddedToInbox(worktreeId, issueLinearId):
+                guard state.worktrees.index(id: worktreeId) != nil else {
+                    state.pendingQueueEvents.append(
+                        .itemAddedToInbox(worktreeId: worktreeId, issueLinearId: issueLinearId)
+                    )
+                    return .none
+                }
+                let alreadyPresent = state.worktrees[id: worktreeId]?.inbox
+                    .contains { $0.id == issueLinearId } == true
+                    || state.worktrees[id: worktreeId]?.processing?.id == issueLinearId
+                    || state.worktrees[id: worktreeId]?.outbox
+                    .contains { $0.id == issueLinearId } == true
+                if !alreadyPresent {
+                    // DB write already happened in the enqueueItem handler —
+                    // only fetch the issue record to update in-memory state.
+                    return .run { send in
+                        @Dependency(\.databaseClient) var databaseClient
+                        if let record = try await databaseClient.fetchImportedIssue(issueLinearId) {
+                            let issue = LinearIssue(from: record)
+                            await send(.mcpItemAddedToInboxResolved(
+                                worktreeId: worktreeId, issue: issue
+                            ))
+                        }
+                    }
+                }
+                return .none
+
+            case let .mcpItemAddedToInboxResolved(worktreeId, issue):
+                if let wtIndex = state.worktrees.index(id: worktreeId) {
+                    let alreadyQueued = state.worktrees[wtIndex].inbox.contains { $0.id == issue.id }
+                        || state.worktrees[wtIndex].processing?.id == issue.id
+                        || state.worktrees[wtIndex].outbox.contains { $0.id == issue.id }
+                    if !alreadyQueued {
+                        state.worktrees[wtIndex].inbox.append(issue)
+                    }
                 }
                 return .none
 
