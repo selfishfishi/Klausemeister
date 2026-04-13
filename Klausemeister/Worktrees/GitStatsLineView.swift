@@ -24,7 +24,7 @@ struct GitStatsLineView: View {
     var body: some View {
         HStack(spacing: 6) {
             if stats.uncommittedFiles > 0 {
-                Text("\(stats.uncommittedFiles) files")
+                Text("\(stats.uncommittedFiles)")
                     .foregroundStyle(.secondary)
             }
 
@@ -60,14 +60,16 @@ struct GitStatsLineView: View {
         switch state {
         case .merged:
             Image(systemName: "arrow.triangle.merge")
-        case .open, .closed:
+        case .open:
+            Image(systemName: "arrow.triangle.pull")
+        case .closed:
             Text(state.label)
         }
     }
 
     private func prColor(_ state: PRState) -> Color {
         switch state {
-        case .open: greenColor
+        case .open: .blue
         case .merged: magentaColor
         case .closed: redColor
         }
