@@ -258,6 +258,7 @@ enum ToolHandlers {
     ) async throws {
         @Dependency(\.worktreeClient) var worktreeClient
         @Dependency(\.linearAPIClient) var linearAPIClient
+        @Dependency(\.databaseClient) var databaseClient
 
         if newState.queue != currentState.queue {
             switch newState.queue {
@@ -275,6 +276,13 @@ enum ToolHandlers {
                 stateName: newState.kanban.displayName
             ) {
                 try? await linearAPIClient.updateIssueStatus(issueLinearId, stateId)
+                // Sync local cache so subsequent getProductState reads see the new state
+                let states = try? await databaseClient.fetchWorkflowStates()
+                if let resolved = states?.first(where: { $0.id == stateId }) {
+                    try? await databaseClient.updateIssueStatus(
+                        issueLinearId, resolved.name, stateId, resolved.type
+                    )
+                }
             }
         }
     }
