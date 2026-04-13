@@ -41,6 +41,7 @@ struct AppFeature {
         case shortcutCenter(ShortcutCenterFeature.Action)
         case openWorktreeSwitcher
         case worktreeSwitcher(WorktreeSwitcherFeature.Action)
+        case selectWorktreeByPosition(Int)
         case keyBindingsLoaded([AppCommand: KeyBinding?])
         case mcpServerEvent(MCPServerEvent)
     }
@@ -271,6 +272,13 @@ struct AppFeature {
 
             case .worktreeSwitcher:
                 return .none
+
+            case let .selectWorktreeByPosition(position):
+                let worktrees = state.worktree.worktrees
+                guard position >= 1, position <= worktrees.count else { return .none }
+                let worktreeId = worktrees[position - 1].id
+                state.showMeister = false
+                return .send(.worktree(.worktreeSelected(worktreeId)))
 
             case .teamSettingsButtonTapped:
                 state.teamSettings = TeamSettingsFeature.State()

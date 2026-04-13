@@ -86,6 +86,18 @@ struct KlausemeisterApp: App {
                 .keyboardShortcut(for: .openShortcutCenter, in: store.keyBindings)
             }
 
+            CommandMenu("Worktrees") {
+                ForEach(1 ... 9, id: \.self) { position in
+                    Button("Worktree \(position)") {
+                        store.send(.selectWorktreeByPosition(position))
+                    }
+                    .keyboardShortcut(
+                        KeyEquivalent(Character(String(position))),
+                        modifiers: .command
+                    )
+                }
+            }
+
             CommandMenu("Debug") {
                 Button(AppCommand.toggleDebugPanel.displayName) {
                     store.send(.debugPanel(.panelToggled))

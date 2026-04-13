@@ -16,6 +16,11 @@ struct ShortcutCenterView: View {
             footer
         }
         .frame(width: 580, height: 520)
+        .background {
+            Color(hexString: themeColors.background)
+                .ignoresSafeArea()
+        }
+        .tint(themeColors.accentColor)
     }
 
     // MARK: - Header

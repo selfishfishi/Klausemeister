@@ -82,13 +82,14 @@ enum AppCommand: String, CaseIterable, Hashable {
 
     nonisolated var defaultBinding: KeyBinding? {
         switch self {
-        case .toggleSidebar: KeyBinding(key: "\\", modifiers: .command)
-        case .openCommandPalette: KeyBinding(key: "k", modifiers: .command)
+        case .toggleSidebar: KeyBinding(key: "r", modifiers: .command)
+        case .openCommandPalette: KeyBinding(key: "p", modifiers: .control)
         case .toggleDebugPanel: KeyBinding(key: "d", modifiers: [.command, .shift])
         case .openWorktreeSwitcher: KeyBinding(key: "k", modifiers: .control)
+        case .openShortcutCenter: KeyBinding(key: ",", modifiers: .command)
         case .showMeister, .showWorktrees, .syncLinearIssues,
              .openLinearAuth, .openTeamSettings, .newWorktree,
-             .openShortcutCenter, .deleteWorktree, .markIssueDone,
+             .deleteWorktree, .markIssueDone,
              .returnIssueToMeister, .removeIssue:
             nil
         }
