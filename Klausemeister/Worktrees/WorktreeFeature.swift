@@ -669,7 +669,10 @@ struct WorktreeFeature {
 
             case let .branchSwitched(worktreeId, branchName):
                 state.worktrees[id: worktreeId]?.currentBranch = branchName
-                return .none
+                return .merge(
+                    .send(.refreshGitStats),
+                    .send(.refreshPRInfo)
+                )
 
             case let .gitStatsLoaded(statsByWorktreeId):
                 for (worktreeId, stats) in statsByWorktreeId {
