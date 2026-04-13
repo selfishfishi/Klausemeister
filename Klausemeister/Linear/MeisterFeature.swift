@@ -258,7 +258,7 @@ struct MeisterFeature {
                         )
                     }
                 }
-                var effects: [Effect<Action>] = [
+                let effects: [Effect<Action>] = [
                     result.teamFailures.isEmpty
                         ? .send(.delegate(.syncSucceeded))
                         : .send(.delegate(.syncPartiallyFailed(

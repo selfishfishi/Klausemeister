@@ -22,7 +22,7 @@ struct KeyBinding: Equatable, Hashable, Codable {
         case modifiers
     }
 
-    init(key: Character, modifiers: KeyModifiers) {
+    nonisolated init(key: Character, modifiers: KeyModifiers) {
         self.key = key
         self.modifiers = modifiers
     }
