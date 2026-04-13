@@ -188,7 +188,7 @@ extension DatabaseClient: DependencyKey {
             },
             recordCommandUsed: { command in
                 try await dbQueue.write { db in
-                    let now = ISO8601DateFormatter().string(from: Date())
+                    let now = ISO8601DateFormatter.shared.string(from: Date())
                     if var existing = try CommandPaletteHistoryRecord
                         .fetchOne(db, key: command.rawValue)
                     {

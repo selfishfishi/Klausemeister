@@ -64,73 +64,84 @@ enum GitClientError: Error, Equatable, LocalizedError {
 
 extension GitClient: DependencyKey {
     nonisolated static let liveValue: GitClient = {
-        @Sendable func shell(_ arguments: [String]) throws -> String {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-            process.arguments = arguments
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-            try process.run()
-            process.waitUntilExit()
+        /// Runs a git subprocess off the main thread to avoid blocking the UI.
+        /// Runs a git subprocess off the main thread to avoid blocking the UI.
+        @Sendable func shell(_ arguments: [String]) async throws -> String {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        let process = Process()
+                        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+                        process.arguments = arguments
+                        let stdout = Pipe()
+                        let stderr = Pipe()
+                        process.standardOutput = stdout
+                        process.standardError = stderr
+                        try process.run()
 
-            let output = String(
-                data: stdout.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let errorOutput = String(
-                data: stderr.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        // Read pipes BEFORE waitUntilExit to avoid deadlock on large output
+                        let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
+                        let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
+                        process.waitUntilExit()
 
-            guard process.terminationStatus == 0 else {
-                let cmd = arguments
-                    .filter { !$0.hasPrefix("-") && !$0.hasPrefix("/") }
-                    .first ?? "git"
-                throw GitClientError.commandFailed(
-                    command: cmd,
-                    exitCode: process.terminationStatus,
-                    stderr: errorOutput
-                )
+                        let output = String(data: outputData, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        let errorOutput = String(data: errorData, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+                        guard process.terminationStatus == 0 else {
+                            let cmd = arguments
+                                .filter { !$0.hasPrefix("-") && !$0.hasPrefix("/") }
+                                .first ?? "git"
+                            continuation.resume(throwing: GitClientError.commandFailed(
+                                command: cmd,
+                                exitCode: process.terminationStatus,
+                                stderr: errorOutput
+                            ))
+                            return
+                        }
+                        continuation.resume(returning: output)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
             }
-            return output
         }
 
         return GitClient(
             repositoryRoot: { fromPath in
-                let result = try shell(["-C", fromPath, "rev-parse", "--show-toplevel"])
+                let result = try await shell(["-C", fromPath, "rev-parse", "--show-toplevel"])
                 guard !result.isEmpty else {
                     throw GitClientError.notAGitRepository(fromPath)
                 }
                 return result
             },
             currentBranch: { worktreePath in
-                try shell(["-C", worktreePath, "rev-parse", "--abbrev-ref", "HEAD"])
+                try await shell(["-C", worktreePath, "rev-parse", "--abbrev-ref", "HEAD"])
             },
             addWorktree: { repoPath, worktreePath, branch, baseRef in
                 if let baseRef {
-                    _ = try shell([
+                    _ = try await shell([
                         "-C", repoPath, "worktree", "add", worktreePath, "-b", branch, baseRef
                     ])
                 } else {
-                    _ = try shell([
+                    _ = try await shell([
                         "-C", repoPath, "worktree", "add", worktreePath, branch
                     ])
                 }
             },
             removeWorktree: { repoPath, worktreePath in
-                _ = try shell(["-C", repoPath, "worktree", "remove", worktreePath, "--force"])
+                _ = try await shell(["-C", repoPath, "worktree", "remove", worktreePath, "--force"])
             },
             switchBranch: { worktreePath, branchName in
-                _ = try shell(["-C", worktreePath, "checkout", "-B", branchName])
+                _ = try await shell(["-C", worktreePath, "checkout", "-B", branchName])
             },
             listWorktrees: { repoPath in
-                let output = try shell(["-C", repoPath, "worktree", "list", "--porcelain"])
+                let output = try await shell(["-C", repoPath, "worktree", "list", "--porcelain"])
                 return parseWorktreeListPorcelain(output)
             },
             listBranches: { repoPath in
-                let output = try shell([
+                let output = try await shell([
                     "-C", repoPath, "for-each-ref", "--format=%(refname:short)", "refs/heads/"
                 ])
                 return output
@@ -141,7 +152,7 @@ extension GitClient: DependencyKey {
             resolveDefaultBranch: { repoPath in
                 // Preferred path: origin/HEAD is set. Returns something like
                 // "origin/main" — strip the remote prefix.
-                if let symbolic = try? shell([
+                if let symbolic = try? await shell([
                     "-C", repoPath, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"
                 ]), symbolic.hasPrefix("origin/") {
                     return GitClient.DefaultBranch(
@@ -150,14 +161,14 @@ extension GitClient: DependencyKey {
                     )
                 }
                 // Fallback: no origin/HEAD set. Check for origin remote first.
-                let remotes = (try? shell(["-C", repoPath, "remote"])) ?? ""
+                let remotes = await (try? shell(["-C", repoPath, "remote"])) ?? ""
                 let hasOrigin = remotes
                     .split(separator: "\n")
                     .map { $0.trimmingCharacters(in: .whitespaces) }
                     .contains("origin")
                 // Pick whichever of main/master exists locally.
                 for candidate in ["main", "master"]
-                    where (try? shell([
+                    where await (try? shell([
                         "-C", repoPath, "rev-parse", "--verify", "--quiet", "refs/heads/\(candidate)"
                     ])) != nil
                 {
@@ -170,11 +181,11 @@ extension GitClient: DependencyKey {
                 )
             },
             fetchBranch: { repoPath, branch in
-                _ = try shell(["-C", repoPath, "fetch", "origin", branch])
+                _ = try await shell(["-C", repoPath, "fetch", "origin", branch])
             },
             diffStats: { worktreePath in
                 // Count uncommitted files (staged + unstaged)
-                let statusOutput = try shell([
+                let statusOutput = try await shell([
                     "-C", worktreePath, "status", "--porcelain"
                 ])
                 let uncommitted = statusOutput
@@ -183,12 +194,12 @@ extension GitClient: DependencyKey {
                 // Additions/deletions vs HEAD (staged + unstaged combined).
                 // In a fresh repo with no commits, HEAD doesn't exist and
                 // `git diff HEAD` fails — fall back to `git diff --cached`.
-                let numstat: String = if let headDiff = try? shell([
+                let numstat: String = if let headDiff = try? await shell([
                     "-C", worktreePath, "diff", "HEAD", "--numstat"
                 ]) {
                     headDiff
                 } else {
-                    (try? shell([
+                    await (try? shell([
                         "-C", worktreePath, "diff", "--cached", "--numstat"
                     ])) ?? ""
                 }
@@ -207,7 +218,7 @@ extension GitClient: DependencyKey {
                 )
             },
             commitsAhead: { worktreePath, defaultBranch in
-                let output = try shell([
+                let output = try await shell([
                     "-C", worktreePath, "rev-list", "--count",
                     "\(defaultBranch)..HEAD"
                 ])
