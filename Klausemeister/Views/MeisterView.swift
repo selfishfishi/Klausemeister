@@ -15,6 +15,17 @@ struct MeisterView: View {
         VStack(spacing: 0) {
             // Header with filter + sync
             HStack(spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.tertiary)
+                    TextField("Search issues…", text: $store.searchQuery)
+                        .textFieldStyle(.plain)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .frame(maxWidth: 200)
+                .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 7))
+
                 Spacer()
                 if teams.count > 1 {
                     TeamFilterMenu(

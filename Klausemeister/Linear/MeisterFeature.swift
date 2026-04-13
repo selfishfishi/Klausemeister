@@ -18,6 +18,7 @@ struct MeisterFeature {
         /// work cluttering the board.
         var hiddenStages: Set<MeisterState> = [.completed]
         var teams: [LinearTeam] = []
+        var searchQuery: String = ""
         var hiddenProjectNames: Set<String> = []
         var stateMappings: StateMappingTable = [:]
         @Presents var stateMappingEditor: StateMappingFeature.State?
@@ -721,6 +722,17 @@ extension MeisterFeature.State {
                 col.issues = column.issues.filter { issue in
                     let name = issue.projectName ?? LinearIssue.noProjectName
                     return !hiddenProjectNames.contains(name)
+                }
+                return col
+            })
+        }
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty {
+            filtered = IdentifiedArrayOf(uniqueElements: filtered.map { column in
+                var col = column
+                col.issues = column.issues.filter { issue in
+                    FuzzyMatcher.match(query: trimmed, against: issue.identifier) != nil
+                        || FuzzyMatcher.match(query: trimmed, against: issue.title) != nil
                 }
                 return col
             })
