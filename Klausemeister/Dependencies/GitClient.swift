@@ -63,56 +63,111 @@ enum GitClientError: Error, Equatable, LocalizedError {
 // MARK: - Live & Test values
 
 extension GitClient: DependencyKey {
+    /// Limits concurrent git subprocesses. Git stat calls are low-priority
+    /// background work; 2 concurrent calls is enough to keep the UI fresh
+    /// without starving the cooperative thread pool or exploding the GCD
+    /// thread count (the old pattern of dispatching blocking reads to the
+    /// global queue hit the 80-thread soft limit with 10+ worktrees).
+    private static let subprocessLimiter = SubprocessLimiter(limit: 2)
+
     nonisolated static let liveValue: GitClient = {
-        /// Runs a git subprocess off the main thread to avoid blocking the UI.
+        // Runs a git subprocess using event-driven I/O (readabilityHandler
+        // + terminationHandler) so no thread is blocked for the lifetime of
+        // the process. Concurrency is capped by `subprocessLimiter`.
+        // swiftlint:disable:next function_body_length
         @Sendable func shell(_ arguments: [String]) async throws -> String {
+            await subprocessLimiter.acquire()
+
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
             process.arguments = arguments
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
 
             return try await withTaskCancellationHandler {
                 try await withCheckedThrowingContinuation { continuation in
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        do {
-                            try process.run()
+                    // Serialize data accumulation and the finish check on a
+                    // lightweight serial queue — no thread is parked here.
+                    let collector = DispatchQueue(label: "com.klausemeister.git-pipe")
+                    var outputData = Data()
+                    var errorData = Data()
+                    var stdoutDone = false
+                    var stderrDone = false
+                    var processDone = false
+                    var resumed = false
 
-                            // Read pipes BEFORE waitUntilExit to avoid deadlock on large output
-                            let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
-                            let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
-                            process.waitUntilExit()
+                    func tryFinish() {
+                        dispatchPrecondition(condition: .onQueue(collector))
+                        guard stdoutDone, stderrDone, processDone, !resumed else { return }
+                        resumed = true
+                        Task { await subprocessLimiter.release() }
 
-                            let output = String(data: outputData, encoding: .utf8)?
-                                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                            let errorOutput = String(data: errorData, encoding: .utf8)?
-                                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        let output = String(data: outputData, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        let errorOutput = String(data: errorData, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
-                            // Only treat signal termination as cancellation when the
-                            // Task was actually cancelled. Otherwise it's a real crash
-                            // (SIGSEGV, SIGKILL, etc.) that must be reported.
-                            if process.terminationReason == .uncaughtSignal, Task.isCancelled {
-                                continuation.resume(throwing: CancellationError())
-                                return
-                            }
-
-                            guard process.terminationStatus == 0 else {
-                                let cmd = arguments
-                                    .filter { !$0.hasPrefix("-") && !$0.hasPrefix("/") }
-                                    .first ?? "git"
-                                continuation.resume(throwing: GitClientError.commandFailed(
-                                    command: cmd,
-                                    exitCode: process.terminationStatus,
-                                    stderr: errorOutput
-                                ))
-                                return
-                            }
-                            continuation.resume(returning: output)
-                        } catch {
-                            continuation.resume(throwing: error)
+                        if process.terminationReason == .uncaughtSignal, Task.isCancelled {
+                            continuation.resume(throwing: CancellationError())
+                            return
                         }
+                        guard process.terminationStatus == 0 else {
+                            let cmd = arguments
+                                .filter { !$0.hasPrefix("-") && !$0.hasPrefix("/") }
+                                .first ?? "git"
+                            continuation.resume(throwing: GitClientError.commandFailed(
+                                command: cmd,
+                                exitCode: process.terminationStatus,
+                                stderr: errorOutput
+                            ))
+                            return
+                        }
+                        continuation.resume(returning: output)
+                    }
+
+                    // Drain stdout as data arrives — no thread blocked.
+                    stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+                        let data = handle.availableData
+                        collector.async {
+                            if data.isEmpty {
+                                stdoutPipe.fileHandleForReading.readabilityHandler = nil
+                                stdoutDone = true
+                                tryFinish()
+                            } else {
+                                outputData.append(data)
+                            }
+                        }
+                    }
+
+                    // Drain stderr as data arrives.
+                    stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+                        let data = handle.availableData
+                        collector.async {
+                            if data.isEmpty {
+                                stderrPipe.fileHandleForReading.readabilityHandler = nil
+                                stderrDone = true
+                                tryFinish()
+                            } else {
+                                errorData.append(data)
+                            }
+                        }
+                    }
+
+                    process.terminationHandler = { _ in
+                        collector.async {
+                            processDone = true
+                            tryFinish()
+                        }
+                    }
+
+                    do {
+                        try process.run()
+                    } catch {
+                        resumed = true
+                        Task { await subprocessLimiter.release() }
+                        continuation.resume(throwing: error)
                     }
                 }
             } onCancel: {
@@ -397,5 +452,35 @@ extension DependencyValues {
     var gitClient: GitClient {
         get { self[GitClient.self] }
         set { self[GitClient.self] = newValue }
+    }
+}
+
+// MARK: - Subprocess concurrency limiter
+
+/// Actor-based semaphore that caps concurrent subprocess execution.
+/// Waiters suspend (no thread blocked) until a slot opens.
+private actor SubprocessLimiter {
+    private let limit: Int
+    private var running = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(limit: Int) {
+        self.limit = limit
+    }
+
+    func acquire() async {
+        if running < limit {
+            running += 1
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func release() {
+        running -= 1
+        if !waiters.isEmpty {
+            running += 1
+            waiters.removeFirst().resume()
+        }
     }
 }
