@@ -121,6 +121,19 @@ struct AppFeature {
                     .send(.statusBar(.errorClearedForSource(.sync)))
                 )
 
+            case let .meister(.delegate(.syncPartiallyFailed(failures, teamNames))):
+                let infos = failures.map { failure in
+                    StatusBarFeature.TeamFailureInfo(
+                        teamKey: teamNames[failure.teamId] ?? failure.teamId,
+                        message: failure.message
+                    )
+                }
+                return .merge(
+                    .send(.statusBar(.syncStateChanged(false))),
+                    .send(.statusBar(.errorClearedForSource(.sync))),
+                    .send(.statusBar(.teamErrorsReported(infos)))
+                )
+
             case let .meister(.delegate(.syncFailed(message))):
                 return .merge(
                     .send(.statusBar(.syncStateChanged(false))),

@@ -7,7 +7,7 @@ struct StatusBarView: View {
     @Environment(\.themeColors) private var themeColors
 
     var body: some View {
-        if store.activeError != nil || store.isSyncing {
+        if !store.errors.isEmpty || store.isSyncing {
             barContent
                 .transition(.move(edge: .bottom).combined(with: .opacity))
         }
@@ -15,8 +15,8 @@ struct StatusBarView: View {
 
     private var barContent: some View {
         HStack(spacing: 8) {
-            if let error = store.activeError {
-                errorContent(error)
+            if !store.errors.isEmpty {
+                errorContent
             } else if store.isSyncing {
                 syncContent
             }
@@ -42,19 +42,75 @@ struct StatusBarView: View {
     }
 
     @ViewBuilder
-    private func errorContent(_ error: StatusBarFeature.StatusError) -> some View {
+    private var errorContent: some View {
         Image(systemName: "exclamationmark.triangle.fill")
             .foregroundStyle(themeColors.warningColor)
             .imageScale(.small)
-        Text(error.message)
-            .font(.caption)
-            .foregroundStyle(.primary)
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .textSelection(.enabled)
+        if let summary = store.summaryMessage {
+            Text(summary)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .textSelection(.enabled)
+        }
         Spacer()
+        if store.errors.count > 1 {
+            detailButton
+        }
         copyButton
         dismissButton
+    }
+
+    private var detailButton: some View {
+        Button {
+            store.send(.errorDetailToggled)
+        } label: {
+            Image(systemName: "chevron.up")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .rotationEffect(store.isErrorDetailExpanded ? .degrees(180) : .zero)
+        }
+        .buttonStyle(.plain)
+        .help("Show error details")
+        .popover(
+            isPresented: Binding(
+                get: { store.isErrorDetailExpanded },
+                set: { if !$0 { store.send(.errorDetailToggled) } }
+            ),
+            arrowEdge: .bottom
+        ) {
+            errorDetailPopover
+        }
+    }
+
+    private var errorDetailPopover: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(store.errors) { error in
+                HStack(spacing: 6) {
+                    if let key = error.teamKey {
+                        Text(key)
+                            .font(.caption.bold())
+                            .foregroundStyle(themeColors.warningColor)
+                    }
+                    Text(error.message)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 0)
+                    Button {
+                        store.send(.dismissError(id: error.id))
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(10)
+        .frame(minWidth: 280, maxWidth: 400)
     }
 
     private var copyButton: some View {
