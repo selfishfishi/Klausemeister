@@ -81,6 +81,10 @@ extension GitClient: DependencyKey {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
             process.arguments = arguments
+            process.standardInput = FileHandle.nullDevice
+            var env = ProcessInfo.processInfo.environment
+            env["GIT_TERMINAL_PROMPT"] = "0"
+            process.environment = env
             let stdoutPipe = Pipe()
             let stderrPipe = Pipe()
             process.standardOutput = stdoutPipe
@@ -102,6 +106,8 @@ extension GitClient: DependencyKey {
                         dispatchPrecondition(condition: .onQueue(collector))
                         guard stdoutDone, stderrDone, processDone, !resumed else { return }
                         resumed = true
+                        stdoutPipe.fileHandleForReading.readabilityHandler = nil
+                        stderrPipe.fileHandleForReading.readabilityHandler = nil
                         Task { await subprocessLimiter.release() }
 
                         let output = String(data: outputData, encoding: .utf8)?
@@ -165,9 +171,12 @@ extension GitClient: DependencyKey {
                     do {
                         try process.run()
                     } catch {
-                        resumed = true
-                        Task { await subprocessLimiter.release() }
-                        continuation.resume(throwing: error)
+                        collector.async {
+                            guard !resumed else { return }
+                            resumed = true
+                            Task { await subprocessLimiter.release() }
+                            continuation.resume(throwing: error)
+                        }
                     }
                 }
             } onCancel: {
@@ -465,6 +474,7 @@ private actor SubprocessLimiter {
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
     init(limit: Int) {
+        precondition(limit > 0, "SubprocessLimiter limit must be positive")
         self.limit = limit
     }
 
@@ -477,6 +487,7 @@ private actor SubprocessLimiter {
     }
 
     func release() {
+        precondition(running > 0, "SubprocessLimiter: release without matching acquire")
         running -= 1
         if !waiters.isEmpty {
             running += 1
