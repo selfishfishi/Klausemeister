@@ -1,6 +1,7 @@
 import AppKit
 import GhosttyKit
 
+@MainActor
 @Observable
 final class SurfaceStore {
     struct Record {

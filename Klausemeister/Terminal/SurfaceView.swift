@@ -6,6 +6,7 @@ import QuartzCore
 /// NSView that hosts a ghostty terminal surface with proper keyboard handling.
 /// Follows the Calyx/Ghostty pattern: CAMetalLayer backing, raw keycode input,
 /// interpretKeyEvents for IME, and explicit first responder management.
+@MainActor
 final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
     private(set) var surface: ghostty_surface_t?
     private var focused = false

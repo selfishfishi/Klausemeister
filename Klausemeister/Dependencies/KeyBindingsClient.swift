@@ -82,7 +82,9 @@ extension KeyBindingsClient: DependencyKey {
                 guard FileManager.default.fileExists(atPath: configURL.path) else {
                     return [:]
                 }
-                let data = try Data(contentsOf: configURL)
+                let data = try await Task.detached(priority: .utility) {
+                    try Data(contentsOf: configURL)
+                }.value
                 return try decodeOverrides(data)
             },
             saveOverrides: { overrides in
@@ -97,7 +99,9 @@ extension KeyBindingsClient: DependencyKey {
                     return
                 }
                 let data = try encodeOverrides(nonDefaults)
-                try data.write(to: configURL, options: .atomic)
+                try await Task.detached(priority: .utility) {
+                    try data.write(to: configURL, options: .atomic)
+                }.value
             },
             exportToFile: { url, bindings in
                 let data = try encodeExport(bindings)
@@ -109,12 +113,16 @@ extension KeyBindingsClient: DependencyKey {
             },
             captureNextKeyBinding: {
                 AsyncStream { continuation in
-                    let monitor = NSEventMonitorStream.installKeyDownMonitor { binding in
-                        continuation.yield(binding)
-                        continuation.finish()
-                    }
-                    continuation.onTermination = { _ in
-                        NSEventMonitorStream.removeMonitor(monitor)
+                    Task { @MainActor in
+                        let monitor = NSEventMonitorStream.installKeyDownMonitor { binding in
+                            continuation.yield(binding)
+                            continuation.finish()
+                        }
+                        continuation.onTermination = { @Sendable _ in
+                            Task { @MainActor in
+                                NSEventMonitorStream.removeMonitor(monitor)
+                            }
+                        }
                     }
                 }
             }
