@@ -1,5 +1,6 @@
 import AppKit
 import GhosttyKit
+import os
 
 @MainActor
 final class GhosttyApp {
@@ -7,6 +8,14 @@ final class GhosttyApp {
 
     private(set) var app: ghostty_app_t?
     private(set) var config: ghostty_config_t?
+
+    /// Coalescing flag for `wakeup_cb`. libghostty fires the callback at
+    /// display-refresh rate (60-120 Hz); without coalescing every invocation
+    /// enqueues a separate `DispatchQueue.main.async` block and they pile up.
+    /// The lock-protected boolean ensures at most one `tick()` is pending on
+    /// the main queue at any time — subsequent wakeups while a tick is already
+    /// queued are no-ops.
+    nonisolated let needsTick = OSAllocatedUnfairLock(initialState: false)
 
     private init() {
         ghostty_init(0, nil)
@@ -18,6 +27,7 @@ final class GhosttyApp {
         if let config { ghostty_config_free(config) }
         app = nil
         config = nil
+        needsTick.withLock { $0 = false }
         setup(theme: theme)
     }
 
@@ -51,12 +61,16 @@ final class GhosttyApp {
         runtime.supports_selection_clipboard = false
         runtime.wakeup_cb = { ud in
             guard let ud else { return }
-            let ref = ud
+            let app = Unmanaged<GhosttyApp>.fromOpaque(ud).takeUnretainedValue()
+            let shouldEnqueue = app.needsTick.withLock { needsTick in
+                if needsTick { return false }
+                needsTick = true
+                return true
+            }
+            guard shouldEnqueue else { return }
             DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    let app = Unmanaged<GhosttyApp>.fromOpaque(ref).takeUnretainedValue()
-                    app.tick()
-                }
+                defer { app.needsTick.withLock { $0 = false } }
+                app.tick()
             }
         }
         runtime.action_cb = { _, target, action in
@@ -68,16 +82,12 @@ final class GhosttyApp {
             switch action.tag {
             case GHOSTTY_ACTION_MOUSE_SHAPE:
                 let shape = action.action.mouse_shape
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated { view.applyCursorShape(shape) }
-                }
+                DispatchQueue.main.async { view.applyCursorShape(shape) }
                 return true
 
             case GHOSTTY_ACTION_MOUSE_VISIBILITY:
                 let visibility = action.action.mouse_visibility
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated { view.applyCursorVisibility(visibility) }
-                }
+                DispatchQueue.main.async { view.applyCursorVisibility(visibility) }
                 return true
 
             default:
