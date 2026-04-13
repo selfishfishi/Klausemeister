@@ -59,36 +59,45 @@ extension TmuxClient: DependencyKey {
             return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
         }()
 
-        @Sendable func shell(_ arguments: [String]) throws -> String {
+        /// Runs a tmux subprocess off the main thread to avoid blocking the UI.
+        @Sendable func shell(_ arguments: [String]) async throws -> String {
             guard let tmuxPath else { throw TmuxClientError.tmuxNotFound }
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: tmuxPath)
-            process.arguments = arguments
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-            try process.run()
-            process.waitUntilExit()
+            return try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        let process = Process()
+                        process.executableURL = URL(fileURLWithPath: tmuxPath)
+                        process.arguments = arguments
+                        let stdout = Pipe()
+                        let stderr = Pipe()
+                        process.standardOutput = stdout
+                        process.standardError = stderr
+                        try process.run()
 
-            let output = String(
-                data: stdout.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let errorOutput = String(
-                data: stderr.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
+                        let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
+                        process.waitUntilExit()
 
-            guard process.terminationStatus == 0 else {
-                let cmd = arguments.first { !$0.hasPrefix("-") } ?? "tmux"
-                throw TmuxClientError.commandFailed(
-                    command: cmd,
-                    exitCode: process.terminationStatus,
-                    stderr: errorOutput
-                )
+                        let output = String(data: outputData, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        let errorOutput = String(data: errorData, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+                        guard process.terminationStatus == 0 else {
+                            let cmd = arguments.first { !$0.hasPrefix("-") } ?? "tmux"
+                            continuation.resume(throwing: TmuxClientError.commandFailed(
+                                command: cmd,
+                                exitCode: process.terminationStatus,
+                                stderr: errorOutput
+                            ))
+                            return
+                        }
+                        continuation.resume(returning: output)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
             }
-            return output
         }
 
         return TmuxClient(
@@ -101,13 +110,13 @@ extension TmuxClient: DependencyKey {
                     arguments.append("-e")
                     arguments.append("\(key)=\(value)")
                 }
-                _ = try shell(arguments)
+                _ = try await shell(arguments)
             },
             sendKeys: { target, keys in
                 // Two args: the key string and a literal `Enter` so the shell
                 // actually executes the command instead of leaving it on the
                 // prompt.
-                _ = try shell(["send-keys", "-t", target, keys, "Enter"])
+                _ = try await shell(["send-keys", "-t", target, keys, "Enter"])
             },
             hasSession: { name in
                 // tmux exits non-zero when the session does not exist OR when no
@@ -116,14 +125,14 @@ extension TmuxClient: DependencyKey {
                 // `.tmuxNotFound` deliberately propagates so callers can
                 // distinguish "no session" from "tmux not installed".
                 do {
-                    _ = try shell(["has-session", "-t", "=\(name)"])
+                    _ = try await shell(["has-session", "-t", "=\(name)"])
                     return true
                 } catch TmuxClientError.commandFailed {
                     return false
                 }
             },
             killSession: { name in
-                _ = try shell(["kill-session", "-t", "=\(name)"])
+                _ = try await shell(["kill-session", "-t", "=\(name)"])
             },
             listSessions: {
                 // `tmux ls` exits non-zero when no server is running. Treat that
@@ -131,7 +140,7 @@ extension TmuxClient: DependencyKey {
                 // run on a clean machine. Filter to `klause-` so unrelated user
                 // sessions never appear in the reconciliation set.
                 do {
-                    let output = try shell(["list-sessions", "-F", "#{session_name}"])
+                    let output = try await shell(["list-sessions", "-F", "#{session_name}"])
                     guard !output.isEmpty else { return [] }
                     return output
                         .split(separator: "\n")
@@ -148,7 +157,7 @@ extension TmuxClient: DependencyKey {
                 // whatever its current/first window is. Avoids pinning to
                 // `:0` which breaks on `.tmux.conf` `base-index 1`.
                 do {
-                    let output = try shell([
+                    let output = try await shell([
                         "list-panes", "-t", name,
                         "-F", "#{pane_current_command}"
                     ])

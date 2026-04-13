@@ -53,39 +53,49 @@ extension GHClient: DependencyKey {
             return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
         }()
 
-        @Sendable func shell(_ arguments: [String], cwd: String? = nil) throws -> String {
+        /// Runs a gh CLI subprocess off the main thread to avoid blocking the UI.
+        @Sendable func shell(_ arguments: [String], cwd: String? = nil) async throws -> String {
             guard let ghPath else { throw GHClientError.ghNotFound }
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: ghPath)
-            process.arguments = arguments
-            if let cwd {
-                process.currentDirectoryURL = URL(fileURLWithPath: cwd)
+            return try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        let process = Process()
+                        process.executableURL = URL(fileURLWithPath: ghPath)
+                        process.arguments = arguments
+                        if let cwd {
+                            process.currentDirectoryURL = URL(fileURLWithPath: cwd)
+                        }
+                        let stdout = Pipe()
+                        let stderr = Pipe()
+                        process.standardOutput = stdout
+                        process.standardError = stderr
+                        try process.run()
+
+                        // Read pipes BEFORE waitUntilExit to avoid deadlock if output
+                        // exceeds the 64KB pipe buffer.
+                        let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
+                        let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
+                        process.waitUntilExit()
+
+                        let output = String(data: outputData, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        let errorOutput = String(data: errorData, encoding: .utf8)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+                        guard process.terminationStatus == 0 else {
+                            continuation.resume(throwing: GHClientError.commandFailed(
+                                command: arguments.first ?? "gh",
+                                exitCode: process.terminationStatus,
+                                stderr: errorOutput
+                            ))
+                            return
+                        }
+                        continuation.resume(returning: output)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
             }
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-            try process.run()
-
-            // Read pipes BEFORE waitUntilExit to avoid deadlock if output
-            // exceeds the 64KB pipe buffer.
-            let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
-            let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-
-            let output = String(data: outputData, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let errorOutput = String(data: errorData, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-            guard process.terminationStatus == 0 else {
-                throw GHClientError.commandFailed(
-                    command: arguments.first ?? "gh",
-                    exitCode: process.terminationStatus,
-                    stderr: errorOutput
-                )
-            }
-            return output
         }
 
         return GHClient(
@@ -96,7 +106,7 @@ extension GHClient: DependencyKey {
                 }
                 let output: String
                 do {
-                    output = try shell([
+                    output = try await shell([
                         "pr", "view", branchName,
                         "--json", "number,state"
                     ], cwd: repoPath)

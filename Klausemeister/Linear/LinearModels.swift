@@ -1,5 +1,11 @@
 import Foundation
 
+extension ISO8601DateFormatter {
+    /// Shared cached instance — avoids repeated construction in hot paths.
+    /// Thread-safe for `string(from:)` and `date(from:)` calls.
+    nonisolated static let shared = ISO8601DateFormatter()
+}
+
 struct TokenResponse: Equatable {
     let accessToken: String
     let refreshToken: String

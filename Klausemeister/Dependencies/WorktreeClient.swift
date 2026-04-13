@@ -69,7 +69,7 @@ extension WorktreeClient: DependencyKey {
                         repoId: UUID().uuidString,
                         name: name,
                         path: path,
-                        createdAt: ISO8601DateFormatter().string(from: Date()),
+                        createdAt: ISO8601DateFormatter.shared.string(from: Date()),
                         sortOrder: maxSort + 1
                     )
                     try record.save(db)
@@ -105,7 +105,7 @@ extension WorktreeClient: DependencyKey {
                         name: name,
                         sortOrder: maxSort + 1,
                         gitWorktreePath: gitWorktreePath,
-                        createdAt: ISO8601DateFormatter().string(from: Date()),
+                        createdAt: ISO8601DateFormatter.shared.string(from: Date()),
                         repoId: repoId
                     )
                     try record.save(db)
@@ -176,7 +176,7 @@ extension WorktreeClient: DependencyKey {
                         issueLinearId: issueLinearId,
                         queuePosition: QueuePosition.inbox,
                         sortOrder: maxSort + 1,
-                        assignedAt: ISO8601DateFormatter().string(from: Date()),
+                        assignedAt: ISO8601DateFormatter.shared.string(from: Date()),
                         completedAt: nil
                     )
                     try record.save(db)
@@ -189,7 +189,7 @@ extension WorktreeClient: DependencyKey {
                         throw WorktreeClientError.queueItemNotFound(queueItemId)
                     }
                     record.queuePosition = QueuePosition.outbox
-                    record.completedAt = ISO8601DateFormatter().string(from: Date())
+                    record.completedAt = ISO8601DateFormatter.shared.string(from: Date())
                     try record.update(db)
                 }
             },
@@ -260,7 +260,7 @@ extension WorktreeClient: DependencyKey {
                         throw WorktreeClientError.queueItemNotFound(issueLinearId)
                     }
                     record.queuePosition = QueuePosition.outbox
-                    record.completedAt = ISO8601DateFormatter().string(from: Date())
+                    record.completedAt = ISO8601DateFormatter.shared.string(from: Date())
                     try record.update(db)
                 }
             },
@@ -315,7 +315,7 @@ extension WorktreeClient: DependencyKey {
                             name: name,
                             sortOrder: maxSort,
                             gitWorktreePath: entry.path,
-                            createdAt: ISO8601DateFormatter().string(from: Date()),
+                            createdAt: ISO8601DateFormatter.shared.string(from: Date()),
                             repoId: repoId
                         )
                         try record.save(db)

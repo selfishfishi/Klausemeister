@@ -154,8 +154,9 @@ struct MeisterFeature {
                         teamId: $0.teamId
                     ) }.sorted { $0.position < $1.position }
                 }
-                let isoFormatter = ISO8601DateFormatter()
-                cachedFetchedAt = records.first.flatMap { isoFormatter.date(from: $0.fetchedAt) }
+                cachedFetchedAt = records.first.flatMap {
+                    ISO8601DateFormatter.shared.date(from: $0.fetchedAt)
+                }
                 await send(.workflowStatesLoadedFromCache(cachedStates, cachedFetchedAt))
             }
 
@@ -246,7 +247,7 @@ struct MeisterFeature {
                 state.syncStatus = .succeeded
                 let records = result.issues.map { ImportedIssueRecord(from: $0, importedAt: now) }
                 let workflowRecordsToSave: [LinearWorkflowStateRecord]? = result.workflowStatesByTeam.map { states in
-                    let timestamp = ISO8601DateFormatter().string(from: now)
+                    let timestamp = ISO8601DateFormatter.shared.string(from: now)
                     return states.values.flatMap(\.self).map { state in
                         LinearWorkflowStateRecord(
                             id: state.id,
@@ -705,39 +706,35 @@ extension MeisterFeature.State {
 
     /// Columns the user has chosen to see. Purely view-layer filtering —
     /// `columns` still holds every stage, so toggling a stage back on reveals
-    /// its existing issues without resyncing. Team and project filters hide
-    /// issues while preserving column structure.
+    /// its existing issues without resyncing. All issue-level filters (team,
+    /// project, search) are applied in a single pass for efficiency.
     var visibleColumns: IdentifiedArrayOf<MeisterFeature.KanbanColumn> {
-        var filtered = columns.filter { !hiddenStages.contains($0.id) }
-        if !hiddenTeamIds.isEmpty {
-            filtered = IdentifiedArrayOf(uniqueElements: filtered.map { column in
-                var col = column
-                col.issues = column.issues.filter { !hiddenTeamIds.contains($0.teamId) }
-                return col
-            })
-        }
-        if !hiddenProjectNames.isEmpty {
-            filtered = IdentifiedArrayOf(uniqueElements: filtered.map { column in
-                var col = column
-                col.issues = column.issues.filter { issue in
-                    let name = issue.projectName ?? LinearIssue.noProjectName
-                    return !hiddenProjectNames.contains(name)
-                }
-                return col
-            })
-        }
+        let stageFiltered = columns.filter { !hiddenStages.contains($0.id) }
+        let needsTeamFilter = !hiddenTeamIds.isEmpty
+        let needsProjectFilter = !hiddenProjectNames.isEmpty
         let trimmed = searchQuery.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty {
-            filtered = IdentifiedArrayOf(uniqueElements: filtered.map { column in
-                var col = column
-                col.issues = column.issues.filter { issue in
-                    FuzzyMatcher.match(query: trimmed, against: issue.identifier) != nil
-                        || FuzzyMatcher.match(query: trimmed, against: issue.title) != nil
-                }
-                return col
-            })
+        let needsSearch = !trimmed.isEmpty
+
+        guard needsTeamFilter || needsProjectFilter || needsSearch else {
+            return stageFiltered
         }
-        return filtered
+
+        return IdentifiedArrayOf(uniqueElements: stageFiltered.map { column in
+            var col = column
+            col.issues = column.issues.filter { issue in
+                if needsTeamFilter, hiddenTeamIds.contains(issue.teamId) { return false }
+                if needsProjectFilter {
+                    let name = issue.projectName ?? LinearIssue.noProjectName
+                    if hiddenProjectNames.contains(name) { return false }
+                }
+                if needsSearch,
+                   FuzzyMatcher.match(query: trimmed, against: issue.identifier) == nil,
+                   FuzzyMatcher.match(query: trimmed, against: issue.title) == nil
+                { return false }
+                return true
+            }
+            return col
+        })
     }
 
     /// All distinct project names across currently loaded issues.
@@ -825,7 +822,7 @@ extension ImportedIssueRecord {
             description: issue.description,
             url: issue.url,
             updatedAt: issue.updatedAt,
-            importedAt: ISO8601DateFormatter().string(from: importedAt),
+            importedAt: ISO8601DateFormatter.shared.string(from: importedAt),
             sortOrder: 0,
             isOrphaned: issue.isOrphaned
         )
