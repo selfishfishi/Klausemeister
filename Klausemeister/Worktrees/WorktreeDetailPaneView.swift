@@ -13,12 +13,15 @@ struct WorktreeDetailPaneView: View {
     var onMarkComplete: () -> Void
     var onReturnToMeister: (String) -> Void
 
+    @Environment(\.themeColors) private var themeColors
+
     var body: some View {
         ZStack {
             WorktreeTerminalTabView(
                 worktree: worktree,
                 surfaceView: surfaceView
             )
+            .blur(radius: showBoardOverlay ? 10 : 0)
             .opacity(showBoardOverlay ? 0.8 : 1.0)
             .allowsHitTesting(!showBoardOverlay)
 
@@ -26,7 +29,7 @@ struct WorktreeDetailPaneView: View {
                 queueColumns
                     .padding(16)
                     .background(
-                        .ultraThinMaterial,
+                        Color(hexString: themeColors.background).opacity(0.5),
                         in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
