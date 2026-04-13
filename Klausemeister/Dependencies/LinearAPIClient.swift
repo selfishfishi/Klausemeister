@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import Dependencies
 import Foundation
 
@@ -7,6 +8,7 @@ struct LinearAPIClient {
     var fetchLabeledIssues: @Sendable (_ label: String, _ teamId: String?) async throws -> [LinearIssue]
     var fetchAllTeamIssues: @Sendable (_ teamId: String) async throws -> [LinearIssue]
     var fetchTeams: @Sendable () async throws -> [LinearTeam]
+    var fetchLabels: @Sendable () async throws -> [String]
     var fetchWorkflowStatesByTeam: @Sendable () async throws -> WorkflowStatesByTeam
     var updateIssueStatus: @Sendable (_ issueId: String, _ statusId: String) async throws -> Void
 }
@@ -289,6 +291,42 @@ extension LinearAPIClient: DependencyKey {
                 }
             },
 
+            fetchLabels: {
+                let token = try await loadToken(keychainClient: keychainClient)
+
+                // Linear allows up to 250 per page; no pagination for labels
+                let query = """
+                query {
+                  issueLabels(first: 250) {
+                    nodes { name }
+                  }
+                }
+                """
+                let data = try await graphQLRequest(
+                    token: token, query: query, variables: nil
+                )
+
+                // swiftlint:disable nesting
+                struct GraphQLResponse: Decodable {
+                    struct Data: Decodable {
+                        struct IssueLabels: Decodable {
+                            struct LabelNode: Decodable { let name: String }
+                            let nodes: [LabelNode]
+                        }
+
+                        let issueLabels: IssueLabels
+                    }
+
+                    let data: Data
+                }
+                // swiftlint:enable nesting
+
+                let graphQLResponse = try JSONDecoder().decode(
+                    GraphQLResponse.self, from: data
+                )
+                return graphQLResponse.data.issueLabels.nodes.map(\.name)
+            },
+
             fetchWorkflowStatesByTeam: {
                 let token = try await loadToken(keychainClient: keychainClient)
 
@@ -378,6 +416,7 @@ extension LinearAPIClient: DependencyKey {
         fetchLabeledIssues: unimplemented("LinearAPIClient.fetchLabeledIssues"),
         fetchAllTeamIssues: unimplemented("LinearAPIClient.fetchAllTeamIssues"),
         fetchTeams: unimplemented("LinearAPIClient.fetchTeams"),
+        fetchLabels: unimplemented("LinearAPIClient.fetchLabels"),
         fetchWorkflowStatesByTeam: unimplemented("LinearAPIClient.fetchWorkflowStatesByTeam"),
         updateIssueStatus: unimplemented("LinearAPIClient.updateIssueStatus")
     )

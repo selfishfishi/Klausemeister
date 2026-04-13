@@ -7,7 +7,9 @@ struct TeamSettingsFeature {
     struct State: Equatable {
         var allTeams: [LinearTeam] = []
         var enabledTeamIds: Set<String> = []
-        var originalStrategies: [String: IngestionStrategy] = [:]
+        var originalIngestAllFlags: [String: Bool] = [:]
+        var originalFilterLabels: [String: String] = [:]
+        var availableLabels: [String] = []
         var teamsToRemove: Set<String> = []
         var loadingStatus: LoadingStatus = .idle
         @Presents var alert: AlertState<Action.Alert>?
@@ -23,13 +25,15 @@ struct TeamSettingsFeature {
     struct TeamSettingsData: Equatable {
         let apiTeams: [LinearTeam]
         let persistedTeams: [LinearTeamRecord]
+        let labels: [String]
     }
 
     enum Action: Equatable {
         case onAppear
         case teamsLoaded(TaskResult<TeamSettingsData>)
         case enableTeamToggled(teamId: String)
-        case ingestionStrategyChanged(teamId: String, strategy: IngestionStrategy)
+        case ingestAllToggled(teamId: String)
+        case filterLabelChanged(teamId: String, label: String)
         case removeTeamTapped(teamId: String)
         case saveTapped
         case saveCompleted(TaskResult<[LinearTeam]>)
@@ -63,9 +67,17 @@ struct TeamSettingsFeature {
                     await send(.teamsLoaded(TaskResult {
                         async let apiTeams = linearAPIClient.fetchTeams()
                         async let persistedTeams = databaseClient.fetchTeams()
+                        // Labels are best-effort — don't block settings on label fetch failure
+                        let labels: [String]
+                        do {
+                            labels = try await linearAPIClient.fetchLabels()
+                        } catch {
+                            labels = []
+                        }
                         return try await TeamSettingsData(
                             apiTeams: apiTeams,
-                            persistedTeams: persistedTeams
+                            persistedTeams: persistedTeams,
+                            labels: labels
                         )
                     }))
                 }
@@ -87,7 +99,8 @@ struct TeamSettingsFeature {
                             colorIndex: persisted.colorIndex,
                             isEnabled: persisted.isEnabled,
                             isHiddenFromBoard: persisted.isHiddenFromBoard,
-                            ingestionStrategy: persisted.ingestionStrategy
+                            ingestAllIssues: persisted.ingestAllIssues,
+                            filterLabel: persisted.filterLabel
                         )
                     }
                     var newTeam = apiTeam
@@ -97,9 +110,18 @@ struct TeamSettingsFeature {
                 state.enabledTeamIds = Set(
                     state.allTeams.filter(\.isEnabled).map(\.id)
                 )
-                state.originalStrategies = Dictionary(
-                    uniqueKeysWithValues: state.allTeams.map { ($0.id, $0.ingestionStrategy) }
+                state.originalIngestAllFlags = Dictionary(
+                    uniqueKeysWithValues: state.allTeams.map { ($0.id, $0.ingestAllIssues) }
                 )
+                state.originalFilterLabels = Dictionary(
+                    uniqueKeysWithValues: state.allTeams.map { ($0.id, $0.filterLabel) }
+                )
+                // Ensure each team's current filterLabel is always available in the picker
+                var allLabels = Set(data.labels)
+                for team in state.allTeams {
+                    allLabels.insert(team.filterLabel)
+                }
+                state.availableLabels = allLabels.sorted()
                 return .none
 
             case let .teamsLoaded(.failure(error)):
@@ -116,11 +138,18 @@ struct TeamSettingsFeature {
                 }
                 return .none
 
-            case let .ingestionStrategyChanged(teamId, strategy):
+            case let .ingestAllToggled(teamId):
                 guard let index = state.allTeams.firstIndex(where: { $0.id == teamId }) else {
                     return .none
                 }
-                state.allTeams[index].ingestionStrategy = strategy
+                state.allTeams[index].ingestAllIssues.toggle()
+                return .none
+
+            case let .filterLabelChanged(teamId, label):
+                guard let index = state.allTeams.firstIndex(where: { $0.id == teamId }) else {
+                    return .none
+                }
+                state.allTeams[index].filterLabel = label
                 return .none
 
             case let .removeTeamTapped(teamId):

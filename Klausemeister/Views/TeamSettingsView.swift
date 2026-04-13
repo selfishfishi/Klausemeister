@@ -14,7 +14,7 @@ struct TeamSettingsView: View {
             Divider().padding(.horizontal, 16)
             footerSection
         }
-        .frame(width: 380, height: 480)
+        .frame(width: 460, height: 480)
         .background {
             Color(hexString: themeColors.background)
                 .ignoresSafeArea()
@@ -84,6 +84,7 @@ struct TeamSettingsView: View {
         .padding(.vertical, 8)
     }
 
+    // swiftlint:disable:next function_body_length
     private func teamRow(_ team: LinearTeam) -> some View {
         let isEnabled = store.enabledTeamIds.contains(team.id)
         let isRemoved = store.teamsToRemove.contains(team.id)
@@ -133,15 +134,36 @@ struct TeamSettingsView: View {
             .padding(.vertical, 8)
 
             if isEnabled, !isRemoved {
-                Picker("", selection: Binding(
-                    get: { team.ingestionStrategy },
-                    set: { store.send(.ingestionStrategyChanged(teamId: team.id, strategy: $0)) }
-                )) {
-                    Text("Label only").tag(IngestionStrategy.labelFiltered)
-                    Text("All issues").tag(IngestionStrategy.allIssues)
+                HStack(spacing: 10) {
+                    Toggle("All issues", isOn: Binding(
+                        get: { team.ingestAllIssues },
+                        set: { _ in store.send(.ingestAllToggled(teamId: team.id)) }
+                    ))
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
+
+                    Text(team.ingestAllIssues ? "All issues" : "Label only")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 64, alignment: .leading)
+
+                    if !team.ingestAllIssues {
+                        Picker("", selection: Binding(
+                            get: { team.filterLabel },
+                            set: { store.send(.filterLabelChanged(teamId: team.id, label: $0)) }
+                        )) {
+                            ForEach(store.availableLabels, id: \.self) { label in
+                                Text(label).tag(label)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Spacer()
+                    }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
             }
@@ -184,10 +206,13 @@ struct TeamSettingsView: View {
             return true
         }
         return store.allTeams.contains { team in
-            guard let original = store.originalStrategies[team.id] else {
-                return true // New team not in original set
+            if team.ingestAllIssues != (store.originalIngestAllFlags[team.id] ?? false) {
+                return true
             }
-            return team.ingestionStrategy != original
+            if team.filterLabel != (store.originalFilterLabels[team.id] ?? "klause") {
+                return true
+            }
+            return false
         }
     }
 }

@@ -26,6 +26,7 @@ private let persistedMOB = LinearTeamRecord(from: teamMOB)
         TeamSettingsFeature()
     } withDependencies: {
         $0.linearAPIClient.fetchTeams = { [teamKLA, teamMOB, teamINF] }
+        $0.linearAPIClient.fetchLabels = { ["klause", "bug", "feature"] }
         $0.databaseClient.fetchTeams = { [persistedKLA, persistedMOB] }
     }
 
@@ -38,11 +39,18 @@ private let persistedMOB = LinearTeamRecord(from: teamMOB)
         // KLA and MOB are enabled (from DB), INF is new and disabled
         $0.allTeams = [teamKLA, teamMOB, teamINF]
         $0.enabledTeamIds = ["team-kla", "team-mob"]
-        $0.originalStrategies = [
-            "team-kla": .labelFiltered,
-            "team-mob": .labelFiltered,
-            "team-inf": .labelFiltered
+        $0.originalIngestAllFlags = [
+            "team-kla": false,
+            "team-mob": false,
+            "team-inf": false
         ]
+        $0.originalFilterLabels = [
+            "team-kla": "klause",
+            "team-mob": "klause",
+            "team-inf": "klause"
+        ]
+        // "klause" comes from both the API labels and team filterLabel defaults
+        $0.availableLabels = ["bug", "feature", "klause"]
     }
 }
 
@@ -150,25 +158,21 @@ private let persistedMOB = LinearTeamRecord(from: teamMOB)
 
 // MARK: - Ingestion Strategy Tests
 
-@Test func `ingestion strategy change updates team`() async {
+@Test func `ingest all toggle updates team`() async {
     var state = TeamSettingsFeature.State()
     state.allTeams = [teamKLA, teamMOB]
     state.enabledTeamIds = ["team-kla", "team-mob"]
-    state.originalStrategies = [
-        "team-kla": .labelFiltered,
-        "team-mob": .labelFiltered
-    ]
 
     let store = TestStore(initialState: state) {
         TeamSettingsFeature()
     }
 
-    await store.send(.ingestionStrategyChanged(teamId: "team-kla", strategy: .allIssues)) {
-        $0.allTeams[0].ingestionStrategy = .allIssues
+    await store.send(.ingestAllToggled(teamId: "team-kla")) {
+        $0.allTeams[0].ingestAllIssues = true
     }
 }
 
-@Test func `ingestion strategy change with unknown team ID is no-op`() async {
+@Test func `ingest all toggle with unknown team ID is no-op`() async {
     var state = TeamSettingsFeature.State()
     state.allTeams = [teamKLA]
     state.enabledTeamIds = ["team-kla"]
@@ -177,17 +181,32 @@ private let persistedMOB = LinearTeamRecord(from: teamMOB)
         TeamSettingsFeature()
     }
 
-    await store.send(.ingestionStrategyChanged(teamId: "nonexistent", strategy: .allIssues))
+    await store.send(.ingestAllToggled(teamId: "nonexistent"))
 }
 
-@Test func `save persists changed ingestion strategy`() async {
+@Test func `filter label change updates team`() async {
+    var state = TeamSettingsFeature.State()
+    state.allTeams = [teamKLA]
+    state.enabledTeamIds = ["team-kla"]
+
+    let store = TestStore(initialState: state) {
+        TeamSettingsFeature()
+    }
+
+    await store.send(.filterLabelChanged(teamId: "team-kla", label: "feature")) {
+        $0.allTeams[0].filterLabel = "feature"
+    }
+}
+
+@Test func `save persists changed ingest all flag`() async {
     var klaAllIssues = teamKLA
-    klaAllIssues.ingestionStrategy = .allIssues
+    klaAllIssues.ingestAllIssues = true
 
     var state = TeamSettingsFeature.State()
     state.allTeams = [klaAllIssues]
     state.enabledTeamIds = ["team-kla"]
-    state.originalStrategies = ["team-kla": .labelFiltered]
+    state.originalIngestAllFlags = ["team-kla": false]
+    state.originalFilterLabels = ["team-kla": "klause"]
     state.loadingStatus = .loaded
 
     var savedRecords: [LinearTeamRecord] = []
@@ -205,5 +224,5 @@ private let persistedMOB = LinearTeamRecord(from: teamMOB)
     await store.receive(\.delegate.teamsUpdated)
 
     #expect(savedRecords.count == 1)
-    #expect(savedRecords.first?.ingestionStrategy == .allIssues)
+    #expect(savedRecords.first?.ingestAllIssues == true)
 }
