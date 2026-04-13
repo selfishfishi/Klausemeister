@@ -11,49 +11,67 @@ struct KeychainClient {
 extension KeychainClient: DependencyKey {
     nonisolated static let liveValue = KeychainClient(
         save: { service, account, data in
-            let deleteQuery: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: account
-            ]
-            SecItemDelete(deleteQuery as CFDictionary)
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let deleteQuery: [String: Any] = [
+                        kSecClass as String: kSecClassGenericPassword,
+                        kSecAttrService as String: service,
+                        kSecAttrAccount as String: account
+                    ]
+                    SecItemDelete(deleteQuery as CFDictionary)
 
-            let addQuery: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: account,
-                kSecValueData as String: data
-            ]
-            let status = SecItemAdd(addQuery as CFDictionary, nil)
-            guard status == errSecSuccess else {
-                throw KeychainError.saveFailed(status)
+                    let addQuery: [String: Any] = [
+                        kSecClass as String: kSecClassGenericPassword,
+                        kSecAttrService as String: service,
+                        kSecAttrAccount as String: account,
+                        kSecValueData as String: data
+                    ]
+                    let status = SecItemAdd(addQuery as CFDictionary, nil)
+                    if status == errSecSuccess {
+                        continuation.resume()
+                    } else {
+                        continuation.resume(throwing: KeychainError.saveFailed(status))
+                    }
+                }
             }
         },
         load: { service, account in
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: account,
-                kSecReturnData as String: true,
-                kSecMatchLimit as String: kSecMatchLimitOne
-            ]
-            var result: AnyObject?
-            let status = SecItemCopyMatching(query as CFDictionary, &result)
-            guard status == errSecSuccess else {
-                if status == errSecItemNotFound { return nil }
-                throw KeychainError.loadFailed(status)
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let query: [String: Any] = [
+                        kSecClass as String: kSecClassGenericPassword,
+                        kSecAttrService as String: service,
+                        kSecAttrAccount as String: account,
+                        kSecReturnData as String: true,
+                        kSecMatchLimit as String: kSecMatchLimitOne
+                    ]
+                    var result: AnyObject?
+                    let status = SecItemCopyMatching(query as CFDictionary, &result)
+                    if status == errSecSuccess {
+                        continuation.resume(returning: result as? Data)
+                    } else if status == errSecItemNotFound {
+                        continuation.resume(returning: nil)
+                    } else {
+                        continuation.resume(throwing: KeychainError.loadFailed(status))
+                    }
+                }
             }
-            return result as? Data
         },
         delete: { service, account in
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: account
-            ]
-            let status = SecItemDelete(query as CFDictionary)
-            guard status == errSecSuccess || status == errSecItemNotFound else {
-                throw KeychainError.deleteFailed(status)
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let query: [String: Any] = [
+                        kSecClass as String: kSecClassGenericPassword,
+                        kSecAttrService as String: service,
+                        kSecAttrAccount as String: account
+                    ]
+                    let status = SecItemDelete(query as CFDictionary)
+                    if status == errSecSuccess || status == errSecItemNotFound {
+                        continuation.resume()
+                    } else {
+                        continuation.resume(throwing: KeychainError.deleteFailed(status))
+                    }
+                }
             }
         }
     )

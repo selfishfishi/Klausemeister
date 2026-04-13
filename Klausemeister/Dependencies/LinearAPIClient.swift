@@ -31,7 +31,7 @@ nonisolated private func graphQLRequest(
     if httpResponse.statusCode == 429 { throw LinearAPIError.rateLimited }
 
     // Detect GraphQL-level errors returned with HTTP 200 + { "errors": [...] }
-    if let errorEnvelope = try? JSONDecoder().decode(GraphQLErrorEnvelope.self, from: data),
+    if let errorEnvelope = try? await decodeOffMain(GraphQLErrorEnvelope.self, from: data),
        !errorEnvelope.errors.isEmpty
     {
         throw LinearAPIError.graphQLErrors(errorEnvelope.errors.map(\.message))
@@ -46,6 +46,22 @@ nonisolated private struct GraphQLErrorEnvelope: Decodable {
     }
 
     let errors: [GraphQLError]
+}
+
+/// Decodes JSON on a background thread to avoid blocking the main actor.
+nonisolated private func decodeOffMain<T: Decodable>(
+    _ type: T.Type, from data: Data
+) async throws -> T {
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, any Error>) in
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let decoded = try JSONDecoder().decode(T.self, from: data)
+                continuation.resume(returning: decoded)
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
+    }
 }
 
 // MARK: - Paginated issue fetch helper
@@ -70,7 +86,7 @@ nonisolated private func fetchPaginatedIssues(
             token: token, query: query, variables: variables
         )
 
-        let page = try JSONDecoder().decode(LabeledIssuesResponse.self, from: data)
+        let page = try await decodeOffMain(LabeledIssuesResponse.self, from: data)
         for node in page.data.issues.nodes {
             guard seenIds.insert(node.id).inserted else { continue }
             allIssues.append(node.linearIssue)
@@ -140,7 +156,7 @@ extension LinearAPIClient: DependencyKey {
                     let data: Data
                 }
                 // swiftlint:enable nesting
-                let graphQLResponse = try JSONDecoder().decode(
+                let graphQLResponse = try await decodeOffMain(
                     GraphQLResponse.self, from: data
                 )
                 return LinearUser(
@@ -276,7 +292,7 @@ extension LinearAPIClient: DependencyKey {
                 }
                 // swiftlint:enable nesting
 
-                let graphQLResponse = try JSONDecoder().decode(
+                let graphQLResponse = try await decodeOffMain(
                     GraphQLResponse.self, from: data
                 )
                 return graphQLResponse.data.teams.nodes.enumerated().map { index, node in
@@ -321,7 +337,7 @@ extension LinearAPIClient: DependencyKey {
                 }
                 // swiftlint:enable nesting
 
-                let graphQLResponse = try JSONDecoder().decode(
+                let graphQLResponse = try await decodeOffMain(
                     GraphQLResponse.self, from: data
                 )
                 return graphQLResponse.data.issueLabels.nodes.map(\.name)
@@ -374,7 +390,7 @@ extension LinearAPIClient: DependencyKey {
                 }
                 // swiftlint:enable nesting
 
-                let graphQLResponse = try JSONDecoder().decode(
+                let graphQLResponse = try await decodeOffMain(
                     GraphQLResponse.self, from: data
                 )
                 var result: WorkflowStatesByTeam = [:]
