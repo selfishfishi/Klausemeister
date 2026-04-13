@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct SwimlaneRowView: View {
     let worktree: Worktree
@@ -16,7 +15,6 @@ struct SwimlaneRowView: View {
     var onDropToInbox: ((_ issueId: String) -> Void)?
     var onDropToProcessing: ((_ issueId: String) -> Void)?
     var onDropToOutbox: ((_ issueId: String) -> Void)?
-    var onWorktreeDropped: ((_ movedWorktreeId: String) -> Void)?
 
     @Environment(\.themeColors) private var themeColors
     @Environment(\.swimlaneAnimating) private var isAnimating
@@ -54,15 +52,6 @@ struct SwimlaneRowView: View {
     private var rowContent: some View {
         HStack(alignment: .center, spacing: 10) {
             SwimlaneHeaderView(worktree: worktree)
-                .draggable(WorktreeRowDragItem(worktreeId: worktree.id))
-                .dropDestination(for: WorktreeRowDragItem.self) { items, _ in
-                    guard let movedId = items.first?.worktreeId,
-                          movedId != worktree.id,
-                          let onWorktreeDropped
-                    else { return false }
-                    onWorktreeDropped(movedId)
-                    return true
-                }
 
             SwimlaneBarRow(
                 worktree: worktree,
@@ -101,18 +90,5 @@ struct SwimlaneRowView: View {
 
     private func pulsePhase(date: Date, period: Double) -> Double {
         0.5 + 0.5 * sin(date.timeIntervalSinceReferenceDate * 2 * .pi / period)
-    }
-}
-
-// MARK: - Worktree Row Drag Item
-
-private extension UTType {
-    static let worktreeRowDragItem = UTType(importedAs: "com.klausemeister.worktree-drag-item")
-}
-
-struct WorktreeRowDragItem: Codable, Transferable {
-    let worktreeId: String
-    static var transferRepresentation: some TransferRepresentation {
-        CodableRepresentation(contentType: .worktreeRowDragItem)
     }
 }

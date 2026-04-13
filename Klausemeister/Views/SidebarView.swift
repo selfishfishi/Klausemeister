@@ -42,9 +42,6 @@ struct SidebarView: View {
                         }
                     )
                 }
-                .onMove { fromOffsets, toOffset in
-                    store.send(.worktree(.sidebarWorktreeReordered(fromOffsets: fromOffsets, toOffset: toOffset)))
-                }
             } header: {
                 HStack {
                     Text("Worktrees")
