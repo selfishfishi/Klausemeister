@@ -39,11 +39,11 @@ struct SwimlaneBarRow: View {
 
     private var inboxSection: some View {
         HStack(spacing: 5) {
-            ForEach(worktree.inbox, id: \.id) { issue in
+            ForEach(worktree.inbox.reversed(), id: \.id) { issue in
                 queuedPill(issue)
             }
         }
-        .frame(minWidth: 32, minHeight: 34, alignment: .leading)
+        .frame(minWidth: 32, minHeight: 34, alignment: .trailing)
         .contentShape(Rectangle())
         .overlay(targetingRing(isOn: inboxTargeted, tint: queuedTint))
         .animation(.easeInOut(duration: 0.15), value: inboxTargeted)
