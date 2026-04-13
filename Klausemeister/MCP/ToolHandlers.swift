@@ -212,9 +212,16 @@ enum ToolHandlers {
 
         let currentState = ProductState(kanban: kanban, queue: target.queuePosition)
         guard let newState = currentState.applying(command) else {
+            // Idempotent: already at the result state of this command — treat as no-op success
+            if currentState.isResultOf(command) {
+                let issue = LinearIssue(from: issueRecord)
+                let payload = makePayload(state: currentState, issue: issue)
+                return try .success(Self.encodeJSON(["state": payload]))
+            }
             let valid = currentState.validCommands.map(\.rawValue).joined(separator: ", ")
+            let next = currentState.nextCommand.map { ". Next command: \($0.rawValue)" } ?? ""
             return .failure(
-                "Illegal transition: \(commandName) from (\(kanban.rawValue), \(target.queuePosition.rawValue)). Valid commands: \(valid)"
+                "Illegal transition: \(commandName) from (\(kanban.rawValue), \(target.queuePosition.rawValue)). Valid commands: \(valid)\(next)"
             )
         }
 

@@ -129,6 +129,13 @@ extension ProductState {
         WorkflowCommand.allCases.filter { applying($0) != nil }
     }
 
+    /// Whether this state is already the result of applying `command`.
+    /// Used by the MCP layer for idempotent transition handling — if
+    /// we're already at the result state, the command was already applied.
+    func isResultOf(_ command: WorkflowCommand) -> Bool {
+        transitions.contains { $0.command == command && $0.result == self }
+    }
+
     /// Whether this is the terminal state — no further transitions possible.
     var isComplete: Bool {
         kanban == .completed && queue == .outbox
