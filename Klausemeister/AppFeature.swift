@@ -342,6 +342,13 @@ struct AppFeature {
                         ))),
                         debugEffect
                     )
+                case let .itemAddedToInbox(worktreeId, issueLinearId):
+                    return .merge(
+                        .send(.worktree(.mcpItemAddedToInbox(
+                            worktreeId: worktreeId, issueLinearId: issueLinearId
+                        ))),
+                        debugEffect
+                    )
                 }
             }
         }
