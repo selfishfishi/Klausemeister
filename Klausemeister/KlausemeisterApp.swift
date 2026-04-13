@@ -72,6 +72,11 @@ struct KlausemeisterApp: App {
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
                 .hidden()
+
+                Button(AppCommand.openWorktreeSwitcher.displayName) {
+                    store.send(.openWorktreeSwitcher)
+                }
+                .keyboardShortcut(for: .openWorktreeSwitcher, in: bindings)
             }
 
             CommandGroup(after: .appSettings) {

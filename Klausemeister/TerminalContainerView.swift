@@ -55,8 +55,25 @@ struct TerminalContainerView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                     .zIndex(1)
             }
+
+            if let switcherStore = store.scope(
+                state: \.worktreeSwitcher, action: \.worktreeSwitcher
+            ) {
+                Color.black.opacity(0.25)
+                    .ignoresSafeArea()
+                    .onTapGesture { switcherStore.send(.dismiss) }
+
+                WorktreeSwitcherView(store: switcherStore)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 80)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .zIndex(1)
+            }
         }
-        .animation(.spring(duration: 0.2, bounce: 0.1), value: store.commandPalette != nil)
+        .animation(
+            .spring(duration: 0.2, bounce: 0.1),
+            value: store.commandPalette != nil || store.worktreeSwitcher != nil
+        )
         .onChange(of: store.showSidebar) { _, show in
             withAnimation {
                 columnVisibility = show ? .all : .detailOnly

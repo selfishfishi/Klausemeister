@@ -2,6 +2,7 @@ import ComposableArchitecture
 import Foundation
 
 @Reducer
+// swiftlint:disable:next type_body_length
 struct AppFeature {
     @ObservableState
     struct State: Equatable {
@@ -15,6 +16,7 @@ struct AppFeature {
         var teamSettings: TeamSettingsFeature.State?
         var commandPalette: CommandPaletteFeature.State?
         var shortcutCenter: ShortcutCenterFeature.State?
+        var worktreeSwitcher: WorktreeSwitcherFeature.State?
         var keyBindings: [AppCommand: KeyBinding] = [:]
     }
 
@@ -37,6 +39,9 @@ struct AppFeature {
         case openShortcutCenter
         case shortcutCenterDismissed
         case shortcutCenter(ShortcutCenterFeature.Action)
+        case openWorktreeSwitcher
+        case worktreeSwitcherDismissed
+        case worktreeSwitcher(WorktreeSwitcherFeature.Action)
         case keyBindingsLoaded([AppCommand: KeyBinding?])
         case mcpServerEvent(MCPServerEvent)
     }
@@ -76,6 +81,9 @@ struct AppFeature {
         }
         .ifLet(\.shortcutCenter, action: \.shortcutCenter) {
             ShortcutCenterFeature()
+        }
+        .ifLet(\.worktreeSwitcher, action: \.worktreeSwitcher) {
+            WorktreeSwitcherFeature()
         }
         Reduce { state, action in
             switch action {
@@ -226,6 +234,36 @@ struct AppFeature {
             case .shortcutCenter:
                 return .none
 
+            case .openWorktreeSwitcher:
+                state.commandPalette = nil
+                state.worktreeSwitcher = WorktreeSwitcherFeature.State(
+                    worktrees: Array(state.worktree.worktrees)
+                )
+                return .none
+
+            case .worktreeSwitcherDismissed:
+                state.worktreeSwitcher = nil
+                return .none
+
+            case let .worktreeSwitcher(.delegate(.itemSelected(item))):
+                state.worktreeSwitcher = nil
+                switch item {
+                case .meister:
+                    state.showMeister = true
+                    state.worktree.selectedWorktreeId = nil
+                case let .worktree(worktreeId, _, _):
+                    state.showMeister = false
+                    return .send(.worktree(.worktreeSelected(worktreeId)))
+                }
+                return .none
+
+            case .worktreeSwitcher(.delegate(.dismissed)):
+                state.worktreeSwitcher = nil
+                return .none
+
+            case .worktreeSwitcher:
+                return .none
+
             case .teamSettingsButtonTapped:
                 state.teamSettings = TeamSettingsFeature.State()
                 return .none
@@ -325,6 +363,8 @@ struct AppFeature {
             return .send(.debugPanel(.panelToggled))
         case .openShortcutCenter:
             return .send(.openShortcutCenter)
+        case .openWorktreeSwitcher:
+            return .send(.openWorktreeSwitcher)
         case .deleteWorktree:
             guard let worktreeId = state.worktree.selectedWorktreeId else { return .none }
             return .send(.worktree(.confirmDeleteTapped(worktreeId: worktreeId)))
