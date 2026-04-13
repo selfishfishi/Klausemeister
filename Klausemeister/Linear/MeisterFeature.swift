@@ -37,8 +37,13 @@ struct MeisterFeature {
         let workflowStatesByTeam: WorkflowStatesByTeam?
         let orphanedIds: Set<String>
         let restoredIds: Set<String>
-        /// Team IDs whose fetch failed during this sync. Empty on full success.
-        let failedTeamIds: Set<String>
+        /// Per-team fetch failures with error messages. Empty on full success.
+        let teamFailures: [TeamSyncFailure]
+    }
+
+    struct TeamSyncFailure: Equatable {
+        let teamId: String
+        let message: String
     }
 
     struct KanbanColumn: Equatable, Identifiable {
@@ -88,6 +93,10 @@ struct MeisterFeature {
             case issueReturnedFromWorktreeByDrop(issueId: String)
             case syncStarted
             case syncSucceeded
+            case syncPartiallyFailed(
+                failures: [TeamSyncFailure],
+                teamNames: [String: String]
+            )
             case syncFailed(message: String)
             case errorOccurred(message: String)
         }
@@ -247,9 +256,15 @@ struct MeisterFeature {
                         )
                     }
                 }
-                let failedTeamIds = result.failedTeamIds
                 var effects: [Effect<Action>] = [
-                    .send(.delegate(.syncSucceeded)),
+                    result.teamFailures.isEmpty
+                        ? .send(.delegate(.syncSucceeded))
+                        : .send(.delegate(.syncPartiallyFailed(
+                            failures: result.teamFailures,
+                            teamNames: Dictionary(
+                                uniqueKeysWithValues: state.teams.map { ($0.id, $0.key) }
+                            )
+                        ))),
                     .run { [databaseClient] send in
                         do {
                             try await databaseClient.batchSaveImportedIssues(records)
@@ -293,17 +308,6 @@ struct MeisterFeature {
                     }
                     .cancellable(id: "MeisterFeature.syncIndicatorReset", cancelInFlight: true)
                 ]
-                if !failedTeamIds.isEmpty {
-                    let teamNames = failedTeamIds.compactMap { id in
-                        state.teams.first { $0.id == id }?.key
-                    }
-                    let names = teamNames.isEmpty
-                        ? failedTeamIds.joined(separator: ", ")
-                        : teamNames.joined(separator: ", ")
-                    effects.append(.send(.delegate(.errorOccurred(
-                        message: "Sync partially failed for: \(names)"
-                    ))))
-                }
                 return .merge(effects)
 
             case let .syncCompleted(.failure(error)):
@@ -600,7 +604,7 @@ nonisolated func resolveLinearState(
 nonisolated private struct TeamFetchResult {
     let teamId: String
     let issues: [LinearIssue]
-    let failed: Bool
+    let errorMessage: String?
 }
 
 nonisolated private func performSync(
@@ -611,7 +615,7 @@ nonisolated private func performSync(
 ) async throws -> MeisterFeature.SyncResult {
     // Fetch issues — per-team parallel when teams are available,
     // otherwise fall back to the workspace-wide single fetch.
-    async let issuesTask: ([LinearIssue], Set<String>) = {
+    async let issuesTask: ([LinearIssue], [MeisterFeature.TeamSyncFailure]) = {
         if enabledTeams.isEmpty {
             let issues = try await linearAPIClient.fetchLabeledIssues(MeisterFeature.syncLabel, nil)
             return (issues, [])
@@ -628,26 +632,29 @@ nonisolated private func performSync(
                         case .allIssues:
                             try await linearAPIClient.fetchAllTeamIssues(team.id)
                         }
-                        return TeamFetchResult(teamId: team.id, issues: issues, failed: false)
+                        return TeamFetchResult(teamId: team.id, issues: issues, errorMessage: nil)
                     } catch {
                         // Isolated failure — this team's issues are skipped,
                         // other teams continue. The next sync will retry.
-                        return TeamFetchResult(teamId: team.id, issues: [], failed: true)
+                        return TeamFetchResult(
+                            teamId: team.id, issues: [],
+                            errorMessage: MeisterFeature.describe(error)
+                        )
                     }
                 }
             }
             var allIssues: [LinearIssue] = []
             var seenIds = Set<String>()
-            var failedIds = Set<String>()
+            var failures: [MeisterFeature.TeamSyncFailure] = []
             for try await result in group {
-                if result.failed {
-                    failedIds.insert(result.teamId)
+                if let errorMessage = result.errorMessage {
+                    failures.append(.init(teamId: result.teamId, message: errorMessage))
                 }
                 for issue in result.issues where seenIds.insert(issue.id).inserted {
                     allIssues.append(issue)
                 }
             }
-            return (allIssues, failedIds)
+            return (allIssues, failures)
         }
     }()
 
@@ -656,7 +663,7 @@ nonisolated private func performSync(
         return try await linearAPIClient.fetchWorkflowStatesByTeam()
     }()
 
-    let (fetchedIssues, failedTeamIds) = try await issuesTask
+    let (fetchedIssues, teamFailures) = try await issuesTask
     let workflowStatesByTeam = try await statesTask
     let dbRecords = try await databaseClient.fetchUnqueuedImportedIssues()
 
@@ -684,7 +691,7 @@ nonisolated private func performSync(
         workflowStatesByTeam: workflowStatesByTeam,
         orphanedIds: orphanedIds,
         restoredIds: restoredIds,
-        failedTeamIds: failedTeamIds
+        teamFailures: teamFailures
     )
 }
 

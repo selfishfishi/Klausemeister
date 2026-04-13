@@ -524,8 +524,7 @@ private let mobileIssue = LinearIssue(
         $0.columns = MeisterFeature.rebuildColumns(from: [sampleIssue])
         $0.syncStatus = .succeeded
     }
-    await store.receive(\.delegate.syncSucceeded)
-    await store.receive(\.delegate.errorOccurred)
+    await store.receive(\.delegate.syncPartiallyFailed)
     await store.receive(\.stateMappingsLoaded)
 
     await testClock.advance(by: .seconds(2))
