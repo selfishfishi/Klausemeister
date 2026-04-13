@@ -9,12 +9,10 @@ struct TeamSettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             headerSection
-            Divider().padding(.horizontal, 16)
             contentSection
-            Divider().padding(.horizontal, 16)
             footerSection
         }
-        .frame(width: 460, height: 480)
+        .frame(width: 420, height: 460)
         .background {
             Color(hexString: themeColors.background)
                 .ignoresSafeArea()
@@ -31,12 +29,11 @@ struct TeamSettingsView: View {
         VStack(spacing: 4) {
             Text("Manage Teams")
                 .font(.headline)
-                .foregroundStyle(.primary)
             Text("Teams in your Linear workspace")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 14)
+        .padding(.vertical, 16)
     }
 
     // MARK: - Content
@@ -73,105 +70,116 @@ struct TeamSettingsView: View {
 
     private var teamList: some View {
         ScrollView(.vertical) {
-            VStack(spacing: 2) {
+            VStack(spacing: 10) {
                 ForEach(store.allTeams) { team in
-                    teamRow(team)
+                    teamCard(team)
                 }
             }
-            .padding(6)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
     }
 
-    // swiftlint:disable:next function_body_length
-    private func teamRow(_ team: LinearTeam) -> some View {
+    private func teamCard(_ team: LinearTeam) -> some View {
         let isEnabled = store.enabledTeamIds.contains(team.id)
         let isRemoved = store.teamsToRemove.contains(team.id)
         let tint = themeColors.teamTint(colorIndex: team.colorIndex)
 
-        return VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Circle()
-                    .fill(tint)
-                    .frame(width: 8, height: 8)
-                Text(team.key)
-                    .font(.system(.callout, design: .monospaced).weight(.semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 48, alignment: .leading)
-                Text(team.name)
-                    .font(.callout)
-                    .foregroundStyle(isRemoved ? .tertiary : .primary)
-                    .strikethrough(isRemoved)
-                Spacer(minLength: 0)
-                if isRemoved {
-                    Text("Removed")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                } else {
-                    if isEnabled {
-                        Button {
-                            store.send(.removeTeamTapped(teamId: team.id))
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Remove team and delete its issues")
-                    }
-                    Button {
-                        store.send(.enableTeamToggled(teamId: team.id))
-                    } label: {
-                        Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
-                            .font(.body)
-                            .foregroundStyle(isEnabled ? tint : .secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-
+        return VStack(alignment: .leading, spacing: 0) {
+            teamCardHeader(team: team, isEnabled: isEnabled, isRemoved: isRemoved, tint: tint)
             if isEnabled, !isRemoved {
-                HStack(spacing: 10) {
-                    Toggle("All issues", isOn: Binding(
-                        get: { team.ingestAllIssues },
-                        set: { _ in store.send(.ingestAllToggled(teamId: team.id)) }
-                    ))
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .labelsHidden()
-
-                    Text(team.ingestAllIssues ? "All issues" : "Label only")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 64, alignment: .leading)
-
-                    if !team.ingestAllIssues {
-                        Picker("", selection: Binding(
-                            get: { team.filterLabel },
-                            set: { store.send(.filterLabelChanged(teamId: team.id, label: $0)) }
-                        )) {
-                            ForEach(store.availableLabels, id: \.self) { label in
-                                Text(label).tag(label)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .labelsHidden()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Spacer()
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
+                Divider().padding(.vertical, 8)
+                teamCardIngestion(team: team)
             }
         }
+        .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isEnabled && !isRemoved ? tint.opacity(0.08) : .clear)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(.fill.quaternary)
         )
+        .opacity(isRemoved ? 0.6 : 1.0)
+    }
+
+    private func teamCardHeader(
+        team: LinearTeam, isEnabled: Bool, isRemoved: Bool, tint: Color
+    ) -> some View {
+        HStack(spacing: 12) {
+            Toggle("", isOn: Binding(
+                get: { isEnabled },
+                set: { _ in store.send(.enableTeamToggled(teamId: team.id)) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .labelsHidden()
+            .disabled(isRemoved)
+
+            Circle().fill(tint).frame(width: 8, height: 8)
+
+            Text(team.key)
+                .font(.system(.callout, design: .monospaced).weight(.semibold))
+                .foregroundStyle(isRemoved ? .tertiary : tint)
+
+            Text(team.name)
+                .font(.callout)
+                .foregroundStyle(isRemoved ? .tertiary : .primary)
+                .strikethrough(isRemoved)
+
+            Spacer(minLength: 0)
+
+            if isRemoved {
+                Text("Removed")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.fill.quaternary, in: Capsule())
+            } else if isEnabled {
+                Button {
+                    store.send(.removeTeamTapped(teamId: team.id))
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Remove team and delete its issues")
+            }
+        }
+    }
+
+    private func teamCardIngestion(team: LinearTeam) -> some View {
+        HStack(spacing: 8) {
+            Text("Import")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("", selection: Binding(
+                get: { team.ingestAllIssues },
+                set: { _ in store.send(.ingestAllToggled(teamId: team.id)) }
+            )) {
+                Text("By label").tag(false)
+                Text("All issues").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+            .frame(width: 160)
+
+            if !team.ingestAllIssues {
+                Picker("", selection: Binding(
+                    get: { team.filterLabel },
+                    set: { store.send(.filterLabelChanged(teamId: team.id, label: $0)) }
+                )) {
+                    ForEach(store.availableLabels, id: \.self) { label in
+                        Text(label).tag(label)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .controlSize(.small)
+            }
+
+            Spacer(minLength: 0)
+        }
     }
 
     // MARK: - Footer
@@ -194,8 +202,8 @@ struct TeamSettingsView: View {
             .controlSize(.regular)
             .disabled(!hasChanges)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
     }
 
     private var hasChanges: Bool {

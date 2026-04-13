@@ -84,15 +84,20 @@ struct MeisterView: View {
                     onReloadMetadata: { store.send(.refreshLinearMetadataTapped) }
                 )
                 if let onManageTeams {
-                    Button {
-                        onManageTeams()
+                    Menu {
+                        Button("Manage teams") { onManageTeams() }
                     } label: {
                         Image(systemName: "gearshape.circle")
                             .symbolRenderingMode(.monochrome)
                             .font(.system(size: 44, weight: .semibold))
                             .foregroundStyle(.secondary)
+                    } primaryAction: {
+                        onManageTeams()
                     }
-                    .buttonStyle(.plain)
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .tint(Color(nsColor: .secondaryLabelColor))
                     .help("Manage teams")
                 }
             }
