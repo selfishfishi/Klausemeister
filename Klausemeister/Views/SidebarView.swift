@@ -30,17 +30,12 @@ struct SidebarView: View {
             )
 
             Section {
-                ForEach(store.worktree.worktrees) { worktree in
-                    SidebarWorktreeRow(
-                        worktree: worktree,
-                        isSelected: store.worktree.selectedWorktreeId == worktree.id,
-                        onSelect: {
-                            store.send(.worktree(.worktreeSelected(worktree.id)))
-                        },
-                        onDelete: {
-                            store.send(.worktree(.removeWorktreeTapped(worktreeId: worktree.id)))
-                        }
-                    )
+                ForEach(store.worktree.repositories) { repo in
+                    sidebarRepoSection(repo: repo)
+                }
+                let ungrouped = store.worktree.worktrees.filter { $0.repoId == nil }
+                ForEach(ungrouped) { worktree in
+                    sidebarWorktreeRow(worktree)
                 }
             } header: {
                 HStack {
@@ -66,6 +61,36 @@ struct SidebarView: View {
                 SidebarLinearStatusView(store: store)
             }
         }
+    }
+
+    private func sidebarRepoSection(repo: Repository) -> some View {
+        let isExpanded = Binding(
+            get: { !store.worktree.collapsedRepoIds.contains(repo.id) },
+            set: { _ in store.send(.worktree(.repoCollapseToggled(repoId: repo.id))) }
+        )
+        let repoWorktrees = store.worktree.worktrees.filter { $0.repoId == repo.id }
+
+        return DisclosureGroup(isExpanded: isExpanded) {
+            ForEach(repoWorktrees) { worktree in
+                sidebarWorktreeRow(worktree)
+            }
+        } label: {
+            Label(repo.name, systemImage: "folder")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func sidebarWorktreeRow(_ worktree: Worktree) -> some View {
+        SidebarWorktreeRow(
+            worktree: worktree,
+            isSelected: store.worktree.selectedWorktreeId == worktree.id,
+            onSelect: {
+                store.send(.worktree(.worktreeSelected(worktree.id)))
+            },
+            onDelete: {
+                store.send(.worktree(.removeWorktreeTapped(worktreeId: worktree.id)))
+            }
+        )
     }
 }
 
