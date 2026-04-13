@@ -6,6 +6,7 @@ struct MeisterTabView: View {
     let worktreeStore: StoreOf<WorktreeFeature>
     let authStore: StoreOf<LinearAuthFeature>
     let onConnect: () -> Void
+    var onManageTeams: (() -> Void)?
 
     @Environment(\.themeColors) private var themeColors
 
@@ -27,6 +28,24 @@ struct MeisterTabView: View {
                         teams: meisterStore.teams
                     )
                     .frame(minHeight: 150)
+                }
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if let onManageTeams {
+                        HStack {
+                            Spacer()
+                            Button {
+                                onManageTeams()
+                            } label: {
+                                Image(systemName: "gearshape")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Manage teams")
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                    }
                 }
             case .teamSelection:
                 TeamPickerView(

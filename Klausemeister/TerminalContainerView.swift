@@ -27,7 +27,8 @@ struct TerminalContainerView: View {
                         meisterStore: store.scope(state: \.meister, action: \.meister),
                         worktreeStore: store.scope(state: \.worktree, action: \.worktree),
                         authStore: store.scope(state: \.linearAuth, action: \.linearAuth),
-                        onConnect: { store.send(.linearAuth(.loginButtonTapped)) }
+                        onConnect: { store.send(.linearAuth(.loginButtonTapped)) },
+                        onManageTeams: { store.send(.teamSettingsButtonTapped) }
                     )
                 } else {
                     WorktreeDetailView(
@@ -100,6 +101,18 @@ struct TerminalContainerView: View {
                 state: \.shortcutCenter, action: \.shortcutCenter
             ) {
                 ShortcutCenterView(store: scStore)
+            }
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { store.teamSettings != nil },
+                set: { if !$0 { store.send(.teamSettingsDismissed) } }
+            )
+        ) {
+            if let settingsStore = store.scope(
+                state: \.teamSettings, action: \.teamSettings
+            ) {
+                TeamSettingsView(store: settingsStore)
             }
         }
     }
