@@ -558,10 +558,11 @@ private enum ToolCatalog {
                 "properties": .object([
                     "command": .object([
                         "type": .string("string"),
-                        "description": .string("Workflow command: define, execute, review, openPR, babysit, pull, push"),
+                        "description": .string("Workflow command: define, execute, review, openPR, babysit, complete, pull, push"),
                         "enum": .array([
                             .string("define"), .string("execute"), .string("review"),
-                            .string("openPR"), .string("babysit"), .string("pull"), .string("push")
+                            .string("openPR"), .string("babysit"), .string("complete"),
+                            .string("pull"), .string("push")
                         ])
                     ])
                 ]),

@@ -12,6 +12,7 @@ enum WorkflowCommand: String, CaseIterable, Equatable, Hashable {
     case review
     case openPR
     case babysit
+    case complete
     case pull
     case push
 }
@@ -62,6 +63,10 @@ private let transitions: [Transition] = [
 
     // babysit: Testing/Processing → Completed/Processing
     .init(from: .init(kanban: .testing, queue: .processing), command: .babysit, result: .init(kanban: .completed, queue: .processing)),
+
+    // complete: (InProgress | InReview)/Processing → Completed/Processing (no-PR path for audits/research)
+    .init(from: .init(kanban: .inProgress, queue: .processing), command: .complete, result: .init(kanban: .completed, queue: .processing)),
+    .init(from: .init(kanban: .inReview, queue: .processing), command: .complete, result: .init(kanban: .completed, queue: .processing)),
 
     // push: Completed/Processing → Completed/Outbox
     .init(from: .init(kanban: .completed, queue: .processing), command: .push, result: .init(kanban: .completed, queue: .outbox))
