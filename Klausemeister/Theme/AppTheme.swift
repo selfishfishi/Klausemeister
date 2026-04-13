@@ -28,6 +28,7 @@ enum AppTheme: String, CaseIterable, Codable, Identifiable {
 }
 
 struct ThemeColors {
+    let isDark: Bool
     let accentColor: Color
     let warningColor: Color
     let errorColor: Color

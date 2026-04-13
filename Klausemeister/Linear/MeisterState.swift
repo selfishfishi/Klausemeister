@@ -23,7 +23,7 @@ enum MeisterState: String, CaseIterable, Hashable, Identifiable {
     }
 
     /// Human-readable title shown in UI (kanban columns, filters, menus).
-    var displayName: String {
+    nonisolated var displayName: String {
         switch self {
         case .backlog: "Backlog"
         case .todo: "Todo"
@@ -43,13 +43,13 @@ extension MeisterState {
     ///
     /// Used for auto-seeding the per-team mapping table and as a fallback
     /// when no explicit mapping exists.
-    static func defaultMapping(for linearState: LinearWorkflowState) -> MeisterState? {
+    nonisolated static func defaultMapping(for linearState: LinearWorkflowState) -> MeisterState? {
         defaultMapping(name: linearState.name, statusType: linearState.type)
     }
 
     /// Core heuristic shared between seeding and the `LinearIssue.meisterState`
     /// computed property.
-    static func defaultMapping(name: String, statusType: String) -> MeisterState? {
+    nonisolated static func defaultMapping(name: String, statusType: String) -> MeisterState? {
         let needle = name.lowercased()
         for state in MeisterState.allCases where state.displayName.lowercased() == needle {
             return state
@@ -80,7 +80,7 @@ extension MeisterState {
     /// then type-based fallback. When multiple Linear states share a type
     /// (e.g. KLA's `Spec`/`In Progress`/`In Review`/`Testing` are all
     /// `started`), the fallback picks the first by workflow position.
-    func linearState(in teamStates: [LinearWorkflowState]) -> LinearWorkflowState? {
+    nonisolated func linearState(in teamStates: [LinearWorkflowState]) -> LinearWorkflowState? {
         let needle = displayName.lowercased()
         if let byName = teamStates.first(where: { $0.name.lowercased() == needle }) {
             return byName

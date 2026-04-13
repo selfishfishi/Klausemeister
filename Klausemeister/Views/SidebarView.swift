@@ -50,12 +50,13 @@ struct SidebarView: View {
                         store.send(.worktree(.refreshWorktreeInfo))
                     } label: {
                         Image(systemName: "arrow.clockwise")
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
                     .buttonStyle(.plain)
                     .help("Refresh branches and stats")
                 }
+                .padding(.trailing, 8)
             }
         }
         .listStyle(.sidebar)
@@ -204,7 +205,7 @@ struct SidebarLinearStatusView: View {
                     store.send(.teamSettingsButtonTapped)
                 } label: {
                     Image(systemName: "gearshape")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
@@ -213,15 +214,15 @@ struct SidebarLinearStatusView: View {
                     store.send(.linearAuth(.logoutButtonTapped))
                 } label: {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
                 .help("Disconnect from Linear")
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
         .task { store.send(.linearAuth(.onAppear)) }
         .sheet(
             isPresented: Binding(

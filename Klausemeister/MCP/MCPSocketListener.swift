@@ -266,14 +266,18 @@ actor MCPSocketListener {
                 )
             }
         }
-        source.setCancelHandler {
-            Darwin.close(listenFD)
-        }
         source.resume()
 
         // Park until the surrounding Task is cancelled (app shutdown).
+        // The continuation is resumed from the cancel handler so Swift
+        // doesn't flag a leaked continuation.
         await withTaskCancellationHandler {
-            await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                source.setCancelHandler {
+                    Darwin.close(listenFD)
+                    continuation.resume()
+                }
+            }
         } onCancel: {
             source.cancel()
         }

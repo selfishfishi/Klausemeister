@@ -29,7 +29,7 @@ enum AppCommand: String, CaseIterable, Hashable {
         case system
     }
 
-    var displayName: String {
+    nonisolated var displayName: String {
         switch self {
         case .toggleSidebar: "Toggle Sidebar"
         case .showMeister: "Show Meister"
@@ -49,7 +49,7 @@ enum AppCommand: String, CaseIterable, Hashable {
         }
     }
 
-    var category: Category {
+    nonisolated var category: Category {
         switch self {
         case .toggleSidebar: .view
         case .showMeister, .showWorktrees, .openCommandPalette, .openWorktreeSwitcher: .navigation
@@ -60,7 +60,7 @@ enum AppCommand: String, CaseIterable, Hashable {
         }
     }
 
-    var helpText: String {
+    nonisolated var helpText: String {
         switch self {
         case .toggleSidebar: "Show or hide the sidebar"
         case .showMeister: "Switch to the Meister view"

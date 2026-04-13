@@ -20,6 +20,7 @@ struct TeamSettingsView: View {
                 .ignoresSafeArea()
         }
         .tint(themeColors.accentColor)
+        .environment(\.colorScheme, themeColors.isDark ? .dark : .light)
         .task { store.send(.onAppear) }
         .alert($store.scope(state: \.alert, action: \.alert))
     }
