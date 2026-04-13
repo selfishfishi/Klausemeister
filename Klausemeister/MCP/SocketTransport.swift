@@ -111,17 +111,21 @@ actor SocketTransport: Transport {
 
     private func receiveChunk() async throws -> Data {
         try await withCheckedThrowingContinuation { cont in
-            DispatchQueue.global(qos: .userInitiated).async { [socketFD] in
+            let source = DispatchSource.makeReadSource(fileDescriptor: socketFD, queue: .global(qos: .userInitiated))
+            source.setEventHandler {
                 var buf = [UInt8](repeating: 0, count: 65536)
                 let bytesRead = buf.withUnsafeMutableBufferPointer { ptr in
-                    Darwin.read(socketFD, ptr.baseAddress, ptr.count)
+                    Darwin.read(Int32(source.handle), ptr.baseAddress, ptr.count)
                 }
+                source.cancel()
                 if bytesRead > 0 {
                     cont.resume(returning: Data(buf.prefix(bytesRead)))
                 } else {
                     cont.resume(throwing: SocketTransportError.closed)
                 }
             }
+            source.setCancelHandler {}
+            source.resume()
         }
     }
 }
@@ -140,17 +144,21 @@ extension SocketTransport {
         var buffer = Data()
         while true {
             let chunk: Data = try await withCheckedThrowingContinuation { cont in
-                DispatchQueue.global(qos: .userInitiated).async {
+                let source = DispatchSource.makeReadSource(fileDescriptor: socketFD, queue: .global(qos: .userInitiated))
+                source.setEventHandler {
                     var buf = [UInt8](repeating: 0, count: 4096)
                     let bytesRead = buf.withUnsafeMutableBufferPointer { ptr in
-                        Darwin.read(socketFD, ptr.baseAddress, ptr.count)
+                        Darwin.read(Int32(source.handle), ptr.baseAddress, ptr.count)
                     }
+                    source.cancel()
                     if bytesRead > 0 {
                         cont.resume(returning: Data(buf.prefix(bytesRead)))
                     } else {
                         cont.resume(throwing: SocketTransportError.closed)
                     }
                 }
+                source.setCancelHandler {}
+                source.resume()
             }
             buffer.append(chunk)
             if let nlIndex = buffer.firstIndex(of: 0x0A) {
