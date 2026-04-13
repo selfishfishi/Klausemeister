@@ -185,7 +185,8 @@ struct WorktreeFeature {
         case returnToMeisterFailed(issueId: String, worktreeId: String, issue: LinearIssue)
         case branchSwitched(worktreeId: String, branchName: String)
         case branchesLoaded([String: String])
-        case gitStatsLoaded([String: GitStats])
+        case refreshGitStatsForWorktree(worktreeId: String)
+        case gitStatsLoadedForWorktree(worktreeId: String, stats: GitStats)
         case prInfoLoaded([String: GitStats.PRSummary])
         case refreshGitStats
         case refreshPRInfo
@@ -241,7 +242,7 @@ struct WorktreeFeature {
         case reconcileTmux
         case meisterSpawn(String)
         case gitFSWatcher(String)
-        case refreshLocalStats
+        case refreshWorktreeStats(String)
         case prInfoPoll
     }
 
@@ -288,46 +289,63 @@ struct WorktreeFeature {
         let repoPath: String?
     }
 
-    private static func worktreeStatsInputs(from state: State) -> [WorktreeStatsInput] {
-        state.worktrees.map { entry in
-            WorktreeStatsInput(
-                id: entry.id, path: entry.gitWorktreePath,
-                branch: entry.currentBranch,
-                repoPath: entry.repoId.flatMap { state.repositories[id: $0]?.path }
-            )
-        }
+    private static func worktreeStatsInput(
+        for worktreeId: String, from state: State
+    ) -> WorktreeStatsInput? {
+        guard let worktree = state.worktrees[id: worktreeId] else { return nil }
+        return WorktreeStatsInput(
+            id: worktree.id, path: worktree.gitWorktreePath,
+            branch: worktree.currentBranch,
+            repoPath: worktree.repoId.flatMap { state.repositories[id: $0]?.path }
+        )
     }
 
-    /// Loads local git stats (uncommitted, +/-, commits ahead) for every
-    /// worktree. Triggered by FS-change events, not by a timer.
-    private func loadLocalGitStatsEffect(
-        worktrees: [WorktreeStatsInput]
+    private static func worktreeStatsInputs(from state: State) -> [WorktreeStatsInput] {
+        state.worktrees.compactMap { worktreeStatsInput(for: $0.id, from: state) }
+    }
+
+    /// Loads local git stats for a single worktree. Each worktree gets its
+    /// own cancellation ID so FS events on one worktree don't cancel
+    /// in-flight work for another.
+    private func loadGitStatsForWorktreeEffect(
+        _ input: WorktreeStatsInput
     ) -> Effect<Action> {
-        .run { [gitClient] send in
-            var map: [String: GitStats] = [:]
-            for input in worktrees where !input.path.isEmpty {
-                do {
-                    let diff = try await gitClient.diffStats(input.path)
-                    var ahead = 0
-                    if let repoPath = input.repoPath {
-                        do {
-                            let defaultBranch = try await gitClient.resolveDefaultBranch(repoPath)
-                            ahead = try await gitClient.commitsAhead(input.path, defaultBranch.name)
-                        } catch {
-                            Self.log.warning(
-                                "commitsAhead failed for \(input.id): \(error.localizedDescription)"
-                            )
-                        }
+        guard !input.path.isEmpty else { return .none }
+        return .run { [gitClient] send in
+            do {
+                let diff = try await gitClient.diffStats(input.path)
+                var ahead = 0
+                if let repoPath = input.repoPath {
+                    do {
+                        let defaultBranch = try await gitClient.resolveDefaultBranch(repoPath)
+                        ahead = try await gitClient.commitsAhead(input.path, defaultBranch.name)
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        Self.log.warning(
+                            "commitsAhead failed for \(input.id): \(error.localizedDescription)"
+                        )
                     }
-                    map[input.id] = GitStats(from: diff, commitsAhead: ahead)
-                } catch {
-                    Self.log.warning(
-                        "diffStats failed for \(input.id): \(error.localizedDescription)"
-                    )
                 }
+                await send(.gitStatsLoadedForWorktree(
+                    worktreeId: input.id,
+                    stats: GitStats(from: diff, commitsAhead: ahead)
+                ))
+            } catch is CancellationError {
+                return
+            } catch {
+                Self.log.warning(
+                    "diffStats failed for \(input.id): \(error.localizedDescription)"
+                )
             }
-            await send(.gitStatsLoaded(map))
         }
+        .cancellable(id: CancelID.refreshWorktreeStats(input.id), cancelInFlight: true)
+    }
+
+    /// Loads git stats for all worktrees concurrently. Each worktree is
+    /// independently cancellable.
+    private func loadAllGitStatsEffect(from state: State) -> Effect<Action> {
+        .merge(Self.worktreeStatsInputs(from: state).map { loadGitStatsForWorktreeEffect($0) })
     }
 
     /// Loads PR info for every worktree that has a branch. Triggered by a 60s
@@ -383,6 +401,7 @@ struct WorktreeFeature {
             .cancel(id: CancelID.syncRepo(repoId)),
             .merge(worktreeIds.map { .cancel(id: CancelID.meisterSpawn($0)) }),
             .merge(worktreeIds.map { .cancel(id: CancelID.gitFSWatcher($0)) }),
+            .merge(worktreeIds.map { .cancel(id: CancelID.refreshWorktreeStats($0)) }),
             .run { [surfaceManager, worktreeClient, tmuxClient] _ in
                 if killTmux {
                     for sessionName in tmuxSessionNames {
@@ -629,15 +648,15 @@ struct WorktreeFeature {
                         }
                         await send(.branchesLoaded(branches))
                     },
-                    // Initial load of local git stats
-                    loadLocalGitStatsEffect(worktrees: worktreeInfo),
+                    // Initial load of local git stats (per-worktree, concurrent)
+                    loadAllGitStatsEffect(from: state),
                     // Initial load of PR info
                     loadPRInfoEffect(worktrees: worktreeInfo),
-                    // FS watchers: one per worktree, debounced 2s, fires refreshGitStats
+                    // FS watchers: one per worktree, debounced 2s, fires per-worktree refresh
                     .merge(worktreePaths.filter { !$0.path.isEmpty }.map { entry in
                         Effect<Action>.run { [gitClient] send in
                             for await _ in gitClient.watchForChanges(entry.path) {
-                                await send(.refreshGitStats)
+                                await send(.refreshGitStatsForWorktree(worktreeId: entry.id))
                             }
                         }
                         .cancellable(
@@ -671,17 +690,19 @@ struct WorktreeFeature {
             case let .branchSwitched(worktreeId, branchName):
                 state.worktrees[id: worktreeId]?.currentBranch = branchName
                 return .merge(
-                    .send(.refreshGitStats),
+                    .send(.refreshGitStatsForWorktree(worktreeId: worktreeId)),
                     .send(.refreshPRInfo)
                 )
 
-            case let .gitStatsLoaded(statsByWorktreeId):
-                for (worktreeId, stats) in statsByWorktreeId {
-                    // Merge: preserve PR info from separate poll
-                    var merged = stats
-                    merged.prSummary = state.worktrees[id: worktreeId]?.gitStats?.prSummary
-                    state.worktrees[id: worktreeId]?.gitStats = merged
-                }
+            case let .refreshGitStatsForWorktree(worktreeId):
+                guard let input = Self.worktreeStatsInput(for: worktreeId, from: state)
+                else { return .none }
+                return loadGitStatsForWorktreeEffect(input)
+
+            case let .gitStatsLoadedForWorktree(worktreeId, stats):
+                var merged = stats
+                merged.prSummary = state.worktrees[id: worktreeId]?.gitStats?.prSummary
+                state.worktrees[id: worktreeId]?.gitStats = merged
                 return .none
 
             case let .prInfoLoaded(prInfoByWorktreeId):
@@ -694,10 +715,7 @@ struct WorktreeFeature {
                 return .none
 
             case .refreshGitStats:
-                return loadLocalGitStatsEffect(
-                    worktrees: Self.worktreeStatsInputs(from: state)
-                )
-                .cancellable(id: CancelID.refreshLocalStats, cancelInFlight: true)
+                return loadAllGitStatsEffect(from: state)
 
             case .refreshPRInfo:
                 return loadPRInfoEffect(
@@ -708,7 +726,6 @@ struct WorktreeFeature {
                 let worktreePaths = state.worktrees.map {
                     (id: $0.id, path: $0.gitWorktreePath)
                 }
-                let worktreeInfo = Self.worktreeStatsInputs(from: state)
                 return .merge(
                     .run { [gitClient] send in
                         var branches: [String: String] = [:]
@@ -719,7 +736,7 @@ struct WorktreeFeature {
                         }
                         await send(.branchesLoaded(branches))
                     },
-                    loadLocalGitStatsEffect(worktrees: worktreeInfo)
+                    loadAllGitStatsEffect(from: state)
                 )
 
             case let .createWorktreeTapped(repoId, name):
@@ -850,6 +867,7 @@ struct WorktreeFeature {
                 return .merge(
                     .cancel(id: CancelID.meisterSpawn(worktreeId)),
                     .cancel(id: CancelID.gitFSWatcher(worktreeId)),
+                    .cancel(id: CancelID.refreshWorktreeStats(worktreeId)),
                     .run { [surfaceManager, worktreeClient] _ in
                         if let repoId {
                             try await worktreeClient.ignoreWorktreePath(path, repoId)
@@ -887,6 +905,7 @@ struct WorktreeFeature {
                 state.worktrees.remove(id: worktreeId)
                 return .merge(
                     .cancel(id: CancelID.gitFSWatcher(worktreeId)),
+                    .cancel(id: CancelID.refreshWorktreeStats(worktreeId)),
                     .run { [surfaceManager] send in
                         // Destroy the libghostty surface FIRST. If the DB delete
                         // throws and we restore the worktree row, the stale
@@ -1434,6 +1453,7 @@ struct WorktreeFeature {
                         state.selectedWorktreeId = nil
                     }
                     cancelEffects.append(.cancel(id: CancelID.gitFSWatcher(worktreeId)))
+                    cancelEffects.append(.cancel(id: CancelID.refreshWorktreeStats(worktreeId)))
                 }
                 if !result.deletedWorktreeIds.isEmpty {
                     Self.log.info("Auto-removed \(result.deletedWorktreeIds.count) orphaned worktree(s) for repo \(repoId)")
