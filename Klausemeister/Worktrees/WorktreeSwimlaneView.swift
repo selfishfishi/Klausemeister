@@ -203,9 +203,6 @@ struct WorktreeSwimlaneView: View {
             },
             onDropToOutbox: { issueId in
                 store.send(.issueDroppedOnOutbox(issueId: issueId, worktreeId: worktree.id))
-            },
-            onWorktreeDropped: { movedId in
-                store.send(.worktreeRowMoved(movedId: movedId, targetId: worktree.id))
             }
         )
     }

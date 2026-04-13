@@ -170,8 +170,6 @@ struct WorktreeFeature {
         case issueMovedToProcessing(queueItemId: String, issueId: String, worktreeId: String)
         case issueMovedToOutbox(queueItemId: String, issueId: String, worktreeId: String)
         case queueReordered(worktreeId: String, queuePosition: QueuePosition, itemIds: [String])
-        case worktreeRowMoved(movedId: String, targetId: String)
-        case sidebarWorktreeReordered(fromOffsets: IndexSet, toOffset: Int)
 
         // Drag-and-drop (issue-ID-based, no queueItemId needed)
         case issueDroppedOnInbox(issueId: String, worktreeId: String)
@@ -1147,34 +1145,6 @@ struct WorktreeFeature {
             case let .queueReordered(worktreeId, queuePosition, itemIds):
                 return .run { _ in
                     try await worktreeClient.reorderQueue(worktreeId, queuePosition, itemIds)
-                }
-
-            case let .worktreeRowMoved(movedId, targetId):
-                guard movedId != targetId,
-                      state.worktrees[id: movedId] != nil,
-                      state.worktrees[id: targetId] != nil
-                else { return .none }
-                var orderedIds = state.worktrees.map(\.id)
-                orderedIds.removeAll { $0 == movedId }
-                guard let targetIndex = orderedIds.firstIndex(of: targetId) else { return .none }
-                orderedIds.insert(movedId, at: targetIndex)
-                for (index, id) in orderedIds.enumerated() {
-                    state.worktrees[id: id]?.sortOrder = index
-                }
-                state.worktrees.sort { $0.sortOrder < $1.sortOrder }
-                let ids = orderedIds
-                return .run { _ in
-                    try await worktreeClient.updateWorktreeOrder(ids)
-                }
-
-            case let .sidebarWorktreeReordered(fromOffsets, toOffset):
-                state.worktrees.move(fromOffsets: fromOffsets, toOffset: toOffset)
-                for (index, id) in state.worktrees.map(\.id).enumerated() {
-                    state.worktrees[id: id]?.sortOrder = index
-                }
-                let ids = state.worktrees.map(\.id)
-                return .run { _ in
-                    try await worktreeClient.updateWorktreeOrder(ids)
                 }
 
             // MARK: - Drag-and-drop handlers
