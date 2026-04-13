@@ -54,20 +54,13 @@ struct SwimlaneRowView: View {
     private var rowContent: some View {
         HStack(alignment: .center, spacing: 10) {
             SwimlaneHeaderView(worktree: worktree)
-                .onDrag {
-                    NSItemProvider(object: worktree.id as NSString)
-                }
-                .onDrop(of: [.utf8PlainText], isTargeted: nil) { providers in
-                    guard let onWorktreeDropped else { return false }
-                    guard let provider = providers.first else { return false }
-                    provider.loadObject(ofClass: NSString.self) { object, _ in
-                        guard let movedId = object as? String,
-                              movedId != worktree.id
-                        else { return }
-                        DispatchQueue.main.async {
-                            onWorktreeDropped(movedId)
-                        }
-                    }
+                .draggable(WorktreeRowDragItem(worktreeId: worktree.id))
+                .dropDestination(for: WorktreeRowDragItem.self) { items, _ in
+                    guard let movedId = items.first?.worktreeId,
+                          movedId != worktree.id,
+                          let onWorktreeDropped
+                    else { return false }
+                    onWorktreeDropped(movedId)
                     return true
                 }
 
@@ -108,5 +101,18 @@ struct SwimlaneRowView: View {
 
     private func pulsePhase(date: Date, period: Double) -> Double {
         0.5 + 0.5 * sin(date.timeIntervalSinceReferenceDate * 2 * .pi / period)
+    }
+}
+
+// MARK: - Worktree Row Drag Item
+
+private extension UTType {
+    static let worktreeRowDragItem = UTType(exportedAs: "com.klausemeister.worktree-drag-item")
+}
+
+struct WorktreeRowDragItem: Codable, Transferable {
+    let worktreeId: String
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .worktreeRowDragItem)
     }
 }

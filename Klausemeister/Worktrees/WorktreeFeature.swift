@@ -171,6 +171,7 @@ struct WorktreeFeature {
         case issueMovedToOutbox(queueItemId: String, issueId: String, worktreeId: String)
         case queueReordered(worktreeId: String, queuePosition: QueuePosition, itemIds: [String])
         case worktreeRowMoved(movedId: String, targetId: String)
+        case sidebarWorktreeReordered(fromOffsets: IndexSet, toOffset: Int)
 
         // Drag-and-drop (issue-ID-based, no queueItemId needed)
         case issueDroppedOnInbox(issueId: String, worktreeId: String)
@@ -1162,6 +1163,16 @@ struct WorktreeFeature {
                 }
                 state.worktrees.sort { $0.sortOrder < $1.sortOrder }
                 let ids = orderedIds
+                return .run { _ in
+                    try await worktreeClient.updateWorktreeOrder(ids)
+                }
+
+            case let .sidebarWorktreeReordered(fromOffsets, toOffset):
+                state.worktrees.move(fromOffsets: fromOffsets, toOffset: toOffset)
+                for (index, id) in state.worktrees.map(\.id).enumerated() {
+                    state.worktrees[id: id]?.sortOrder = index
+                }
+                let ids = state.worktrees.map(\.id)
                 return .run { _ in
                     try await worktreeClient.updateWorktreeOrder(ids)
                 }
