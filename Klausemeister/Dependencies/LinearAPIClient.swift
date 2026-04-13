@@ -48,20 +48,13 @@ nonisolated private struct GraphQLErrorEnvelope: Decodable {
     let errors: [GraphQLError]
 }
 
-/// Decodes JSON on a background thread to avoid blocking the main actor.
-nonisolated private func decodeOffMain<T: Decodable>(
+/// Decodes JSON on a background thread to avoid blocking the cooperative pool.
+nonisolated private func decodeOffMain<T: Decodable & Sendable>(
     _: T.Type, from data: Data
 ) async throws -> T {
-    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, any Error>) in
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                let decoded = try JSONDecoder().decode(T.self, from: data)
-                continuation.resume(returning: decoded)
-            } catch {
-                continuation.resume(throwing: error)
-            }
-        }
-    }
+    try await Task.detached(priority: .userInitiated) {
+        try JSONDecoder().decode(T.self, from: data)
+    }.value
 }
 
 // MARK: - Paginated issue fetch helper

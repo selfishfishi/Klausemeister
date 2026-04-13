@@ -63,6 +63,7 @@ actor MCPSocketListener {
     /// old connectionId is superseded. The old connection drains naturally; its
     /// close event is suppressed by the staleness check.
     private var activeConnections: [String: UUID] = [:]
+    private var connectionTasks: [UUID: Task<Void, Never>] = [:]
 
     /// Record a new connection as current for the given worktreeId.
     /// Any previous connection for the same worktreeId is superseded — its
@@ -84,6 +85,26 @@ actor MCPSocketListener {
         if activeConnections[worktreeId] == connectionId {
             activeConnections.removeValue(forKey: worktreeId)
         }
+    }
+
+    // MARK: - Connection task lifecycle
+
+    private func spawnConnectionHandler(
+        socketFD: Int32,
+        eventContinuation: AsyncStream<MCPServerEvent>.Continuation
+    ) {
+        let taskId = UUID()
+        connectionTasks[taskId] = Task {
+            await handleConnection(socketFD: socketFD, eventContinuation: eventContinuation)
+            connectionTasks.removeValue(forKey: taskId)
+        }
+    }
+
+    private func cancelAllConnectionTasks() {
+        for task in connectionTasks.values {
+            task.cancel()
+        }
+        connectionTasks.removeAll()
     }
 
     /// Long-running entry point. Returns when the listener is cancelled
@@ -259,8 +280,8 @@ actor MCPSocketListener {
             }
             guard clientFD >= 0 else { return }
             debugLog("accepted connection fd=\(clientFD)")
-            Task.detached {
-                await self.handleConnection(
+            Task {
+                await self.spawnConnectionHandler(
                     socketFD: clientFD,
                     eventContinuation: eventContinuation
                 )
@@ -273,8 +294,9 @@ actor MCPSocketListener {
         // doesn't flag a leaked continuation.
         await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                source.setCancelHandler {
+                source.setCancelHandler { [self] in
                     Darwin.close(listenFD)
+                    Task { await self.cancelAllConnectionTasks() }
                     continuation.resume()
                 }
             }

@@ -53,8 +53,10 @@ final class GhosttyApp {
             guard let ud else { return }
             let ref = ud
             DispatchQueue.main.async {
-                let app = Unmanaged<GhosttyApp>.fromOpaque(ref).takeUnretainedValue()
-                app.tick()
+                MainActor.assumeIsolated {
+                    let app = Unmanaged<GhosttyApp>.fromOpaque(ref).takeUnretainedValue()
+                    app.tick()
+                }
             }
         }
         runtime.action_cb = { _, target, action in
@@ -66,12 +68,16 @@ final class GhosttyApp {
             switch action.tag {
             case GHOSTTY_ACTION_MOUSE_SHAPE:
                 let shape = action.action.mouse_shape
-                DispatchQueue.main.async { view.applyCursorShape(shape) }
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { view.applyCursorShape(shape) }
+                }
                 return true
 
             case GHOSTTY_ACTION_MOUSE_VISIBILITY:
                 let visibility = action.action.mouse_visibility
-                DispatchQueue.main.async { view.applyCursorVisibility(visibility) }
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { view.applyCursorVisibility(visibility) }
+                }
                 return true
 
             default:
