@@ -50,12 +50,16 @@ Call `reportProgress` liberally — once per meaningful sub-step of each command
 |---|---|---|
 | `Backlog` | `/klause-define` | `Todo` |
 | `Todo` | `/klause-execute` | `In Progress` |
-| `In Progress` | `/klause-open-pr` | `Testing` |
-| `In Review` | `/klause-open-pr` | `Testing` |
+| `In Progress` | `/klause-open-pr` | `Testing` (or `Done` if no code changes — see below) |
+| `In Review` | `/klause-open-pr` | `Testing` (or `Done` if no code changes) |
 | `Testing` | `/klause-babysit` | `Done` (Completed) |
 | *(any other state)* | No `klause-*` command exists yet. Do the work directly — use `/feature-dev` or plain conversation. | Whatever state the work advanced to. |
 
 All `/klause-*` commands are implemented and use the `getProductState` / `transition` MCP tools for state validation. `/klause-next` is the meta-dispatcher — it reads the current state and invokes the appropriate command automatically. `/klause-review` is manual-only (skipped by `/klause-next`). `/klause-verify` is still a placeholder (KLA-77). See `commands/` for details.
+
+### No-code tickets (audits, research)
+
+When `/klause-open-pr` detects no commits ahead of main (empty branch), it automatically uses `transition("complete")` to go directly from In Progress to Done, bypassing the PR/babysit flow. The meister just runs `/klause-next` as usual — the detection is handled inside the open-pr skill.
 
 For states without a dedicated command — `Definition`, `Spec`, `In Progress` — pick the best tool for the work and report back. Typical fits:
 

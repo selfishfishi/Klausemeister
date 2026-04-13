@@ -42,8 +42,10 @@ The user can call `/klause-next` repeatedly to step through the entire workflow:
 /klause-next  → pull (inbox → processing)
 /klause-next  → define (backlog → todo)
 /klause-next  → execute (todo → in progress)
-/klause-next  → open-pr (in progress → testing)
+/klause-next  → open-pr (in progress → testing, or → done if no code changes)
 /klause-next  → babysit (testing → done)
 /klause-next  → push (processing → outbox)
-/klause-next  → "complete — nothing to do"
+/klause-next  → "done — nothing to do"
 ```
+
+Note: For no-code tickets (audits, research), `/klause-open-pr` detects the empty branch and uses `transition("complete")` to skip directly to done, bypassing testing/babysit. The `/klause-next` flow then goes straight to push.
