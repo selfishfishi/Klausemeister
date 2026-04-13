@@ -582,6 +582,7 @@ struct WorktreeFeature {
                             .compactMap { issuesByLinearId[$0.issueLinearId] }
                     )
                 })
+                state.worktrees.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
                 // Replay any meisterHelloReceived events that arrived
                 // before worktrees were loaded from the database.
                 for worktreeId in state.pendingHellos {
@@ -793,6 +794,7 @@ struct WorktreeFeature {
                     currentBranch: branch,
                     tmuxSessionStatus: .needsCreation
                 ))
+                state.worktrees.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
                 return .none
 
             case let .worktreeCreated(.failure(error)):
@@ -909,7 +911,7 @@ struct WorktreeFeature {
 
             case let .worktreeDeleteFailed(worktree):
                 state.worktrees.append(worktree)
-                state.worktrees.sort { $0.sortOrder < $1.sortOrder }
+                state.worktrees.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
                 state.alert = AlertState {
                     TextState("Could not delete \(worktree.name)")
                 } message: {
@@ -1420,6 +1422,9 @@ struct WorktreeFeature {
                         repoId: record.repoId,
                         repoName: repoName
                     ))
+                }
+                if !result.inserted.isEmpty {
+                    state.worktrees.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
                 }
                 var cancelEffects: [Effect<Action>] = []
                 for worktreeId in result.deletedWorktreeIds {
