@@ -20,33 +20,17 @@ struct SwimlaneRowView: View {
     @Environment(\.swimlaneAnimating) private var isAnimating
 
     var body: some View {
-        TimelineView(.animation(
-            minimumInterval: 1.0 / 30.0,
-            paused: !worktree.isActive || !isAnimating
-        )) { timeline in
-            let phase = worktree.isActive
-                ? pulsePhase(date: timeline.date, period: 2.0)
-                : 0.0
-            let intensity = themeColors.glowIntensity
-
-            rowContent
-                .overlay {
-                    RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
-                        .stroke(
-                            themeColors.accentColor.opacity(
-                                worktree.isActive ? (0.3 + 0.5 * phase) * intensity : 0
-                            ),
-                            lineWidth: 1.5
-                        )
+        rowContent
+            .overlay {
+                if worktree.isActive {
+                    ActiveGlowOverlay(
+                        accentColor: themeColors.accentColor,
+                        glowIntensity: themeColors.glowIntensity,
+                        isAnimating: isAnimating
+                    )
                 }
-                .shadow(
-                    color: themeColors.accentColor.opacity(
-                        worktree.isActive ? (0.15 + 0.25 * phase) * intensity : 0
-                    ),
-                    radius: worktree.isActive ? 4 + 8 * phase : 0
-                )
-        }
-        .animation(.easeInOut(duration: 0.3), value: worktree.isActive)
+            }
+            .animation(.easeInOut(duration: 0.3), value: worktree.isActive)
     }
 
     private var rowContent: some View {
@@ -87,8 +71,31 @@ struct SwimlaneRowView: View {
             in: RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
         )
     }
+}
 
-    private func pulsePhase(date: Date, period: Double) -> Double {
-        0.5 + 0.5 * sin(date.timeIntervalSinceReferenceDate * 2 * .pi / period)
+/// Lightweight view that contains the 30fps TimelineView for the active
+/// glow pulse. Extracted so the timeline ticks only re-evaluate this
+/// overlay — not the entire `rowContent` subtree (pills, menus, stats).
+private struct ActiveGlowOverlay: View {
+    let accentColor: Color
+    let glowIntensity: Double
+    let isAnimating: Bool
+
+    var body: some View {
+        TimelineView(.animation(
+            minimumInterval: 1.0 / 30.0,
+            paused: !isAnimating
+        )) { timeline in
+            let phase = 0.5 + 0.5 * sin(timeline.date.timeIntervalSinceReferenceDate * 2 * .pi / 2.0)
+            RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
+                .stroke(
+                    accentColor.opacity((0.3 + 0.5 * phase) * glowIntensity),
+                    lineWidth: 1.5
+                )
+                .shadow(
+                    color: accentColor.opacity((0.15 + 0.25 * phase) * glowIntensity),
+                    radius: 4 + 8 * phase
+                )
+        }
     }
 }

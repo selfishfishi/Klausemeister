@@ -50,7 +50,7 @@ nonisolated private struct GraphQLErrorEnvelope: Decodable {
 
 /// Decodes JSON on a background thread to avoid blocking the main actor.
 nonisolated private func decodeOffMain<T: Decodable>(
-    _ type: T.Type, from data: Data
+    _: T.Type, from data: Data
 ) async throws -> T {
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, any Error>) in
         DispatchQueue.global(qos: .userInitiated).async {

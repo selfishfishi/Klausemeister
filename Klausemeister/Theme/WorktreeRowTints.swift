@@ -4,11 +4,10 @@ import SwiftUI
 /// worktree reads as its own lane while staying visually consistent with
 /// terminal output.
 extension ThemeColors {
-    /// Distinct accent colors for swimlane rows. Drawn from ANSI palette
-    /// indices 1–6 — red, green, yellow, blue, magenta, cyan — the vivid
-    /// accent band of Everforest. Some theme variants collapse two ANSI
-    /// slots to the same hex, so duplicates are filtered.
-    var swimlaneRowTints: [Color] {
+    /// Build the tint palette from ANSI indices 1–6 (red, green, yellow,
+    /// blue, magenta, cyan). Called once at ThemeColors init so the array
+    /// is stored rather than recomputed on every view body evaluation.
+    static func buildSwimlaneRowTints(from palette: [String]) -> [Color] {
         var seen: Set<String> = []
         return [1, 2, 3, 4, 5, 6].compactMap { index in
             guard palette.indices.contains(index) else { return nil }
@@ -19,8 +18,7 @@ extension ThemeColors {
     }
 
     func teamTint(colorIndex: Int) -> Color {
-        let tints = swimlaneRowTints
-        guard !tints.isEmpty else { return accentColor }
-        return tints[colorIndex % tints.count]
+        guard !swimlaneRowTints.isEmpty else { return accentColor }
+        return swimlaneRowTints[colorIndex % swimlaneRowTints.count]
     }
 }

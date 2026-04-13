@@ -8,7 +8,7 @@ struct KanbanColumnView: View {
     let worktrees: [Worktree]
     let repositories: [Repository]
     var assignedWorktreeNames: [String: String] = [:]
-    var teams: [LinearTeam] = []
+    var teamsByID: [String: LinearTeam] = [:]
     let onMoveToStatus: (_ issueId: String, _ target: MeisterState) -> Void
     let onAssignToWorktree: (_ issue: LinearIssue, _ worktreeId: String) -> Void
     let onRemove: (_ issueId: String) -> Void
@@ -21,11 +21,7 @@ struct KanbanColumnView: View {
     }
 
     private var showTeamBadges: Bool {
-        teams.count > 1
-    }
-
-    private var teamsByID: [String: LinearTeam] {
-        Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0) })
+        !teamsByID.isEmpty
     }
 
     var body: some View {

@@ -22,6 +22,7 @@ extension AppTheme {
         case .darkSoft: ContrastSet(background: "#333C43", bg1: "#3A464C", selectionBg: "#5C3F4F")
         default: fatalError("Not a dark theme")
         }
+        let pal = darkPalette(bg1: contrast.bg1)
         return ThemeColors(
             isDark: true,
             accentColor: Color(hex: 0xA7C080),
@@ -29,11 +30,12 @@ extension AppTheme {
             errorColor: Color(hex: 0xE67E80),
             background: contrast.background,
             foreground: "#D3C6AA",
-            palette: darkPalette(bg1: contrast.bg1),
+            palette: pal,
             cursorColor: "#A7C080",
             selectionBg: contrast.selectionBg,
             selectionFg: "#D3C6AA",
-            glowIntensity: 1.0
+            glowIntensity: 1.0,
+            swimlaneRowTints: ThemeColors.buildSwimlaneRowTints(from: pal)
         )
     }
 
@@ -44,6 +46,7 @@ extension AppTheme {
         case .lightSoft: ContrastSet(background: "#F3EAD3", bg1: "#EAE4CA", selectionBg: "#E1E4BD")
         default: fatalError("Not a light theme")
         }
+        let pal = lightPalette(bg1: contrast.bg1)
         return ThemeColors(
             isDark: false,
             accentColor: Color(hex: 0x8DA101),
@@ -51,11 +54,12 @@ extension AppTheme {
             errorColor: Color(hex: 0xF85552),
             background: contrast.background,
             foreground: "#5C6A72",
-            palette: lightPalette(bg1: contrast.bg1),
+            palette: pal,
             cursorColor: "#8DA101",
             selectionBg: contrast.selectionBg,
             selectionFg: "#5C6A72",
-            glowIntensity: 0.55
+            glowIntensity: 0.55,
+            swimlaneRowTints: ThemeColors.buildSwimlaneRowTints(from: pal)
         )
     }
 }
