@@ -71,6 +71,7 @@ struct TerminalContainerView: View {
         .navigationTitle("")
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .tint(themeColors.accentColor)
+        .environment(\.keyBindings, store.keyBindings)
         .task { store.send(.onAppear) }
         .sheet(
             isPresented: Binding(
