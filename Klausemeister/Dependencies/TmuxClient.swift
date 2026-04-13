@@ -59,30 +59,48 @@ extension TmuxClient: DependencyKey {
             return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
         }()
 
-        /// Runs a tmux subprocess off the main thread to avoid blocking the UI.
+        // Runs a tmux subprocess using event-driven I/O (readabilityHandler
+        // + terminationHandler) so no dispatch thread is blocked for the
+        // lifetime of the process.
+        // swiftlint:disable:next function_body_length
         @Sendable func shell(_ arguments: [String]) async throws -> String {
             guard let tmuxPath else { throw TmuxClientError.tmuxNotFound }
-            return try await withCheckedThrowingContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    do {
-                        let process = Process()
-                        process.executableURL = URL(fileURLWithPath: tmuxPath)
-                        process.arguments = arguments
-                        let stdout = Pipe()
-                        let stderr = Pipe()
-                        process.standardOutput = stdout
-                        process.standardError = stderr
-                        try process.run()
 
-                        let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
-                        let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
-                        process.waitUntilExit()
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: tmuxPath)
+            process.arguments = arguments
+            process.standardInput = FileHandle.nullDevice
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
+
+            return try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    let collector = DispatchQueue(label: "com.klausemeister.tmux-pipe")
+                    var outputData = Data()
+                    var errorData = Data()
+                    var stdoutDone = false
+                    var stderrDone = false
+                    var processDone = false
+                    var resumed = false
+
+                    func tryFinish() {
+                        dispatchPrecondition(condition: .onQueue(collector))
+                        guard stdoutDone, stderrDone, processDone, !resumed else { return }
+                        resumed = true
+                        stdoutPipe.fileHandleForReading.readabilityHandler = nil
+                        stderrPipe.fileHandleForReading.readabilityHandler = nil
 
                         let output = String(data: outputData, encoding: .utf8)?
                             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                         let errorOutput = String(data: errorData, encoding: .utf8)?
                             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
+                        if process.terminationReason == .uncaughtSignal, Task.isCancelled {
+                            continuation.resume(throwing: CancellationError())
+                            return
+                        }
                         guard process.terminationStatus == 0 else {
                             let cmd = arguments.first { !$0.hasPrefix("-") } ?? "tmux"
                             continuation.resume(throwing: TmuxClientError.commandFailed(
@@ -93,10 +111,53 @@ extension TmuxClient: DependencyKey {
                             return
                         }
                         continuation.resume(returning: output)
+                    }
+
+                    stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+                        let data = handle.availableData
+                        collector.async {
+                            if data.isEmpty {
+                                stdoutPipe.fileHandleForReading.readabilityHandler = nil
+                                stdoutDone = true
+                                tryFinish()
+                            } else {
+                                outputData.append(data)
+                            }
+                        }
+                    }
+
+                    stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+                        let data = handle.availableData
+                        collector.async {
+                            if data.isEmpty {
+                                stderrPipe.fileHandleForReading.readabilityHandler = nil
+                                stderrDone = true
+                                tryFinish()
+                            } else {
+                                errorData.append(data)
+                            }
+                        }
+                    }
+
+                    process.terminationHandler = { _ in
+                        collector.async {
+                            processDone = true
+                            tryFinish()
+                        }
+                    }
+
+                    do {
+                        try process.run()
                     } catch {
-                        continuation.resume(throwing: error)
+                        collector.async {
+                            guard !resumed else { return }
+                            resumed = true
+                            continuation.resume(throwing: error)
+                        }
                     }
                 }
+            } onCancel: {
+                if process.isRunning { process.terminate() }
             }
         }
 
