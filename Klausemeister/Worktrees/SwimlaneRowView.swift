@@ -107,7 +107,7 @@ struct SwimlaneRowView: View {
 // MARK: - Worktree Row Drag Item
 
 private extension UTType {
-    static let worktreeRowDragItem = UTType(exportedAs: "com.klausemeister.worktree-drag-item")
+    static let worktreeRowDragItem = UTType(importedAs: "com.klausemeister.worktree-drag-item")
 }
 
 struct WorktreeRowDragItem: Codable, Transferable {
