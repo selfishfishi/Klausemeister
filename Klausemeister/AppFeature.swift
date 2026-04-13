@@ -40,7 +40,6 @@ struct AppFeature {
         case shortcutCenterDismissed
         case shortcutCenter(ShortcutCenterFeature.Action)
         case openWorktreeSwitcher
-        case worktreeSwitcherDismissed
         case worktreeSwitcher(WorktreeSwitcherFeature.Action)
         case keyBindingsLoaded([AppCommand: KeyBinding?])
         case mcpServerEvent(MCPServerEvent)
@@ -252,10 +251,6 @@ struct AppFeature {
                 state.worktreeSwitcher = WorktreeSwitcherFeature.State(
                     worktrees: Array(state.worktree.worktrees)
                 )
-                return .none
-
-            case .worktreeSwitcherDismissed:
-                state.worktreeSwitcher = nil
                 return .none
 
             case let .worktreeSwitcher(.delegate(.itemSelected(item))):
