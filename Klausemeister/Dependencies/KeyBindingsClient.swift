@@ -39,14 +39,14 @@ extension KeyBindingsClient: DependencyKey {
             return enc
         }()
 
-        func encodeOverrides(_ bindings: [AppCommand: KeyBinding?]) throws -> Data {
+        @Sendable func encodeOverrides(_ bindings: [AppCommand: KeyBinding?]) throws -> Data {
             let dict = Dictionary(
                 uniqueKeysWithValues: bindings.map { ($0.key.rawValue, $0.value) }
             )
             return try encoder.encode(dict)
         }
 
-        func decodeOverrides(_ data: Data) throws -> [AppCommand: KeyBinding?] {
+        @Sendable func decodeOverrides(_ data: Data) throws -> [AppCommand: KeyBinding?] {
             let dict = try JSONDecoder().decode([String: KeyBinding?].self, from: data)
             var result: [AppCommand: KeyBinding?] = [:]
             for (rawValue, binding) in dict {
@@ -59,14 +59,14 @@ extension KeyBindingsClient: DependencyKey {
             return result
         }
 
-        func encodeExport(_ bindings: [AppCommand: KeyBinding]) throws -> Data {
+        @Sendable func encodeExport(_ bindings: [AppCommand: KeyBinding]) throws -> Data {
             let dict = Dictionary(
                 uniqueKeysWithValues: bindings.map { ($0.key.rawValue, $0.value) }
             )
             return try encoder.encode(dict)
         }
 
-        func decodeImport(_ data: Data) throws -> [AppCommand: KeyBinding] {
+        @Sendable func decodeImport(_ data: Data) throws -> [AppCommand: KeyBinding] {
             let dict = try JSONDecoder().decode([String: KeyBinding].self, from: data)
             return Dictionary(uniqueKeysWithValues: dict.compactMap { rawValue, binding in
                 guard let command = AppCommand(rawValue: rawValue) else {

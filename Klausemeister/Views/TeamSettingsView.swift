@@ -117,7 +117,7 @@ struct TeamSettingsView: View {
 
             Text(team.key)
                 .font(.system(.callout, design: .monospaced).weight(.semibold))
-                .foregroundStyle(isRemoved ? .tertiary : tint)
+                .foregroundStyle(isRemoved ? tint.opacity(0.3) : tint)
 
             Text(team.name)
                 .font(.callout)
