@@ -3,7 +3,7 @@ import Foundation
 
 /// Simple subsequence fuzzy matcher with scoring. No external dependencies.
 /// Returns nil if `query` is not a subsequence of `target`.
-enum FuzzyMatcher {
+nonisolated enum FuzzyMatcher {
     struct Match: Equatable {
         let score: Int
         /// Character offsets (not String.Index) into the target string. Portable

@@ -40,15 +40,22 @@ struct MeisterView: View {
                         }
                     )
                 }
-                Button {
-                    store.send(.stateMappingButtonTapped)
+                Menu {
+                    Button("Configure stage mappings") {
+                        store.send(.stateMappingButtonTapped)
+                    }
                 } label: {
                     Image(systemName: "arrow.left.arrow.right.circle")
                         .symbolRenderingMode(.monochrome)
                         .font(.system(size: 44, weight: .semibold))
                         .foregroundStyle(.secondary)
+                } primaryAction: {
+                    store.send(.stateMappingButtonTapped)
                 }
-                .buttonStyle(.plain)
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .tint(Color(nsColor: .secondaryLabelColor))
                 .help("Configure stage mappings")
                 StageFilterMenu(
                     hiddenStages: store.hiddenStages,

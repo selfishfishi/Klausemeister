@@ -81,14 +81,6 @@ let socketPath: String = env["KLAUSE_SOCKET_PATH"] ?? {
         .path
 }()
 
-// MARK: - Run worker
-
-guard let bridge = ShimBridge(socketPath: socketPath, worktreeId: worktreeId) else {
-    exit(4)
-}
-
-bridge.run()
-
 // MARK: - Wrapper implementation
 
 /// PID of the current child worker. Accessed from the SIGTERM handler (which
@@ -190,3 +182,11 @@ private func spawnAndWaitForWorker(selfPath: String) -> Int32? {
     // Terminated by signal — return nil to trigger respawn.
     return nil
 }
+
+// MARK: - Run worker
+
+guard let bridge = ShimBridge(socketPath: socketPath, worktreeId: worktreeId) else {
+    exit(4)
+}
+
+bridge.run()

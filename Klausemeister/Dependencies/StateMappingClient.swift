@@ -49,7 +49,7 @@ typealias StateMappingTable = [String: [String: MeisterState]]
 
 extension StateMappingTable {
     /// Builds the lookup table from flat records.
-    static func from(_ records: [StateMappingRecord]) -> StateMappingTable {
+    nonisolated static func from(_ records: [StateMappingRecord]) -> StateMappingTable {
         var table: StateMappingTable = [:]
         for record in records {
             guard let state = MeisterState(rawValue: record.meisterState) else { continue }
@@ -95,6 +95,7 @@ extension StateMappingClient: DependencyKey {
                         ))
                     }
                 }
+                let finalRecords = records
                 try await dbQueue.write { db in
                     // Delete existing mappings for affected teams, then insert fresh
                     for teamId in mappings.keys {
@@ -103,7 +104,7 @@ extension StateMappingClient: DependencyKey {
                             arguments: [teamId]
                         )
                     }
-                    for record in records {
+                    for record in finalRecords {
                         try record.insert(db)
                     }
                 }

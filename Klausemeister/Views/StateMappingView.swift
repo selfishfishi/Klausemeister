@@ -24,6 +24,7 @@ struct StateMappingView: View {
                 .ignoresSafeArea()
         }
         .tint(themeColors.accentColor)
+        .environment(\.colorScheme, themeColors.isDark ? .dark : .light)
         .task { store.send(.onAppear) }
     }
 

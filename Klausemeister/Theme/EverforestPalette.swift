@@ -23,6 +23,7 @@ extension AppTheme {
         default: fatalError("Not a dark theme")
         }
         return ThemeColors(
+            isDark: true,
             accentColor: Color(hex: 0xA7C080),
             warningColor: Color(hex: 0xDBBC7F),
             errorColor: Color(hex: 0xE67E80),
@@ -44,6 +45,7 @@ extension AppTheme {
         default: fatalError("Not a light theme")
         }
         return ThemeColors(
+            isDark: false,
             accentColor: Color(hex: 0x8DA101),
             warningColor: Color(hex: 0xDFA000),
             errorColor: Color(hex: 0xF85552),
