@@ -1,8 +1,6 @@
 import Foundation
 import GRDB
 
-extension IngestionStrategy: DatabaseValueConvertible {}
-
 struct LinearTeamRecord: Codable, Equatable, FetchableRecord, PersistableRecord {
     nonisolated static let databaseTableName = "linear_teams"
 
@@ -12,5 +10,6 @@ struct LinearTeamRecord: Codable, Equatable, FetchableRecord, PersistableRecord 
     var colorIndex: Int
     var isEnabled: Bool
     var isHiddenFromBoard: Bool
-    var ingestionStrategy: IngestionStrategy = .labelFiltered
+    var ingestAllIssues: Bool = false
+    var filterLabel: String = "klause"
 }

@@ -105,7 +105,7 @@ enum DatabaseMigrations {
             try db.alter(table: "linear_teams") { t in
                 t.add(column: "ingestionStrategy", .text)
                     .notNull()
-                    .defaults(to: IngestionStrategy.labelFiltered.rawValue)
+                    .defaults(to: "labelFiltered")
             }
         }
 
@@ -137,6 +137,20 @@ enum DatabaseMigrations {
         migrator.registerMigration("v12-hidden-projects") { db in
             try db.create(table: "hidden_projects") { t in
                 t.column("projectName", .text).primaryKey()
+            }
+        }
+
+        migrator.registerMigration("v13-team-filter-label") { db in
+            try db.alter(table: "linear_teams") { t in
+                t.add(column: "ingestAllIssues", .boolean).notNull().defaults(to: false)
+                t.add(column: "filterLabel", .text).notNull().defaults(to: "klause")
+            }
+            // Backfill from the old ingestionStrategy column before dropping it
+            try db.execute(sql: """
+                UPDATE linear_teams SET ingestAllIssues = 1 WHERE ingestionStrategy = 'allIssues'
+            """)
+            try db.alter(table: "linear_teams") { t in
+                t.drop(column: "ingestionStrategy")
             }
         }
     }

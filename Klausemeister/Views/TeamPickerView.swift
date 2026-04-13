@@ -3,9 +3,7 @@ import SwiftUI
 struct TeamPickerView: View {
     let teams: [LinearTeam]
     let selectedTeamIds: Set<String>
-    let teamStrategies: [String: IngestionStrategy]
     let onToggle: (String) -> Void
-    let onStrategyChange: (String, IngestionStrategy) -> Void
     let onConfirm: () -> Void
 
     @Environment(\.themeColors) private var themeColors
@@ -59,55 +57,32 @@ struct TeamPickerView: View {
     private func teamRow(_ team: LinearTeam) -> some View {
         let isSelected = selectedTeamIds.contains(team.id)
         let tint = themeColors.teamTint(colorIndex: team.colorIndex)
-        let strategy = teamStrategies[team.id] ?? .labelFiltered
 
-        return VStack(spacing: 0) {
-            Button { onToggle(team.id) } label: {
-                HStack(spacing: 10) {
-                    Circle()
-                        .fill(tint)
-                        .frame(width: 8, height: 8)
-                    Text(team.key)
-                        .font(.system(.callout, design: .monospaced).weight(.semibold))
-                        .foregroundStyle(tint)
-                        .frame(width: 48, alignment: .leading)
-                    Text(team.name)
-                        .font(.callout)
-                        .foregroundStyle(.primary)
-                    Spacer(minLength: 0)
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.body)
-                        .foregroundStyle(isSelected ? tint : .secondary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+        return Button { onToggle(team.id) } label: {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 8, height: 8)
+                Text(team.key)
+                    .font(.system(.callout, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 48, alignment: .leading)
+                Text(team.name)
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 0)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.body)
+                    .foregroundStyle(isSelected ? tint : .secondary)
             }
-            .buttonStyle(.plain)
-
-            if isSelected {
-                strategyPicker(teamId: team.id, strategy: strategy, tint: tint)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isSelected ? tint.opacity(0.08) : .clear)
+            )
         }
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isSelected ? tint.opacity(0.08) : .clear)
-        )
-    }
-
-    private func strategyPicker(
-        teamId: String, strategy: IngestionStrategy, tint _: Color
-    ) -> some View {
-        Picker("", selection: Binding(
-            get: { strategy },
-            set: { onStrategyChange(teamId, $0) }
-        )) {
-            Text("Label only").tag(IngestionStrategy.labelFiltered)
-            Text("All issues").tag(IngestionStrategy.allIssues)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
+        .buttonStyle(.plain)
     }
 
     // MARK: - Confirm

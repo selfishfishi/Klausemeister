@@ -55,7 +55,8 @@ struct MeisterFeature {
         }
     }
 
-    nonisolated static let syncLabel = "klause"
+    /// Default label used for the workspace-wide fallback when no teams are configured.
+    nonisolated static let defaultFilterLabel = "klause"
 
     enum Action: BindableAction, Equatable {
         case binding(BindingAction<State>)
@@ -617,20 +618,19 @@ nonisolated private func performSync(
     // otherwise fall back to the workspace-wide single fetch.
     async let issuesTask: ([LinearIssue], [MeisterFeature.TeamSyncFailure]) = {
         if enabledTeams.isEmpty {
-            let issues = try await linearAPIClient.fetchLabeledIssues(MeisterFeature.syncLabel, nil)
+            let issues = try await linearAPIClient.fetchLabeledIssues(MeisterFeature.defaultFilterLabel, nil)
             return (issues, [])
         }
         return try await withThrowingTaskGroup(of: TeamFetchResult.self) { group in
             for team in enabledTeams {
                 group.addTask {
                     do {
-                        let issues: [LinearIssue] = switch team.ingestionStrategy {
-                        case .labelFiltered:
-                            try await linearAPIClient.fetchLabeledIssues(
-                                MeisterFeature.syncLabel, team.id
-                            )
-                        case .allIssues:
+                        let issues: [LinearIssue] = if team.ingestAllIssues {
                             try await linearAPIClient.fetchAllTeamIssues(team.id)
+                        } else {
+                            try await linearAPIClient.fetchLabeledIssues(
+                                team.filterLabel, team.id
+                            )
                         }
                         return TeamFetchResult(teamId: team.id, issues: issues, errorMessage: nil)
                     } catch {

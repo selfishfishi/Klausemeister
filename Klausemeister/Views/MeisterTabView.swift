@@ -20,7 +20,8 @@ struct MeisterTabView: View {
                         worktrees: Array(worktreeStore.worktrees),
                         repositories: Array(worktreeStore.repositories),
                         assignedWorktreeNames: worktreeStore.assignedWorktreeNames,
-                        teams: meisterStore.teams
+                        teams: meisterStore.teams,
+                        onManageTeams: onManageTeams
                     )
                     .frame(minHeight: 200)
                     WorktreeSwimlaneView(
@@ -29,33 +30,11 @@ struct MeisterTabView: View {
                     )
                     .frame(minHeight: 150)
                 }
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    if let onManageTeams {
-                        HStack {
-                            Spacer()
-                            Button {
-                                onManageTeams()
-                            } label: {
-                                Image(systemName: "gearshape")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Manage teams")
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                    }
-                }
             case .teamSelection:
                 TeamPickerView(
                     teams: authStore.availableTeams,
                     selectedTeamIds: authStore.selectedTeamIds,
-                    teamStrategies: authStore.teamStrategies,
                     onToggle: { id in authStore.send(.teamToggled(id: id)) },
-                    onStrategyChange: { id, strategy in
-                        authStore.send(.teamStrategyChanged(teamId: id, strategy: strategy))
-                    },
                     onConfirm: { authStore.send(.teamSelectionConfirmed) }
                 )
             case .unauthenticated, .authenticating, .fetchingTeams:

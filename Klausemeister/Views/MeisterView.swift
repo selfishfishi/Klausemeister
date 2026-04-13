@@ -7,6 +7,7 @@ struct MeisterView: View {
     let repositories: [Repository]
     var assignedWorktreeNames: [String: String] = [:]
     var teams: [LinearTeam] = []
+    var onManageTeams: (() -> Void)?
 
     @Environment(\.themeColors) private var themeColors
 
@@ -71,6 +72,18 @@ struct MeisterView: View {
                     onRefresh: { store.send(.refreshTapped) },
                     onReloadMetadata: { store.send(.refreshLinearMetadataTapped) }
                 )
+                if let onManageTeams {
+                    Button {
+                        onManageTeams()
+                    } label: {
+                        Image(systemName: "gearshape.circle")
+                            .symbolRenderingMode(.monochrome)
+                            .font(.system(size: 44, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Manage teams")
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)

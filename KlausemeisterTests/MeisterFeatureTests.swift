@@ -59,7 +59,7 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
         MeisterFeature()
     } withDependencies: {
         $0.linearAPIClient.fetchLabeledIssues = { label, _ in
-            #expect(label == MeisterFeature.syncLabel)
+            #expect(label == MeisterFeature.defaultFilterLabel)
             return [sampleIssue, sampleIssueKLA15]
         }
         $0.linearAPIClient.fetchWorkflowStatesByTeam = { sampleWorkflowStates }
@@ -349,13 +349,13 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
 private let teamLabelFiltered = LinearTeam(
     id: "team-1", key: "KLA", name: "Klausemeister",
     colorIndex: 0, isEnabled: true, isHiddenFromBoard: false,
-    ingestionStrategy: .labelFiltered
+    ingestAllIssues: false
 )
 
 private let teamAllIssues = LinearTeam(
     id: "team-2", key: "MOB", name: "Mobile",
     colorIndex: 1, isEnabled: true, isHiddenFromBoard: false,
-    ingestionStrategy: .allIssues
+    ingestAllIssues: true
 )
 
 private let mobileIssue = LinearIssue(
@@ -383,7 +383,7 @@ private let mobileIssue = LinearIssue(
         MeisterFeature()
     } withDependencies: {
         $0.linearAPIClient.fetchLabeledIssues = { label, teamId in
-            #expect(label == MeisterFeature.syncLabel)
+            #expect(label == MeisterFeature.defaultFilterLabel)
             #expect(teamId == "team-1")
             fetchLabeledCalled = true
             return [sampleIssue]
