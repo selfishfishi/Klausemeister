@@ -11,6 +11,8 @@ struct SwimlaneBarRow: View {
     var teamFor: ((_ issueId: String) -> LinearTeam?)?
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
+
+    @Environment(\.keyBindings) private var bindings
     var onDropToInbox: ((_ issueId: String) -> Void)?
     var onDropToProcessing: ((_ issueId: String) -> Void)?
     var onDropToOutbox: ((_ issueId: String) -> Void)?
@@ -121,6 +123,7 @@ struct SwimlaneBarRow: View {
         .contextMenu {
             if let onReturnToMeister {
                 Button("Return to Meister") { onReturnToMeister(issue.id) }
+                    .keyboardShortcut(for: .returnIssueToMeister, in: bindings)
             }
         }
     }
@@ -144,6 +147,7 @@ struct SwimlaneBarRow: View {
         .contextMenu {
             if let onReturnToMeister {
                 Button("Return to Meister") { onReturnToMeister(issue.id) }
+                    .keyboardShortcut(for: .returnIssueToMeister, in: bindings)
             }
         }
     }
@@ -183,9 +187,11 @@ struct SwimlaneBarRow: View {
         .contextMenu {
             if let onMarkComplete {
                 Button("Mark as Done") { onMarkComplete() }
+                    .keyboardShortcut(for: .markIssueDone, in: bindings)
             }
             if let onReturnToMeister {
                 Button("Return to Meister") { onReturnToMeister(issue.id) }
+                    .keyboardShortcut(for: .returnIssueToMeister, in: bindings)
             }
         }
     }

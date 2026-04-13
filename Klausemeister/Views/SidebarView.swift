@@ -75,6 +75,7 @@ struct SidebarWorktreeRow: View {
     let onDelete: () -> Void
 
     @Environment(\.themeColors) private var themeColors
+    @Environment(\.keyBindings) private var bindings
     @State private var isHovering = false
 
     var body: some View {
@@ -140,6 +141,7 @@ struct SidebarWorktreeRow: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
+            .keyboardShortcut(for: .deleteWorktree, in: bindings)
         }
     }
 }

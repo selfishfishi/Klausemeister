@@ -127,6 +127,8 @@ struct WorktreeIssueRow: View {
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: (() -> Void)?
 
+    @Environment(\.keyBindings) private var bindings
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -175,11 +177,13 @@ struct WorktreeIssueRow: View {
         .contextMenu {
             if let onMarkComplete {
                 Button("Mark as Done") { onMarkComplete() }
+                    .keyboardShortcut(for: .markIssueDone, in: bindings)
             }
             if let onReturn = onReturnToMeister {
                 Button("Return to Meister") {
                     onReturn()
                 }
+                .keyboardShortcut(for: .returnIssueToMeister, in: bindings)
             }
         }
     }

@@ -28,3 +28,7 @@ extension View {
         }
     }
 }
+
+extension EnvironmentValues {
+    @Entry var keyBindings: [AppCommand: KeyBinding] = [:]
+}

@@ -120,6 +120,8 @@ struct KanbanIssueCardView: View {
     let onAssignToWorktree: (_ issue: LinearIssue, _ worktreeId: String) -> Void
     let onRemove: (_ issueId: String) -> Void
 
+    @Environment(\.keyBindings) private var bindings
+
     /// Destinations for the "Move to..." menu — every canonical stage except
     /// the one the issue is already in.
     private var movableStates: [MeisterState] {
@@ -171,6 +173,7 @@ struct KanbanIssueCardView: View {
             Button("Remove from board", role: .destructive) {
                 onRemove(issue.id)
             }
+            .keyboardShortcut(for: .removeIssue, in: bindings)
         }
     }
 }

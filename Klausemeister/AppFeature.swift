@@ -293,7 +293,8 @@ struct AppFeature {
         }
     }
 
-    /// Routes a command palette selection to the appropriate child action.
+    // Routes a command palette selection to the appropriate child action.
+    // swiftlint:disable:next cyclomatic_complexity
     private func executeCommand(
         _ command: AppCommand,
         state: inout State
@@ -310,7 +311,6 @@ struct AppFeature {
             state.showMeister = false
             return .none
         case .openCommandPalette:
-            // No-op: handled by the parent action, not re-entrant from the palette
             return .none
         case .syncLinearIssues:
             return .send(.meister(.refreshTapped))
@@ -325,6 +325,15 @@ struct AppFeature {
             return .send(.debugPanel(.panelToggled))
         case .openShortcutCenter:
             return .send(.openShortcutCenter)
+        case .deleteWorktree:
+            guard let worktreeId = state.worktree.selectedWorktreeId else { return .none }
+            return .send(.worktree(.confirmDeleteTapped(worktreeId: worktreeId)))
+        case .markIssueDone:
+            guard let worktreeId = state.worktree.selectedWorktreeId else { return .none }
+            return .send(.worktree(.markAsCompleteTapped(worktreeId: worktreeId)))
+        case .returnIssueToMeister, .removeIssue:
+            // Contextual — handled directly by context menu closures
+            return .none
         }
     }
 }
