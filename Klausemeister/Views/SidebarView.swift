@@ -30,7 +30,7 @@ struct SidebarView: View {
             )
 
             Section {
-                ForEach(store.scope(state: \.worktree, action: \.worktree).worktrees) { worktree in
+                ForEach(store.worktree.worktrees) { worktree in
                     SidebarWorktreeRow(
                         worktree: worktree,
                         isSelected: store.worktree.selectedWorktreeId == worktree.id,
