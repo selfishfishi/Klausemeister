@@ -221,10 +221,14 @@ struct DebugPanelView: View {
         }
     }
 
-    private func formatTime(_ date: Date) -> String {
+    private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"
-        return formatter.string(from: date)
+        return formatter
+    }()
+
+    private func formatTime(_ date: Date) -> String {
+        Self.timeFormatter.string(from: date)
     }
 
     private func abbreviatePath(_ path: String) -> String {

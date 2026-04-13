@@ -39,6 +39,7 @@ struct ThemeColors {
     let selectionBg: String
     let selectionFg: String
     let glowIntensity: Double
+    let swimlaneRowTints: [Color]
 }
 
 extension EnvironmentValues {

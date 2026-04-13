@@ -107,6 +107,7 @@ struct MeisterView: View {
 
             // Kanban board
             GeometryReader { proxy in
+                let teamsByID = Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0) })
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 14) {
                         ForEach(store.visibleColumns) { column in
@@ -115,7 +116,7 @@ struct MeisterView: View {
                                 worktrees: worktrees,
                                 repositories: repositories,
                                 assignedWorktreeNames: assignedWorktreeNames,
-                                teams: teams,
+                                teamsByID: teams.count > 1 ? teamsByID : [:],
                                 onMoveToStatus: { issueId, target in
                                     store.send(.moveToStatusTapped(issueId: issueId, target: target))
                                 },

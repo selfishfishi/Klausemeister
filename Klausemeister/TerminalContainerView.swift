@@ -34,7 +34,9 @@ struct TerminalContainerView: View {
                     WorktreeDetailView(
                         store: store.scope(state: \.worktree, action: \.worktree),
                         surfaceStore: surfaceStore,
-                        teams: store.meister.teams
+                        teamsByID: store.meister.teams.count > 1
+                            ? Dictionary(uniqueKeysWithValues: store.meister.teams.map { ($0.id, $0) })
+                            : [:]
                     )
                 }
             }

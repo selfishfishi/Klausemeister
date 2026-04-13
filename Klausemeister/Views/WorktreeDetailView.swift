@@ -5,16 +5,12 @@ import SwiftUI
 struct WorktreeDetailView: View {
     @Bindable var store: StoreOf<WorktreeFeature>
     let surfaceStore: SurfaceStore
-    var teams: [LinearTeam] = []
+    var teamsByID: [String: LinearTeam] = [:]
 
     @Environment(\.themeColors) private var themeColors
 
     private var showTeamBadges: Bool {
-        teams.count > 1
-    }
-
-    private var teamsByID: [String: LinearTeam] {
-        Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0) })
+        !teamsByID.isEmpty
     }
 
     var body: some View {
