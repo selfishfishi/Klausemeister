@@ -12,6 +12,7 @@ enum AppCommand: String, CaseIterable, Hashable {
     case newWorktree
     case toggleDebugPanel
     case openShortcutCenter
+    case openWorktreeSwitcher
 
     // Contextual commands (operate on the selected/focused item)
     case deleteWorktree
@@ -40,6 +41,7 @@ enum AppCommand: String, CaseIterable, Hashable {
         case .newWorktree: "New Worktree"
         case .toggleDebugPanel: "Toggle Debug Panel"
         case .openShortcutCenter: "Keyboard Shortcuts"
+        case .openWorktreeSwitcher: "Switch Worktree"
         case .deleteWorktree: "Delete Worktree"
         case .markIssueDone: "Mark as Done"
         case .returnIssueToMeister: "Return to Meister"
@@ -50,7 +52,7 @@ enum AppCommand: String, CaseIterable, Hashable {
     var category: Category {
         switch self {
         case .toggleSidebar: .view
-        case .showMeister, .showWorktrees, .openCommandPalette: .navigation
+        case .showMeister, .showWorktrees, .openCommandPalette, .openWorktreeSwitcher: .navigation
         case .syncLinearIssues, .openLinearAuth, .openTeamSettings: .linear
         case .newWorktree, .deleteWorktree: .worktree
         case .markIssueDone, .returnIssueToMeister, .removeIssue: .issue
@@ -70,6 +72,7 @@ enum AppCommand: String, CaseIterable, Hashable {
         case .newWorktree: "Create a new git worktree"
         case .toggleDebugPanel: "Show or hide the MCP diagnostics panel"
         case .openShortcutCenter: "View and customize keyboard shortcuts"
+        case .openWorktreeSwitcher: "Quick-switch between Meister and worktrees"
         case .deleteWorktree: "Delete the selected worktree"
         case .markIssueDone: "Mark the active issue as done"
         case .returnIssueToMeister: "Return the issue to the kanban board"
@@ -82,6 +85,7 @@ enum AppCommand: String, CaseIterable, Hashable {
         case .toggleSidebar: KeyBinding(key: "\\", modifiers: .command)
         case .openCommandPalette: KeyBinding(key: "k", modifiers: .command)
         case .toggleDebugPanel: KeyBinding(key: "d", modifiers: [.command, .shift])
+        case .openWorktreeSwitcher: KeyBinding(key: "k", modifiers: .control)
         case .showMeister, .showWorktrees, .syncLinearIssues,
              .openLinearAuth, .openTeamSettings, .newWorktree,
              .openShortcutCenter, .deleteWorktree, .markIssueDone,
