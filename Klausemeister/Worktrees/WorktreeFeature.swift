@@ -369,7 +369,7 @@ struct WorktreeFeature {
         let worktreesForRepo = state.worktrees.filter { $0.repoId == repoId }
         let worktreeIds = worktreesForRepo.map(\.id)
         let tmuxSessionNames = worktreesForRepo.map { worktree in
-            WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name)
+            WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name, repoName: worktree.repoName)
         }
         for id in worktreeIds {
             state.worktrees.remove(id: id)
@@ -429,7 +429,8 @@ struct WorktreeFeature {
         let workingDirectory = state.worktrees[wtIndex].gitWorktreePath
         guard !workingDirectory.isEmpty else { return .none }
         let sessionName = WorktreeConfig.tmuxSessionName(
-            forWorktreeName: state.worktrees[wtIndex].name
+            forWorktreeName: state.worktrees[wtIndex].name,
+            repoName: state.worktrees[wtIndex].repoName
         )
         state.worktrees[wtIndex].meisterStatus = .spawning
         return .run { [meisterClient, clock] send in
@@ -472,7 +473,7 @@ struct WorktreeFeature {
     ) -> Effect<Action> {
         let worktreeId = worktree.id
         let workingDirectory = worktree.gitWorktreePath
-        let sessionName = WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name)
+        let sessionName = WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name, repoName: worktree.repoName)
         // libghostty wraps the surface command in `/bin/bash --noprofile
         // --norc`, which strips the user's PATH. A bare `tmux` would fail to
         // resolve on systems where tmux lives under `/opt/homebrew/bin` etc.
@@ -882,7 +883,7 @@ struct WorktreeFeature {
                 }
                 let worktreePath = worktree.gitWorktreePath
                 let repoPath = worktree.repoId.flatMap { state.repositories[id: $0]?.path }
-                let tmuxSessionName = WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name)
+                let tmuxSessionName = WorktreeConfig.tmuxSessionName(forWorktreeName: worktree.name, repoName: worktree.repoName)
                 state.worktrees.remove(id: worktreeId)
                 return .merge(
                     .cancel(id: CancelID.gitFSWatcher(worktreeId)),
@@ -1476,7 +1477,7 @@ struct WorktreeFeature {
             // MARK: - Tmux session reconciliation
 
             case .reconcileTmuxSessions:
-                let worktreeNames = state.worktrees.map { (id: $0.id, name: $0.name) }
+                let worktreeNames = state.worktrees.map { (id: $0.id, name: $0.name, repoName: $0.repoName) }
                 guard !worktreeNames.isEmpty else { return .none }
                 return .run { send in
                     let existing: Set<String>
@@ -1493,7 +1494,8 @@ struct WorktreeFeature {
                     var statuses: [String: TmuxSessionStatus] = [:]
                     for worktree in worktreeNames {
                         let sessionName = WorktreeConfig.tmuxSessionName(
-                            forWorktreeName: worktree.name
+                            forWorktreeName: worktree.name,
+                            repoName: worktree.repoName
                         )
                         statuses[worktree.id] = existing.contains(sessionName)
                             ? .sessionExists

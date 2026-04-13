@@ -14,13 +14,21 @@ enum WorktreeConfig {
     /// tmux disallows or treats specially in target syntax (`:`, `.`,
     /// whitespace) are replaced with `-` so the name we store always round-trips
     /// through `kill-session -t =<name>`.
-    nonisolated static func tmuxSessionName(forWorktreeName name: String) -> String {
-        let sanitized = name
-            .lowercased()
-            .replacingOccurrences(of: ":", with: "-")
-            .replacingOccurrences(of: ".", with: "-")
-            .replacingOccurrences(of: " ", with: "-")
-        return "klause-\(sanitized)"
+    ///
+    /// The repo name is included so that worktrees with the same name across
+    /// different repositories get distinct tmux sessions.
+    nonisolated static func tmuxSessionName(forWorktreeName name: String, repoName: String? = nil) -> String {
+        func sanitize(_ value: String) -> String {
+            value.lowercased()
+                .replacingOccurrences(of: ":", with: "-")
+                .replacingOccurrences(of: ".", with: "-")
+                .replacingOccurrences(of: " ", with: "-")
+        }
+        let sanitizedName = sanitize(name)
+        if let repoName {
+            return "klause-\(sanitize(repoName))-\(sanitizedName)"
+        }
+        return "klause-\(sanitizedName)"
     }
 
     nonisolated static func worktreePath(basePath: String, repoRoot: String, name: String) -> String {
