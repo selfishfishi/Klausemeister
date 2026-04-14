@@ -21,6 +21,8 @@ struct ToolResult: Equatable {
     }
 }
 
+// swiftlint:disable type_body_length
+
 /// Free-function tool handlers wrapping `WorktreeClient` + `LinearAPIClient`
 /// + `DatabaseClient`. Each handler is `async throws` and uses `@Dependency`
 /// at call time, so tests can stub clients via `withDependencies`.
@@ -377,6 +379,11 @@ enum ToolHandlers {
 
     /// Add an issue to a worktree's inbox queue. Idempotent — no-op if the
     /// issue is already queued on that worktree. Appends to the end (FIFO).
+    ///
+    /// `issueLinearId` accepts either the Linear UUID or the human identifier
+    /// (e.g. `KLA-136`). Identifier lookups exist because the Linear MCP wrapper
+    /// only surfaces identifiers, so external callers (the `/klause-schedule`
+    /// skill in particular) cannot easily obtain UUIDs.
     static func enqueueItem(
         issueLinearId: String,
         targetWorktreeId: String,
@@ -385,8 +392,13 @@ enum ToolHandlers {
         @Dependency(\.worktreeClient) var worktreeClient
         @Dependency(\.databaseClient) var databaseClient
 
-        // Verify the issue exists in the local cache.
-        guard try await databaseClient.fetchImportedIssue(issueLinearId) != nil else {
+        // Resolve to the canonical UUID — accept either UUID or identifier on input.
+        let resolvedIssueId: String
+        if let issue = try await databaseClient.fetchImportedIssue(issueLinearId) {
+            resolvedIssueId = issue.linearId
+        } else if let issue = try await databaseClient.fetchImportedIssueByIdentifier(issueLinearId) {
+            resolvedIssueId = issue.linearId
+        } else {
             return .failure("Issue \(issueLinearId) not found in local cache — import it first")
         }
 
@@ -399,13 +411,13 @@ enum ToolHandlers {
         // Check if already queued before writing — only yield the UI event
         // when a new row is actually inserted.
         let existingItems = try await worktreeClient.fetchQueueItems(targetWorktreeId)
-        let alreadyQueued = existingItems.contains { $0.issueLinearId == issueLinearId }
+        let alreadyQueued = existingItems.contains { $0.issueLinearId == resolvedIssueId }
 
-        try await worktreeClient.assignIssueToWorktree(issueLinearId, targetWorktreeId)
+        try await worktreeClient.assignIssueToWorktree(resolvedIssueId, targetWorktreeId)
 
         if !alreadyQueued {
             eventContinuation.yield(.itemAddedToInbox(
-                worktreeId: targetWorktreeId, issueLinearId: issueLinearId
+                worktreeId: targetWorktreeId, issueLinearId: resolvedIssueId
             ))
         }
         return .success(#"{"ok":true}"#)
@@ -474,3 +486,5 @@ extension ToolHandlers {
         let title: String?
     }
 }
+
+// swiftlint:enable type_body_length

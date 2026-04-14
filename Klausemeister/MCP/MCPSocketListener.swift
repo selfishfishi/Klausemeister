@@ -581,7 +581,7 @@ private enum ToolCatalog {
                 "properties": .object([
                     "issueLinearId": .object([
                         "type": .string("string"),
-                        "description": .string("Linear UUID of the issue to enqueue")
+                        "description": .string("Linear UUID or human identifier (e.g. KLA-136) of the issue to enqueue")
                     ]),
                     "targetWorktreeId": .object([
                         "type": .string("string"),
