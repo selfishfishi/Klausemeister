@@ -7,6 +7,7 @@ struct TerminalContainerView: View {
 
     @Environment(\.themeColors) private var themeColors
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @AppStorage("inspectorOpen") private var inspectorOpenPref: Bool = false
 
     var body: some View {
         ZStack {
@@ -44,6 +45,17 @@ struct TerminalContainerView: View {
                 StatusBarView(store: store.scope(state: \.statusBar, action: \.statusBar))
             }
             .navigationSplitViewStyle(.balanced)
+            .inspector(isPresented: Binding(
+                get: { store.showInspector },
+                set: { newValue in
+                    if newValue != store.showInspector {
+                        store.send(.toggleInspector)
+                    }
+                }
+            )) {
+                InspectorEmptyView()
+                    .inspectorColumnWidth(min: 220, ideal: 300, max: 480)
+            }
 
             if let paletteStore = store.scope(
                 state: \.commandPalette, action: \.commandPalette
@@ -88,11 +100,21 @@ struct TerminalContainerView: View {
                 store.send(.toggleSidebar)
             }
         }
+        .onChange(of: store.showInspector) { _, newValue in
+            if inspectorOpenPref != newValue {
+                inspectorOpenPref = newValue
+            }
+        }
         .navigationTitle("")
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .tint(themeColors.accentColor)
         .environment(\.keyBindings, store.keyBindings)
-        .task { store.send(.onAppear) }
+        .task {
+            if inspectorOpenPref != store.showInspector {
+                store.send(.toggleInspector)
+            }
+            store.send(.onAppear)
+        }
         .sheet(
             isPresented: Binding(
                 get: { store.shortcutCenter != nil },
