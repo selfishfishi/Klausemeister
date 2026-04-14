@@ -14,6 +14,7 @@ struct KanbanColumnView: View {
     let onRemove: (_ issueId: String) -> Void
     let onDrop: (_ issueId: String) -> Void
     var onAdvance: ((_ worktreeId: String) -> Void)?
+    var onCardTapped: ((_ issueId: String) -> Void)?
 
     @Environment(\.themeColors) private var themeColors
 
@@ -145,7 +146,8 @@ struct KanbanColumnView: View {
                         onMoveToStatus: onMoveToStatus,
                         onAssignToWorktree: onAssignToWorktree,
                         onRemove: onRemove,
-                        onAdvance: onAdvance
+                        onAdvance: onAdvance,
+                        onCardTapped: onCardTapped
                     )
                 }
             }

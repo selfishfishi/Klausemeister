@@ -131,6 +131,7 @@ struct KanbanIssueCardView: View {
     let onAssignToWorktree: (_ issue: LinearIssue, _ worktreeId: String) -> Void
     let onRemove: (_ issueId: String) -> Void
     var onAdvance: ((_ worktreeId: String) -> Void)?
+    var onCardTapped: ((_ issueId: String) -> Void)?
 
     @Environment(\.keyBindings) private var bindings
 
@@ -142,28 +143,12 @@ struct KanbanIssueCardView: View {
     }
 
     var body: some View {
-        VStack(spacing: 6) {
-            IssueCardView(
-                issue: issue,
-                tint: tint,
-                worktreeName: worktreeName,
-                teamKey: teamKey,
-                teamTint: teamTint
-            )
-            if let advance, let onAdvance {
-                Button {
-                    onAdvance(advance.worktreeId)
-                } label: {
-                    Text(advance.label)
-                        .font(.caption.weight(.medium))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(!advance.isEnabled)
-                .help(advance.tooltip)
-            }
+        Button {
+            onCardTapped?(issue.id)
+        } label: {
+            cardContent
         }
+        .buttonStyle(.plain)
         .draggable(issue.id)
         .contextMenu {
             Menu("Move to...") {
@@ -201,6 +186,31 @@ struct KanbanIssueCardView: View {
                 onRemove(issue.id)
             }
             .keyboardShortcut(for: .removeIssue, in: bindings)
+        }
+    }
+
+    private var cardContent: some View {
+        VStack(spacing: 6) {
+            IssueCardView(
+                issue: issue,
+                tint: tint,
+                worktreeName: worktreeName,
+                teamKey: teamKey,
+                teamTint: teamTint
+            )
+            if let advance, let onAdvance {
+                Button {
+                    onAdvance(advance.worktreeId)
+                } label: {
+                    Text(advance.label)
+                        .font(.caption.weight(.medium))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!advance.isEnabled)
+                .help(advance.tooltip)
+            }
         }
     }
 }
