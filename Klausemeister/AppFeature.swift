@@ -323,8 +323,14 @@ struct AppFeature {
                         .send(.statusBar(.errorReported(source: .mcpServer, message: message))),
                         debugEffect
                     )
-                case .progressReported:
-                    return debugEffect
+                case let .progressReported(worktreeId, _, statusText):
+                    return .merge(
+                        .send(.worktree(.claudeStatusTextChanged(
+                            worktreeId: worktreeId,
+                            text: statusText
+                        ))),
+                        debugEffect
+                    )
                 case let .meisterHelloReceived(worktreeId):
                     return .merge(
                         .send(.worktree(.meisterHelloReceived(worktreeId: worktreeId))),

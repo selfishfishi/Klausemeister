@@ -7,6 +7,10 @@ import SwiftUI
 /// Renders nothing (`EmptyView`) for `.offline`.
 struct ClaudeStatusLineView: View {
     let state: ClaudeSessionState
+    /// Free-form text from the meister's most recent `reportProgress` call.
+    /// Wins over the generic label when the session is `.working`. Ignored
+    /// for other states (the reducer clears it on non-working transitions).
+    var text: String?
 
     @Environment(\.themeColors) private var themeColors
     @Environment(\.swimlaneAnimating) private var isAnimating
@@ -43,15 +47,20 @@ struct ClaudeStatusLineView: View {
     private var label: String {
         switch state {
         case let .working(tool):
-            tool ?? "Working…"
+            // Prefer rich `reportProgress` text when present; fall back to the
+            // tool name from the hook; finally fall back to the generic label.
+            if let text, !text.isEmpty {
+                return text
+            }
+            return tool ?? "Working…"
         case .idle:
-            "Waiting for input"
+            return "Waiting for input"
         case .blocked:
-            "Needs approval"
+            return "Needs approval"
         case .error:
-            "Error"
+            return "Error"
         case .offline:
-            ""
+            return ""
         }
     }
 }
