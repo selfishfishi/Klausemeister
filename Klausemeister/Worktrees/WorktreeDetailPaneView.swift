@@ -12,6 +12,7 @@ struct WorktreeDetailPaneView: View {
     var teamFor: ((_ issue: LinearIssue) -> (key: String, tint: Color)?)?
     var onMarkComplete: () -> Void
     var onReturnToMeister: (String) -> Void
+    var onRowTapped: ((String) -> Void)?
 
     @Environment(\.themeColors) private var themeColors
 
@@ -49,7 +50,8 @@ struct WorktreeDetailPaneView: View {
                 issues: worktree.inbox,
                 emptyText: "Drag issues here",
                 teamFor: teamFor,
-                onReturnToMeister: onReturnToMeister
+                onReturnToMeister: onReturnToMeister,
+                onRowTapped: onRowTapped
             )
 
             Divider()
@@ -61,7 +63,8 @@ struct WorktreeDetailPaneView: View {
                 emptyText: "Nothing in progress",
                 teamFor: teamFor,
                 onMarkComplete: worktree.processing != nil ? onMarkComplete : nil,
-                onReturnToMeister: onReturnToMeister
+                onReturnToMeister: onReturnToMeister,
+                onRowTapped: onRowTapped
             )
 
             Divider()
@@ -72,7 +75,8 @@ struct WorktreeDetailPaneView: View {
                 issues: worktree.outbox,
                 emptyText: "Completed issues appear here",
                 teamFor: teamFor,
-                onReturnToMeister: onReturnToMeister
+                onReturnToMeister: onReturnToMeister,
+                onRowTapped: onRowTapped
             )
         }
     }

@@ -223,6 +223,9 @@ struct WorktreeFeature {
         case mcpItemAddedToInbox(worktreeId: String, issueLinearId: String)
         case mcpItemAddedToInboxResolved(worktreeId: String, issue: LinearIssue)
 
+        /// Inspector selection (KLA-189)
+        case queueRowTapped(issueId: String)
+
         case alert(PresentationAction<Alert>)
         case delegate(Delegate)
 
@@ -240,6 +243,7 @@ struct WorktreeFeature {
             case issueReturnedToMeister(issue: LinearIssue)
             case issueRemovedFromKanban(issueId: String)
             case errorOccurred(message: String)
+            case inspectorSelectionRequested(issueId: String)
         }
     }
 
@@ -921,6 +925,9 @@ struct WorktreeFeature {
 
             case .alert:
                 return .none
+
+            case let .queueRowTapped(issueId):
+                return .send(.delegate(.inspectorSelectionRequested(issueId: issueId)))
 
             case let .deleteWorktreeTapped(worktreeId):
                 guard let worktree = state.worktrees[id: worktreeId] else { return .none }

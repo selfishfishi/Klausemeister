@@ -32,6 +32,9 @@ struct WorktreeDetailView: View {
                     },
                     onReturnToMeister: { issueId in
                         store.send(.issueReturnedToMeister(issueId: issueId, worktreeId: worktreeId))
+                    },
+                    onRowTapped: { issueId in
+                        store.send(.queueRowTapped(issueId: issueId))
                     }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -68,6 +71,7 @@ struct WorktreeQueueColumn: View {
     var teamFor: ((_ issue: LinearIssue) -> (key: String, tint: Color)?)?
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
+    var onRowTapped: ((_ issueId: String) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -103,6 +107,9 @@ struct WorktreeQueueColumn: View {
                                 onMarkComplete: issue.id == issues.first?.id ? onMarkComplete : nil,
                                 onReturnToMeister: onReturnToMeister.map { callback in
                                     { callback(issue.id) }
+                                },
+                                onRowTapped: onRowTapped.map { callback in
+                                    { callback(issue.id) }
                                 }
                             )
                         }
@@ -122,10 +129,32 @@ struct WorktreeIssueRow: View {
     var teamTint: Color?
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: (() -> Void)?
+    var onRowTapped: (() -> Void)?
 
     @Environment(\.keyBindings) private var bindings
 
     var body: some View {
+        Button {
+            onRowTapped?()
+        } label: {
+            rowContent
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            if let onMarkComplete {
+                Button("Mark as Done") { onMarkComplete() }
+                    .keyboardShortcut(for: .markIssueDone, in: bindings)
+            }
+            if let onReturn = onReturnToMeister {
+                Button("Return to Meister") {
+                    onReturn()
+                }
+                .keyboardShortcut(for: .returnIssueToMeister, in: bindings)
+            }
+        }
+    }
+
+    private var rowContent: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 if let teamKey, let teamTint {
@@ -170,17 +199,6 @@ struct WorktreeIssueRow: View {
         }
         .padding(8)
         .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 8))
-        .contextMenu {
-            if let onMarkComplete {
-                Button("Mark as Done") { onMarkComplete() }
-                    .keyboardShortcut(for: .markIssueDone, in: bindings)
-            }
-            if let onReturn = onReturnToMeister {
-                Button("Return to Meister") {
-                    onReturn()
-                }
-                .keyboardShortcut(for: .returnIssueToMeister, in: bindings)
-            }
-        }
+        .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 }
