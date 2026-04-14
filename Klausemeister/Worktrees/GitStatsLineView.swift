@@ -21,6 +21,10 @@ struct GitStatsLineView: View {
         Color(hexString: themeColors.palette[5])
     }
 
+    private var blueColor: Color {
+        Color(hexString: themeColors.palette[4])
+    }
+
     var body: some View {
         HStack(spacing: 6) {
             if stats.uncommittedFiles > 0 {
@@ -69,7 +73,7 @@ struct GitStatsLineView: View {
 
     private func prColor(_ state: PRState) -> Color {
         switch state {
-        case .open: .blue
+        case .open: blueColor
         case .merged: magentaColor
         case .closed: redColor
         }
