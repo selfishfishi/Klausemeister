@@ -9,6 +9,15 @@ struct TerminalContainerView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("inspectorOpen") private var inspectorOpenPref: Bool = false
 
+    private var inspectorViewState: TicketInspectorView.ViewState {
+        switch store.inspectorDetail {
+        case .empty: .empty
+        case .loading: .loading
+        case let .error(message): .error(message)
+        case let .loaded(detail): .loaded(detail)
+        }
+    }
+
     var body: some View {
         ZStack {
             NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -53,7 +62,7 @@ struct TerminalContainerView: View {
                     }
                 }
             )) {
-                TicketInspectorView(state: .empty)
+                TicketInspectorView(state: inspectorViewState)
                     .inspectorColumnWidth(min: 260, ideal: 340, max: 520)
             }
 

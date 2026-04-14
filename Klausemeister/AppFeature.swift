@@ -9,6 +9,7 @@ struct AppFeature {
         var showSidebar: Bool = true
         var showInspector: Bool = false
         var inspectorSelection: InspectorSelection?
+        var inspectorDetail: InspectorDetailLoadState = .empty
         var showMeister: Bool = true
         var meister = MeisterFeature.State()
         var worktree = WorktreeFeature.State()
@@ -26,6 +27,8 @@ struct AppFeature {
         case onAppear
         case toggleSidebar
         case toggleInspector
+        case inspectorSelectionRequested(issueId: String)
+        case inspectorDetailFetched(Result<InspectorTicketDetail, InspectorFetchError>)
         case themeChanged(AppTheme)
         case oauthCallbackReceived(URL)
         case showMeister
@@ -51,6 +54,7 @@ struct AppFeature {
 
     nonisolated private enum CancelID {
         case mcpServer
+        case inspectorFetch
     }
 
     @Dependency(\.actionRegistry) var actionRegistry
@@ -59,6 +63,7 @@ struct AppFeature {
     @Dependency(\.ghosttyApp) var ghosttyApp
     @Dependency(\.oauthClient) var oauthClient
     @Dependency(\.mcpServerClient) var mcpServerClient
+    @Dependency(\.linearAPIClient) var linearAPIClient
 
     var body: some Reducer<State, Action> {
         Scope(state: \.meister, action: \.meister) {
@@ -173,6 +178,9 @@ struct AppFeature {
             case let .worktree(.delegate(.errorOccurred(message))):
                 return .send(.statusBar(.errorReported(source: .worktree, message: message)))
 
+            case let .worktree(.delegate(.inspectorSelectionRequested(issueId))):
+                return .send(.inspectorSelectionRequested(issueId: issueId))
+
             case .worktree:
                 return .none
 
@@ -182,6 +190,31 @@ struct AppFeature {
 
             case .toggleInspector:
                 state.showInspector.toggle()
+                return .none
+
+            case let .inspectorSelectionRequested(issueId):
+                state.inspectorSelection = .ticket(id: issueId)
+                state.showInspector = true
+                state.inspectorDetail = .loading
+                return .run { [linearAPIClient] send in
+                    do {
+                        let detail = try await linearAPIClient.fetchTicketDetail(issueId)
+                        await send(.inspectorDetailFetched(.success(detail)))
+                    } catch {
+                        await send(.inspectorDetailFetched(
+                            .failure(InspectorFetchError(message: error.localizedDescription))
+                        ))
+                    }
+                }
+                .cancellable(id: CancelID.inspectorFetch, cancelInFlight: true)
+
+            case let .inspectorDetailFetched(result):
+                switch result {
+                case let .success(detail):
+                    state.inspectorDetail = .loaded(detail)
+                case let .failure(err):
+                    state.inspectorDetail = .error(err.message)
+                }
                 return .none
 
             case let .themeChanged(theme):
@@ -422,4 +455,15 @@ struct AppFeature {
 
 enum InspectorSelection: Equatable {
     case ticket(id: String)
+}
+
+enum InspectorDetailLoadState: Equatable {
+    case empty
+    case loading
+    case error(String)
+    case loaded(InspectorTicketDetail)
+}
+
+struct InspectorFetchError: Error, Equatable {
+    let message: String
 }
