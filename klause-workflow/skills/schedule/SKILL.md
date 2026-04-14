@@ -110,7 +110,7 @@ Do NOT proceed without explicit user approval.
 On approval, enqueue each ticket in plan order using the Klausemeister MCP:
 
 For each worktree in the plan, for each item in order:
-1. Call `enqueueItem` with `issueLinearId` and `targetWorktreeId`
+1. Call `enqueueItem` with `issueLinearId` (UUID **or** human identifier like `KLA-136`) and `targetWorktreeId`
 2. If it fails, report the error and continue with the next item
 
 After all enqueue calls complete, report:
