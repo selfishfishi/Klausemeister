@@ -162,6 +162,9 @@ struct AppFeature {
             case let .meister(.delegate(.errorOccurred(message))):
                 return .send(.statusBar(.errorReported(source: .meister, message: message)))
 
+            case let .meister(.delegate(.inspectorSelectionRequested(issueId))):
+                return .send(.inspectorSelectionRequested(issueId: issueId))
+
             case .meister:
                 return .none
 

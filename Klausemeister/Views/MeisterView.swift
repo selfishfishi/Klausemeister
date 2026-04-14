@@ -131,6 +131,9 @@ struct MeisterView: View {
                                 },
                                 onAdvance: { worktreeId in
                                     store.send(.advanceWorkflowTapped(worktreeId: worktreeId))
+                                },
+                                onCardTapped: { issueId in
+                                    store.send(.kanbanCardTapped(issueId: issueId))
                                 }
                             )
                             .transition(

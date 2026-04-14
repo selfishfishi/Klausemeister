@@ -73,6 +73,7 @@ struct MeisterFeature {
         case statusUpdateSucceeded(issueId: String)
         case statusUpdateFailed(issueId: String, restoreTo: MeisterState, originalIssue: LinearIssue)
         case removeIssueTapped(issueId: String)
+        case kanbanCardTapped(issueId: String)
         case stageVisibilityToggled(MeisterState)
         case assignIssueToWorktree(issue: LinearIssue, worktreeId: String)
         case issueReturnedFromWorktree(issue: LinearIssue)
@@ -103,6 +104,7 @@ struct MeisterFeature {
             )
             case syncFailed(message: String)
             case errorOccurred(message: String)
+            case inspectorSelectionRequested(issueId: String)
         }
     }
 
@@ -399,6 +401,9 @@ struct MeisterFeature {
                 return .run { _ in
                     try await databaseClient.deleteImportedIssue(issueId)
                 }
+
+            case let .kanbanCardTapped(issueId):
+                return .send(.delegate(.inspectorSelectionRequested(issueId: issueId)))
 
             case let .stageVisibilityToggled(stage):
                 if state.hiddenStages.contains(stage) {
