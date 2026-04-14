@@ -79,6 +79,7 @@ struct MeisterFeature {
         case removeIssueFromColumns(issueId: String)
         case issueDroppedFromWorktree(issueId: String, onColumn: MeisterState)
         case issueDroppedFromWorktreeResolved(issue: LinearIssue, onColumn: MeisterState)
+        case advanceWorkflowTapped(worktreeId: String)
         case teamsConfirmed([LinearTeam])
         case teamFilterToggled(teamId: String)
         case projectFilterToggled(projectName: String)
@@ -93,6 +94,7 @@ struct MeisterFeature {
         enum Delegate: Equatable {
             case issueAssignedToWorktree(issue: LinearIssue, worktreeId: String)
             case issueReturnedFromWorktreeByDrop(issueId: String)
+            case advanceWorkflowRequested(worktreeId: String)
             case syncStarted
             case syncSucceeded
             case syncPartiallyFailed(
@@ -425,6 +427,9 @@ struct MeisterFeature {
                     state.columns[id: firstColumn.id]?.issues.append(issue)
                 }
                 return .none
+
+            case let .advanceWorkflowTapped(worktreeId):
+                return .send(.delegate(.advanceWorkflowRequested(worktreeId: worktreeId)))
 
             case let .issueDroppedFromWorktree(issueId, onColumn):
                 return .run { send in

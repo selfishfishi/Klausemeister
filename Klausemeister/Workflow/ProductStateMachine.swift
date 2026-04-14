@@ -15,6 +15,20 @@ enum WorkflowCommand: String, CaseIterable, Equatable, Hashable {
     case complete
     case pull
     case push
+
+    /// Human-readable verb for button labels and menus.
+    var verbLabel: String {
+        switch self {
+        case .define: "Define"
+        case .execute: "Execute"
+        case .review: "Review"
+        case .openPR: "Open PR"
+        case .babysit: "Babysit"
+        case .complete: "Complete"
+        case .pull: "Pull"
+        case .push: "Push"
+        }
+    }
 }
 
 /// The product state: a pair of kanban (ticket lifecycle) and worktree

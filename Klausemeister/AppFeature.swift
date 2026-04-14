@@ -123,6 +123,9 @@ struct AppFeature {
             case let .meister(.delegate(.issueReturnedFromWorktreeByDrop(issueId))):
                 return .send(.worktree(.issueRemovedByKanbanDrop(issueId: issueId)))
 
+            case let .meister(.delegate(.advanceWorkflowRequested(worktreeId))):
+                return .send(.worktree(.advanceWorkflowRequested(worktreeId: worktreeId)))
+
             case .meister(.delegate(.syncStarted)):
                 return .send(.statusBar(.syncStateChanged(true)))
 
