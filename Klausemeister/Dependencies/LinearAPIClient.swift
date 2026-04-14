@@ -1,6 +1,7 @@
 // swiftlint:disable file_length
 import Dependencies
 import Foundation
+import OSLog
 
 struct LinearAPIClient {
     // swiftlint:disable:next identifier_name
@@ -11,6 +12,7 @@ struct LinearAPIClient {
     var fetchLabels: @Sendable () async throws -> [String]
     var fetchWorkflowStatesByTeam: @Sendable () async throws -> WorkflowStatesByTeam
     var updateIssueStatus: @Sendable (_ issueId: String, _ statusId: String) async throws -> Void
+    var fetchTicketDetail: @Sendable (_ id: String) async throws -> InspectorTicketDetail
 }
 
 // MARK: - Shared GraphQL helper
@@ -416,6 +418,27 @@ extension LinearAPIClient: DependencyKey {
                 _ = try await graphQLRequest(
                     token: token, query: query, variables: variables
                 )
+            },
+
+            fetchTicketDetail: { id in
+                let token = try await loadToken(keychainClient: keychainClient)
+
+                let query = """
+                query($id: String!) {
+                  issue(id: $id) {
+                    id identifier title url description
+                    state { id name type }
+                    project { id name }
+                    attachments(first: 25) {
+                      nodes { id url title sourceType metadata }
+                    }
+                  }
+                }
+                """
+                let data = try await graphQLRequest(
+                    token: token, query: query, variables: ["id": id]
+                )
+                return try await decodeTicketDetail(from: data, requestedId: id)
             }
         )
     }()
@@ -427,7 +450,8 @@ extension LinearAPIClient: DependencyKey {
         fetchTeams: unimplemented("LinearAPIClient.fetchTeams"),
         fetchLabels: unimplemented("LinearAPIClient.fetchLabels"),
         fetchWorkflowStatesByTeam: unimplemented("LinearAPIClient.fetchWorkflowStatesByTeam"),
-        updateIssueStatus: unimplemented("LinearAPIClient.updateIssueStatus")
+        updateIssueStatus: unimplemented("LinearAPIClient.updateIssueStatus"),
+        fetchTicketDetail: unimplemented("LinearAPIClient.fetchTicketDetail")
     )
 }
 
@@ -500,6 +524,193 @@ nonisolated private struct LabeledIssuesResponse: Decodable {
 }
 
 // swiftlint:enable nesting
+
+// MARK: - Ticket detail decoding
+
+// swiftlint:disable nesting
+nonisolated struct TicketDetailResponse: Decodable {
+    struct DataEnvelope: Decodable {
+        struct Issue: Decodable {
+            let id: String
+            let identifier: String
+            let title: String
+            let url: String
+            let description: String?
+            struct State: Decodable {
+                let id: String
+                let name: String
+                let type: String
+            }
+
+            let state: State
+            struct Project: Decodable {
+                let id: String
+                let name: String
+            }
+
+            let project: Project?
+            struct Attachments: Decodable {
+                struct Node: Decodable {
+                    let id: String
+                    let url: String
+                    let title: String
+                    let sourceType: String?
+                    /// metadata is a JSON object — decode as raw Data and parse
+                    let metadata: JSONValue?
+                }
+
+                let nodes: [Node]
+            }
+
+            let attachments: Attachments?
+        }
+
+        let issue: Issue?
+    }
+
+    let data: DataEnvelope
+}
+
+// swiftlint:enable nesting
+
+/// Minimal JSON value for decoding Linear's `Attachment.metadata` (free-form object).
+nonisolated enum JSONValue: Decodable, Equatable {
+    case string(String)
+    case int(Int)
+    case double(Double)
+    case bool(Bool)
+    case object([String: JSONValue])
+    case array([JSONValue])
+    case null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { self = .null; return }
+        if let value = try? container.decode(Bool.self) { self = .bool(value); return }
+        if let value = try? container.decode(Int.self) { self = .int(value); return }
+        if let value = try? container.decode(Double.self) { self = .double(value); return }
+        if let value = try? container.decode(String.self) { self = .string(value); return }
+        if let value = try? container.decode([String: JSONValue].self) { self = .object(value); return }
+        if let value = try? container.decode([JSONValue].self) { self = .array(value); return }
+        throw DecodingError.typeMismatch(
+            JSONValue.self,
+            DecodingError.Context(
+                codingPath: decoder.codingPath,
+                debugDescription: "Unsupported JSON value"
+            )
+        )
+    }
+
+    var stringValue: String? {
+        if case let .string(value) = self { return value }
+        return nil
+    }
+
+    var intValue: Int? {
+        switch self {
+        case let .int(value): value
+        case let .double(value): Int(value)
+        case let .string(value): Int(value)
+        default: nil
+        }
+    }
+
+    func object(_ key: String) -> JSONValue? {
+        if case let .object(dict) = self { return dict[key] }
+        return nil
+    }
+}
+
+nonisolated private let ticketDetailLog = Logger(
+    subsystem: "com.klausemeister", category: "LinearAPI"
+)
+
+nonisolated private let pullRequestURLRegex: NSRegularExpression? = try? NSRegularExpression(
+    pattern: #"https?://github\.com/([^/]+)/([^/]+)/pull/(\d+)"#
+)
+
+/// Decodes a GraphQL ticket-detail response and maps to `InspectorTicketDetail`.
+/// Exposed at internal visibility so tests can feed raw JSON directly.
+nonisolated func decodeTicketDetail(
+    from data: Data, requestedId: String
+) async throws -> InspectorTicketDetail {
+    let envelope = try await decodeOffMain(TicketDetailResponse.self, from: data)
+    guard let issue = envelope.data.issue else {
+        throw LinearAPIError.issueNotFound(requestedId)
+    }
+    let attached = (issue.attachments?.nodes ?? [])
+        .filter { ($0.sourceType ?? "").lowercased() == "github" }
+        .map(mapPullRequestAttachment)
+    return InspectorTicketDetail(
+        id: issue.id,
+        identifier: issue.identifier,
+        title: issue.title,
+        descriptionMarkdown: issue.description,
+        url: issue.url,
+        projectName: issue.project?.name,
+        projectId: issue.project?.id,
+        status: InspectorTicketStatus(
+            id: issue.state.id,
+            name: issue.state.name,
+            type: issue.state.type
+        ),
+        attachedPRs: attached
+    )
+}
+
+nonisolated private func mapPullRequestAttachment(
+    _ node: TicketDetailResponse.DataEnvelope.Issue.Attachments.Node
+) -> AttachedPullRequest {
+    let metadata = node.metadata
+    let state = parsePRState(metadata: metadata, url: node.url)
+    let (repo, number) = parseRepoAndNumber(metadata: metadata, url: node.url)
+    return AttachedPullRequest(
+        id: node.id,
+        url: node.url,
+        title: node.title,
+        number: number,
+        repo: repo,
+        state: state
+    )
+}
+
+nonisolated private func parsePRState(
+    metadata: JSONValue?, url: String
+) -> AttachedPullRequest.State {
+    let raw = metadata?.object("status")?.stringValue
+        ?? metadata?.object("state")?.stringValue
+    guard let raw else {
+        ticketDetailLog.warning("PR attachment missing state; url=\(url, privacy: .public)")
+        return .unknown
+    }
+    return AttachedPullRequest.State(rawValue: raw.lowercased()) ?? .unknown
+}
+
+nonisolated private func parseRepoAndNumber(
+    metadata: JSONValue?, url: String
+) -> (repo: String?, number: Int?) {
+    let metadataRepo = metadata?.object("repo")?.stringValue
+        ?? metadata?.object("repository")?.stringValue
+    let metadataNumber = metadata?.object("number")?.intValue
+    if metadataRepo != nil, metadataNumber != nil {
+        return (metadataRepo, metadataNumber)
+    }
+    // Fall back to URL parsing: https://github.com/<owner>/<repo>/pull/<n>
+    guard let regex = pullRequestURLRegex else { return (metadataRepo, metadataNumber) }
+    let range = NSRange(url.startIndex ..< url.endIndex, in: url)
+    guard let match = regex.firstMatch(in: url, range: range),
+          match.numberOfRanges == 4,
+          let ownerRange = Range(match.range(at: 1), in: url),
+          let repoRange = Range(match.range(at: 2), in: url),
+          let numberRange = Range(match.range(at: 3), in: url)
+    else {
+        return (metadataRepo, metadataNumber)
+    }
+    let owner = String(url[ownerRange])
+    let repoName = String(url[repoRange])
+    let parsedNumber = Int(url[numberRange])
+    return (metadataRepo ?? "\(owner)/\(repoName)", metadataNumber ?? parsedNumber)
+}
 
 // MARK: - API Errors
 
