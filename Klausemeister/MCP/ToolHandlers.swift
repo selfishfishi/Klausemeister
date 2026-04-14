@@ -366,6 +366,8 @@ enum ToolHandlers {
             entries.append(WorktreeEntry(
                 worktreeId: record.worktreeId,
                 name: record.name,
+                repoId: record.repoId,
+                gitWorktreePath: record.gitWorktreePath,
                 inboxCount: inboxItems.count,
                 inboxItems: inboxItems,
                 processingIssueLinearId: processingItem?.issueLinearId,
@@ -463,6 +465,8 @@ extension ToolHandlers {
     struct WorktreeEntry: Encodable, Equatable {
         let worktreeId: String
         let name: String
+        let repoId: String?
+        let gitWorktreePath: String
         let inboxCount: Int
         let inboxItems: [InboxEntry]
         let processingIssueLinearId: String?
