@@ -53,8 +53,8 @@ struct TerminalContainerView: View {
                     }
                 }
             )) {
-                InspectorEmptyView()
-                    .inspectorColumnWidth(min: 220, ideal: 300, max: 480)
+                TicketInspectorView(state: .empty)
+                    .inspectorColumnWidth(min: 260, ideal: 340, max: 520)
             }
 
             if let paletteStore = store.scope(
