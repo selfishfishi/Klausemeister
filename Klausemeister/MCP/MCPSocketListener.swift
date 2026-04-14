@@ -565,7 +565,7 @@ private enum ToolCatalog {
         Tool(
             name: "listWorktrees",
             // swiftlint:disable:next line_length
-            description: "Returns all Klausemeister-tracked worktrees with their queue state: inbox items (with sort order), processing item, and outbox count. Use this to discover available worktrees and their capacity.",
+            description: "Returns all Klausemeister-tracked worktrees with their queue state: inbox items (with sort order), processing item, outbox count, and repo identity (repoId, gitWorktreePath). Use this to discover available worktrees and their capacity. Filter by gitWorktreePath/repoId to scope to a specific repo when scheduling.",
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([:]),

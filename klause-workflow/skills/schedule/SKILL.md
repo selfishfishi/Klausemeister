@@ -25,9 +25,15 @@ Use the Linear MCP to get all issues in the project:
 
 ### Fetch worktree capacity from Klausemeister
 
-Call `listWorktrees` (Klausemeister MCP) to get all tracked worktrees with their current queue state.
+Call `listWorktrees` (Klausemeister MCP) to get all tracked worktrees with their current queue state. The response includes `repoId` and `gitWorktreePath` per entry.
 
-If no worktrees are available, stop: "No worktrees found in Klausemeister."
+**Filter to the current repo.** Klausemeister tracks worktrees across multiple repos and they often share names (`alpha`, `beta`, ...). Scheduling a Klause-team ticket onto another repo's `epsilon` would be silently wrong. To scope:
+
+1. Resolve the current repo root: `git rev-parse --show-toplevel`. If the result contains `/.worktrees/<name>` strip back to the parent — that is the canonical repo root.
+2. Keep only worktree entries whose `gitWorktreePath` is inside the canonical repo root (i.e. `gitWorktreePath` starts with `<repo-root>/` or equals `<repo-root>`). This catches both the main checkout and any `.worktrees/*` siblings.
+3. If no worktrees match, stop: "No Klausemeister worktrees in this repo (`<repo-root>`). Create one before scheduling."
+
+If `listWorktrees` itself returns nothing, stop: "No worktrees found in Klausemeister."
 
 ### Identify already-queued issues
 
