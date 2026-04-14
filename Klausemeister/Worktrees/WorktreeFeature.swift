@@ -52,6 +52,7 @@ struct Worktree: Equatable, Identifiable {
     var tmuxSessionStatus: TmuxSessionStatus = .unknown
     var meisterStatus: MeisterStatus = .none
     var claudeStatus: ClaudeSessionState = .offline
+    var claudeStatusText: String?
     var gitStats: GitStats?
     var inbox: [LinearIssue] = []
     var processing: LinearIssue?
@@ -139,6 +140,7 @@ struct WorktreeFeature {
         case binding(BindingAction<State>)
         case onAppear
         case claudeStatusChanged(worktreeId: String, state: ClaudeSessionState)
+        case claudeStatusTextChanged(worktreeId: String, text: String)
         case worktreesLoaded(
             repositories: [RepositoryRecord],
             worktrees: [WorktreeRecord],
@@ -1564,6 +1566,19 @@ struct WorktreeFeature {
 
             case let .claudeStatusChanged(worktreeId, claudeState):
                 state.worktrees[id: worktreeId]?.claudeStatus = claudeState
+                // Clear stale progress text on any non-working transition — the
+                // last `reportProgress` line would otherwise persist past the
+                // end of the work burst that produced it.
+                switch claudeState {
+                case .idle, .blocked, .error, .offline:
+                    state.worktrees[id: worktreeId]?.claudeStatusText = nil
+                case .working:
+                    break
+                }
+                return .none
+
+            case let .claudeStatusTextChanged(worktreeId, text):
+                state.worktrees[id: worktreeId]?.claudeStatusText = text
                 return .none
 
             // MARK: - Meister Claude Code lifecycle (KLA-74)
