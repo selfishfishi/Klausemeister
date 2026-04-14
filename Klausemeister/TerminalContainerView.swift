@@ -53,18 +53,18 @@ struct TerminalContainerView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 StatusBarView(store: store.scope(state: \.statusBar, action: \.statusBar))
             }
-            .navigationSplitViewStyle(.balanced)
-            .inspector(isPresented: Binding(
-                get: { store.showInspector },
-                set: { newValue in
-                    if newValue != store.showInspector {
-                        store.send(.toggleInspector)
-                    }
+            .safeAreaInset(edge: .trailing, spacing: 0) {
+                if store.showInspector {
+                    TicketInspectorView(
+                        state: inspectorViewState,
+                        onClose: { store.send(.toggleInspector) }
+                    )
+                    .frame(width: 320)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
-            )) {
-                TicketInspectorView(state: inspectorViewState)
-                    .inspectorColumnWidth(min: 260, ideal: 340, max: 520)
             }
+            .animation(.easeInOut(duration: 0.2), value: store.showInspector)
+            .navigationSplitViewStyle(.balanced)
 
             if let paletteStore = store.scope(
                 state: \.commandPalette, action: \.commandPalette

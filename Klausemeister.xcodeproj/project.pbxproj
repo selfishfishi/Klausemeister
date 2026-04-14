@@ -14,6 +14,7 @@
 		A8E7306B2F85392500806034 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = A8E7306A2F85392500806034 /* MCP */; };
 		A8E731002F88B4B700806034 /* SwiftUINavigation in Frameworks */ = {isa = PBXBuildFile; productRef = A8E730FF2F88B4B700806034 /* SwiftUINavigation */; };
 		A8E731032F88B5CD00806034 /* SwiftNavigation in Frameworks */ = {isa = PBXBuildFile; productRef = A8E731022F88B5CD00806034 /* SwiftNavigation */; };
+		A8E753292F8E8B8000806034 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = A8E753282F8E8B8000806034 /* MarkdownUI */; };
 		A8FX00042FA9000100806034 /* klause-mcp-shim in CopyFiles */ = {isa = PBXBuildFile; fileRef = A8E730702F85395000806034 /* klause-mcp-shim */; };
 		A8GR00022F816B35005797B3 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A8GR00012F816B35005797B3 /* GRDB */; };
 		A8ID00022F816B35005797B3 /* IdentifiedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = A8ID00012F816B35005797B3 /* IdentifiedCollections */; };
@@ -112,6 +113,7 @@
 				A869F53B2F817984005797B3 /* GhosttyTerminal in Frameworks */,
 				A8E731032F88B5CD00806034 /* SwiftNavigation in Frameworks */,
 				A869F53A2F817984005797B3 /* GhosttyKit in Frameworks */,
+				A8E753292F8E8B8000806034 /* MarkdownUI in Frameworks */,
 				A8TCA0022F816B35005797B3 /* ComposableArchitecture in Frameworks */,
 				A8ID00022F816B35005797B3 /* IdentifiedCollections in Frameworks */,
 				A8CP00022F816B35005797B3 /* CasePathsCore in Frameworks */,
@@ -207,6 +209,7 @@
 				A8SN00012F816B35005797B3 /* SwiftNavigation */,
 				A8E7306A2F85392500806034 /* MCP */,
 				A8E730FF2F88B4B700806034 /* SwiftUINavigation */,
+				A8E753282F8E8B8000806034 /* MarkdownUI */,
 			);
 			productName = Klausemeister;
 			productReference = A869EEE02F816B35005797B3 /* Klausemeister.app */;
@@ -299,6 +302,7 @@
 				A8GR00002F816B35005797B3 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
 				A8E730692F85392500806034 /* XCRemoteSwiftPackageReference "swift-sdk" */,
 				A8E730FE2F88B4B700806034 /* XCRemoteSwiftPackageReference "swift-navigation" */,
+				A8E753272F8E8B8000806034 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A869EEE12F816B35005797B3 /* Products */;
@@ -700,6 +704,14 @@
 				minimumVersion = 2.8.0;
 			};
 		};
+		A8E753272F8E8B8000806034 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.4.1;
+			};
+		};
 		A8GHOST002F816B35005797B3 /* XCRemoteSwiftPackageReference "libghostty-spm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/Lakr233/libghostty-spm.git";
@@ -751,6 +763,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A8E730FE2F88B4B700806034 /* XCRemoteSwiftPackageReference "swift-navigation" */;
 			productName = SwiftNavigation;
+		};
+		A8E753282F8E8B8000806034 /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A8E753272F8E8B8000806034 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
+			productName = MarkdownUI;
 		};
 		A8GHOST012F816B35005797B3 /* GhosttyKit */ = {
 			isa = XCSwiftPackageProductDependency;

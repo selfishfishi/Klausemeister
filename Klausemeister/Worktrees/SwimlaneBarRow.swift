@@ -11,6 +11,7 @@ struct SwimlaneBarRow: View {
     var teamFor: ((_ issueId: String) -> LinearTeam?)?
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
+    var onSelectIssue: ((_ issueId: String) -> Void)?
 
     @Environment(\.keyBindings) private var bindings
     var onDropToInbox: ((_ issueId: String) -> Void)?
@@ -119,6 +120,8 @@ struct SwimlaneBarRow: View {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .strokeBorder(queuedTint.opacity(0.45), lineWidth: 0.75)
         )
+        .contentShape(Rectangle())
+        .onTapGesture { onSelectIssue?(issue.id) }
         .draggable(issue.id)
         .contextMenu {
             if let onReturnToMeister {
@@ -143,6 +146,8 @@ struct SwimlaneBarRow: View {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(doneTint.opacity(0.08))
         )
+        .contentShape(Rectangle())
+        .onTapGesture { onSelectIssue?(issue.id) }
         .draggable(issue.id)
         .contextMenu {
             if let onReturnToMeister {
@@ -183,6 +188,8 @@ struct SwimlaneBarRow: View {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .strokeBorder(activeTint.opacity(0.65), lineWidth: 1.2)
         )
+        .contentShape(Rectangle())
+        .onTapGesture { onSelectIssue?(issue.id) }
         .draggable(issue.id)
         .contextMenu {
             if let onMarkComplete {

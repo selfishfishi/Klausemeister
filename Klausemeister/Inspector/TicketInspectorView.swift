@@ -13,18 +13,54 @@ struct TicketInspectorView: View {
     var onOpenLinear: (URL) -> Void = { NSWorkspace.shared.open($0) }
     var onOpenPR: (URL) -> Void = { NSWorkspace.shared.open($0) }
     var onRetry: (() -> Void)?
+    var onClose: (() -> Void)?
 
     @Environment(\.themeColors) private var themeColors
 
     var body: some View {
-        ZStack {
-            Color(hexString: themeColors.background)
-            themeColors.accentColor.opacity(0.04)
-
+        VStack(spacing: 0) {
+            topBar
             content
-                .padding(16)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .glassEffect(
+            .regular.tint(themeColors.accentColor.opacity(0.04)),
+            in: Rectangle()
+        )
         .ignoresSafeArea()
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 8) {
+            Spacer(minLength: 0)
+            if case let .loaded(detail) = state, let url = URL(string: detail.url) {
+                Button {
+                    onOpenLinear(url)
+                } label: {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Open in Linear")
+            }
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20, height: 20)
+                        .background(.fill.tertiary, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Close inspector")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
     }
 
     @ViewBuilder
@@ -77,7 +113,6 @@ struct TicketInspectorView: View {
                 if !detail.attachedPRs.isEmpty {
                     prSection(detail.attachedPRs)
                 }
-                openInLinearButton(detail)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -106,21 +141,10 @@ struct TicketInspectorView: View {
         if let markdown = detail.descriptionMarkdown, !markdown.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 sectionHeader("Description")
-                descriptionText(markdown)
+                MarkdownTextView(markdown: markdown)
                     .textSelection(.enabled)
-                    .font(.callout)
             }
         }
-    }
-
-    private func descriptionText(_ markdown: String) -> Text {
-        if let attributed = try? AttributedString(
-            markdown: markdown,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        ) {
-            return Text(attributed)
-        }
-        return Text(markdown)
     }
 
     private func prSection(_ prs: [AttachedPullRequest]) -> some View {
@@ -162,19 +186,6 @@ struct TicketInspectorView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
-    private func openInLinearButton(_ detail: InspectorTicketDetail) -> some View {
-        if let url = URL(string: detail.url) {
-            Button {
-                onOpenLinear(url)
-            } label: {
-                Label("Open in Linear", systemImage: "arrow.up.right.square")
-                    .font(.caption)
-            }
-            .buttonStyle(.bordered)
-        }
     }
 
     private func sectionHeader(_ text: String) -> some View {
