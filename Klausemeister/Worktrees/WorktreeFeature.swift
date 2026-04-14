@@ -141,6 +141,7 @@ struct WorktreeFeature {
         case onAppear
         case claudeStatusChanged(worktreeId: String, state: ClaudeSessionState)
         case claudeStatusTextChanged(worktreeId: String, text: String)
+        case advanceWorkflowRequested(worktreeId: String)
         case worktreesLoaded(
             repositories: [RepositoryRecord],
             worktrees: [WorktreeRecord],
@@ -1580,6 +1581,25 @@ struct WorktreeFeature {
             case let .claudeStatusTextChanged(worktreeId, text):
                 state.worktrees[id: worktreeId]?.claudeStatusText = text
                 return .none
+
+            case let .advanceWorkflowRequested(worktreeId):
+                // Inject "/klause-next" into the meister's tmux session. We
+                // delegate command dispatch to the meister itself — sending
+                // the generic "/klause-next" lets it re-read product state
+                // and pick the right step, avoiding races against the cached
+                // kanban state. The gate on `claudeStatus == .idle` lives in
+                // the view; the effect still attempts to send regardless so
+                // a user that clicks through a disabled-but-stale button
+                // doesn't silently no-op. TmuxClient.sendKeys appends the
+                // `Enter` keyword itself — do not add "\r".
+                guard let worktree = state.worktrees[id: worktreeId] else { return .none }
+                let sessionName = WorktreeConfig.tmuxSessionName(
+                    forWorktreeName: worktree.name,
+                    repoName: worktree.repoName
+                )
+                return .run { [tmuxClient] _ in
+                    try? await tmuxClient.sendKeys(sessionName, "/klause-next")
+                }
 
             // MARK: - Meister Claude Code lifecycle (KLA-74)
 
