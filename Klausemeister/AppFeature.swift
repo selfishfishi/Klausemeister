@@ -128,9 +128,6 @@ struct AppFeature {
             case let .meister(.delegate(.issueReturnedFromWorktreeByDrop(issueId))):
                 return .send(.worktree(.issueRemovedByKanbanDrop(issueId: issueId)))
 
-            case let .meister(.delegate(.advanceWorkflowRequested(worktreeId))):
-                return .send(.worktree(.advanceWorkflowRequested(worktreeId: worktreeId)))
-
             case .meister(.delegate(.syncStarted)):
                 return .send(.statusBar(.syncStateChanged(true)))
 
@@ -183,6 +180,9 @@ struct AppFeature {
 
             case let .worktree(.delegate(.inspectorSelectionRequested(issueId))):
                 return .send(.inspectorSelectionRequested(issueId: issueId))
+
+            case let .worktree(.delegate(.moveIssueStatusRequested(issueId, target))):
+                return .send(.meister(.moveToStatusTapped(issueId: issueId, target: target)))
 
             case .worktree:
                 return .none

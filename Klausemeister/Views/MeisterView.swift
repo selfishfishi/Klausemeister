@@ -129,9 +129,6 @@ struct MeisterView: View {
                                 onDrop: { issueId in
                                     store.send(.issueDropped(issueId: issueId, onColumn: column.id))
                                 },
-                                onAdvance: { worktreeId in
-                                    store.send(.advanceWorkflowTapped(worktreeId: worktreeId))
-                                },
                                 onCardTapped: { issueId in
                                     store.send(.kanbanCardTapped(issueId: issueId))
                                 }

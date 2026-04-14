@@ -141,7 +141,14 @@ struct WorktreeFeature {
         case onAppear
         case claudeStatusChanged(worktreeId: String, state: ClaudeSessionState)
         case claudeStatusTextChanged(worktreeId: String, text: String)
-        case advanceWorkflowRequested(worktreeId: String)
+        /// Inject `slashCommand` (e.g. `/klause-next`, `/klause-review`) into
+        /// the worktree's tmux session via `TmuxClient.sendKeys`. The meister
+        /// reads it as if the user typed it.
+        case sendSlashCommandRequested(worktreeId: String, slashCommand: String)
+        /// Ask the Meister kanban to move an issue to a different state
+        /// (Linear-only status change). Emitted as a delegate so the
+        /// cross-feature move stays in one place.
+        case moveIssueStatusRequested(issueId: String, target: MeisterState)
         case worktreesLoaded(
             repositories: [RepositoryRecord],
             worktrees: [WorktreeRecord],
@@ -244,6 +251,9 @@ struct WorktreeFeature {
             case issueRemovedFromKanban(issueId: String)
             case errorOccurred(message: String)
             case inspectorSelectionRequested(issueId: String)
+            /// Forwarded to MeisterFeature — Linear-only status change from
+            /// the swimlane "Move to…" submenu.
+            case moveIssueStatusRequested(issueId: String, target: MeisterState)
         }
     }
 
@@ -1589,24 +1599,29 @@ struct WorktreeFeature {
                 state.worktrees[id: worktreeId]?.claudeStatusText = text
                 return .none
 
-            case let .advanceWorkflowRequested(worktreeId):
-                // Inject "/klause-next" into the meister's tmux session. We
-                // delegate command dispatch to the meister itself — sending
-                // the generic "/klause-next" lets it re-read product state
-                // and pick the right step, avoiding races against the cached
-                // kanban state. The gate on `claudeStatus == .idle` lives in
-                // the view; the effect still attempts to send regardless so
-                // a user that clicks through a disabled-but-stale button
-                // doesn't silently no-op. TmuxClient.sendKeys appends the
-                // `Enter` keyword itself — do not add "\r".
+            case let .sendSlashCommandRequested(worktreeId, slashCommand):
+                // Inject `slashCommand` into the meister's tmux session. The
+                // view layer is responsible for gating on `claudeStatus`; the
+                // effect still attempts to send regardless so a user clicking
+                // through a disabled-but-stale control doesn't silently no-op.
+                // TmuxClient.sendKeys appends the `Enter` keyword itself — do
+                // not add "\r" or "\n".
                 guard let worktree = state.worktrees[id: worktreeId] else { return .none }
                 let sessionName = WorktreeConfig.tmuxSessionName(
                     forWorktreeName: worktree.name,
                     repoName: worktree.repoName
                 )
                 return .run { [tmuxClient] _ in
-                    try? await tmuxClient.sendKeys(sessionName, "/klause-next")
+                    try? await tmuxClient.sendKeys(sessionName, slashCommand)
                 }
+
+            case let .moveIssueStatusRequested(issueId, target):
+                // Bubble up to AppFeature, which forwards to MeisterFeature
+                // to update Linear state (no slash command involved).
+                return .send(.delegate(.moveIssueStatusRequested(
+                    issueId: issueId,
+                    target: target
+                )))
 
             // MARK: - Meister Claude Code lifecycle (KLA-74)
 
