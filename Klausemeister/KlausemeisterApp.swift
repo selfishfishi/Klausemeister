@@ -61,6 +61,11 @@ struct KlausemeisterApp: App {
                 }
                 .keyboardShortcut(for: .toggleSidebar, in: bindings)
 
+                Button(AppCommand.toggleInspector.displayName) {
+                    store.send(.toggleInspector)
+                }
+                .keyboardShortcut(for: .toggleInspector, in: bindings)
+
                 Button(AppCommand.openCommandPalette.displayName) {
                     store.send(.openCommandPalette)
                 }

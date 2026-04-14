@@ -3,6 +3,7 @@ import Foundation
 enum AppCommand: String, CaseIterable, Hashable {
     // App-level commands
     case toggleSidebar
+    case toggleInspector
     case showMeister
     case showWorktrees
     case openCommandPalette
@@ -32,6 +33,7 @@ enum AppCommand: String, CaseIterable, Hashable {
     nonisolated var displayName: String {
         switch self {
         case .toggleSidebar: "Toggle Sidebar"
+        case .toggleInspector: "Toggle Inspector"
         case .showMeister: "Show Meister"
         case .showWorktrees: "Show Worktrees"
         case .openCommandPalette: "Open Command Palette"
@@ -51,7 +53,7 @@ enum AppCommand: String, CaseIterable, Hashable {
 
     nonisolated var category: Category {
         switch self {
-        case .toggleSidebar: .view
+        case .toggleSidebar, .toggleInspector: .view
         case .showMeister, .showWorktrees, .openCommandPalette, .openWorktreeSwitcher: .navigation
         case .syncLinearIssues, .openLinearAuth, .openTeamSettings: .linear
         case .newWorktree, .deleteWorktree: .worktree
@@ -63,6 +65,7 @@ enum AppCommand: String, CaseIterable, Hashable {
     nonisolated var helpText: String {
         switch self {
         case .toggleSidebar: "Show or hide the sidebar"
+        case .toggleInspector: "Show or hide the inspector panel"
         case .showMeister: "Switch to the Meister view"
         case .showWorktrees: "Switch to the Worktrees view"
         case .openCommandPalette: "Search and run any command"
@@ -83,6 +86,7 @@ enum AppCommand: String, CaseIterable, Hashable {
     nonisolated var defaultBinding: KeyBinding? {
         switch self {
         case .toggleSidebar: KeyBinding(key: "r", modifiers: .command)
+        case .toggleInspector: KeyBinding(key: "l", modifiers: .command)
         case .openCommandPalette: KeyBinding(key: "p", modifiers: .control)
         case .toggleDebugPanel: KeyBinding(key: "d", modifiers: [.command, .shift])
         case .openWorktreeSwitcher: KeyBinding(key: "k", modifiers: .control)

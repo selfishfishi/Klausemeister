@@ -7,6 +7,8 @@ struct AppFeature {
     @ObservableState
     struct State: Equatable {
         var showSidebar: Bool = true
+        var showInspector: Bool = false
+        var inspectorSelection: InspectorSelection?
         var showMeister: Bool = true
         var meister = MeisterFeature.State()
         var worktree = WorktreeFeature.State()
@@ -23,6 +25,7 @@ struct AppFeature {
     enum Action {
         case onAppear
         case toggleSidebar
+        case toggleInspector
         case themeChanged(AppTheme)
         case oauthCallbackReceived(URL)
         case showMeister
@@ -172,6 +175,10 @@ struct AppFeature {
 
             case .toggleSidebar:
                 state.showSidebar.toggle()
+                return .none
+
+            case .toggleInspector:
+                state.showInspector.toggle()
                 return .none
 
             case let .themeChanged(theme):
@@ -364,6 +371,9 @@ struct AppFeature {
         case .toggleSidebar:
             state.showSidebar.toggle()
             return .none
+        case .toggleInspector:
+            state.showInspector.toggle()
+            return .none
         case .showMeister:
             state.showMeister = true
             state.worktree.selectedWorktreeId = nil
@@ -399,4 +409,8 @@ struct AppFeature {
             return .none
         }
     }
+}
+
+enum InspectorSelection: Equatable {
+    case ticket(id: String)
 }
