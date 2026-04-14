@@ -25,6 +25,8 @@ struct SwimlaneHeaderView: View {
                 GitStatsLineView(stats: stats)
             }
 
+            ClaudeStatusLineView(state: worktree.claudeStatus)
+
             statusPill
         }
         .padding(10)

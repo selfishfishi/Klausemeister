@@ -51,6 +51,7 @@ struct Worktree: Equatable, Identifiable {
     var currentBranch: String?
     var tmuxSessionStatus: TmuxSessionStatus = .unknown
     var meisterStatus: MeisterStatus = .none
+    var claudeStatus: ClaudeSessionState = .offline
     var gitStats: GitStats?
     var inbox: [LinearIssue] = []
     var processing: LinearIssue?
@@ -137,6 +138,7 @@ struct WorktreeFeature {
     enum Action: BindableAction, Equatable {
         case binding(BindingAction<State>)
         case onAppear
+        case claudeStatusChanged(worktreeId: String, state: ClaudeSessionState)
         case worktreesLoaded(
             repositories: [RepositoryRecord],
             worktrees: [WorktreeRecord],
@@ -246,6 +248,7 @@ struct WorktreeFeature {
         case gitFSWatcher(String)
         case refreshWorktreeStats(String)
         case prInfoPoll
+        case claudeStatusWatcher
     }
 
     /// How long to wait for the meister's MCP HelloFrame after a spawn before
@@ -265,6 +268,7 @@ struct WorktreeFeature {
     @Dependency(\.surfaceManager) var surfaceManager
     @Dependency(\.continuousClock) var clock
     @Dependency(\.mcpServerClient) var mcpServerClient
+    @Dependency(\.claudeStatusClient) var claudeStatusClient
 
     /// Effect that loads the set of local branches for the given repo into the
     /// Create sheet's collision-check cache. Shared by `createSheetShown` and
@@ -681,6 +685,17 @@ struct WorktreeFeature {
                         }
                     }
                     .cancellable(id: CancelID.prInfoPoll, cancelInFlight: true),
+                    // Long-lived Claude session status stream
+                    // (KLA-135: ClaudeStatusClient).
+                    .run { [claudeStatusClient] send in
+                        for await update in claudeStatusClient.stateChanges() {
+                            await send(.claudeStatusChanged(
+                                worktreeId: update.worktreeId,
+                                state: update.state
+                            ))
+                        }
+                    }
+                    .cancellable(id: CancelID.claudeStatusWatcher, cancelInFlight: true),
                     .send(.syncAllRepos),
                     .send(.reconcileTmuxSessions),
                     .run { [mcpServerClient] send in
@@ -1545,6 +1560,10 @@ struct WorktreeFeature {
                 for result in results where result.status == "connected" {
                     state.worktrees[id: result.worktreeId]?.meisterStatus = .running
                 }
+                return .none
+
+            case let .claudeStatusChanged(worktreeId, claudeState):
+                state.worktrees[id: worktreeId]?.claudeStatus = claudeState
                 return .none
 
             // MARK: - Meister Claude Code lifecycle (KLA-74)
