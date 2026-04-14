@@ -68,3 +68,40 @@ struct LinearTeam: Equatable, Identifiable, Codable {
     var ingestAllIssues: Bool = false
     var filterLabel: String = "klause"
 }
+
+// MARK: - Inspector ticket detail
+
+struct InspectorTicketDetail: Equatable {
+    let id: String
+    let identifier: String
+    let title: String
+    let descriptionMarkdown: String?
+    let url: String
+    let projectName: String?
+    let projectId: String?
+    let status: InspectorTicketStatus
+    let attachedPRs: [AttachedPullRequest]
+}
+
+struct InspectorTicketStatus: Equatable {
+    let id: String
+    let name: String
+    let type: String
+}
+
+struct AttachedPullRequest: Equatable, Identifiable {
+    enum State: String, Equatable {
+        case open
+        case closed
+        case merged
+        case draft
+        case unknown
+    }
+
+    let id: String
+    let url: String
+    let title: String
+    let number: Int?
+    let repo: String?
+    let state: State
+}
