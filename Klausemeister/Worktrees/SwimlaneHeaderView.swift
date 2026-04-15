@@ -31,6 +31,10 @@ struct SwimlaneHeaderView: View {
             }
 
             advanceButton
+                // Breathing room so the rotating phosphor trail's blurred
+                // halo can extend beyond the capsule without getting
+                // clipped by the neighbouring views.
+                .padding(.vertical, 6)
         }
         .padding(10)
         .frame(minWidth: 140, idealWidth: 160, alignment: .topLeading)
