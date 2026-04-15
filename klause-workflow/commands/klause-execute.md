@@ -26,7 +26,7 @@ Call `transition(command: "execute")`. This validates the state machine and upda
 
 ### 2. Read the complexity label
 
-Fetch the Linear issue and check its labels for a complexity label (`simple`, `medium`, or `complex`). These are stamped by `/klause-define`.
+Call `reportActivity("klause-execute — reading complexity label")`. Fetch the Linear issue and check its labels for a complexity label (`simple`, `medium`, or `complex`). These are stamped by `/klause-define`.
 
 ### 3. Execute based on complexity
 
@@ -34,7 +34,7 @@ Fetch the Linear issue and check its labels for a complexity label (`simple`, `m
 |---|---|
 | `simple` | **Direct execution.** Just do the work — read the ticket, make the changes, commit. No planning phase, no architecture design. Announce: "Simple complexity — executing directly." |
 | `medium` | **Plan then execute.** Enter plan mode to design the approach, then implement. Announce: "Medium complexity — planning first." |
-| `complex` | **Full guided development.** Invoke `/feature-dev:feature-dev` with the ticket identifier. This handles codebase exploration, clarifying questions, architecture design, implementation, and quality review. Announce: "Complex — running feature-dev." |
+| `complex` | **Full guided development.** Invoke `/feature-dev:feature-dev` with the ticket identifier. This handles codebase exploration, clarifying questions, architecture design, implementation, and quality review. Announce: "Complex — running feature-dev." Throughout, narrate densely via `reportActivity` — e.g. `"feature-dev — exploring similar features"`, `"feature-dev — drafting architecture"`, `"feature-dev — implementing state layer"`. |
 | *(no label)* | **Default to medium.** If `/klause-define` didn't stamp a label (e.g. older ticket), use the plan-then-execute strategy. Announce: "No complexity label found — defaulting to medium (plan then execute)." |
 
 ### 4. Report completion

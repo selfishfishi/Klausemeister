@@ -261,6 +261,27 @@ private let processingItem = WorktreeQueueItemRecord(
     #expect(events == [.progressReported(worktreeId: worktreeId, itemId: "issue-1", statusText: "halfway through")])
 }
 
+// MARK: - reportActivity
+
+@Test func `reportActivity yields event and succeeds`() async throws {
+    let (stream, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
+
+    let result = try await ToolHandlers.reportActivity(
+        worktreeId: worktreeId,
+        statusText: "reading WorktreeFeature.swift",
+        eventContinuation: continuation
+    )
+    continuation.finish()
+
+    #expect(!result.isError)
+
+    var events: [MCPServerEvent] = []
+    for await event in stream {
+        events.append(event)
+    }
+    #expect(events == [.activityReported(worktreeId: worktreeId, text: "reading WorktreeFeature.swift")])
+}
+
 // MARK: - getStatus
 
 @Test func `getStatus returns counts and processing item`() async throws {

@@ -404,7 +404,7 @@ extension MCPSocketListener {
         return server
     }
 
-    // swiftlint:disable:next cyclomatic_complexity
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     fileprivate static func dispatchTool(
         name: String,
         arguments: [String: Value]?,
@@ -439,6 +439,17 @@ extension MCPSocketListener {
                 }
                 result = try await ToolHandlers.reportProgress(
                     issueLinearId: issueLinearId,
+                    worktreeId: worktreeId,
+                    statusText: statusText,
+                    eventContinuation: eventContinuation
+                )
+            case "reportActivity":
+                guard let statusText = arguments?["statusText"]?.stringValue,
+                      !statusText.isEmpty
+                else {
+                    return errorResult("reportActivity requires a non-empty statusText")
+                }
+                result = try await ToolHandlers.reportActivity(
                     worktreeId: worktreeId,
                     statusText: statusText,
                     eventContinuation: eventContinuation
@@ -540,6 +551,24 @@ private enum ToolCatalog {
                     ])
                 ]),
                 "required": .array([.string("issueLinearId"), .string("statusText")]),
+                "additionalProperties": .bool(false)
+            ])
+        ),
+        Tool(
+            name: "reportActivity",
+            // swiftlint:disable:next line_length
+            description: "Ambient live narration of what the meister is doing right now, shown as a scrolling ticker that fades after ~30s of silence. Use alongside (not instead of) reportProgress: reportProgress is ticket-scoped and persists for minutes at step boundaries; reportActivity is session-scoped, has no issueLinearId, and is called densely — before any tool call expected to take more than a few seconds, and whenever your focus shifts.",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "statusText": .object([
+                        "type": .string("string"),
+                        "description": .string(
+                            "Short present-tense narration, recap style."
+                        )
+                    ])
+                ]),
+                "required": .array([.string("statusText")]),
                 "additionalProperties": .bool(false)
             ])
         ),

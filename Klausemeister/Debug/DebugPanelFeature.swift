@@ -74,6 +74,8 @@ struct DebugPanelFeature {
             "Error: \(message)"
         case let .progressReported(worktreeId, _, statusText):
             "Progress [\(worktreeId.prefix(8))]: \(statusText)"
+        case let .activityReported(worktreeId, text):
+            "Activity [\(worktreeId.prefix(8))]: \(text)"
         case let .meisterHelloReceived(worktreeId):
             "Hello received [\(worktreeId.prefix(8))]"
         case let .meisterConnectionClosed(worktreeId):

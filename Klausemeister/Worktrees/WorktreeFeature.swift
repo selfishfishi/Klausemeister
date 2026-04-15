@@ -53,6 +53,10 @@ struct Worktree: Equatable, Identifiable {
     var meisterStatus: MeisterStatus = .none
     var claudeStatus: ClaudeSessionState = .offline
     var claudeStatusText: String?
+    /// Live narration from `reportActivity`. Wins over the static status label
+    /// while fresh; the view treats anything older than ~30s as stale.
+    var claudeActivityText: String?
+    var claudeActivityUpdatedAt: Date?
     var gitStats: GitStats?
     var inbox: [LinearIssue] = []
     var processing: LinearIssue?
@@ -141,6 +145,11 @@ struct WorktreeFeature {
         case onAppear
         case claudeStatusChanged(worktreeId: String, state: ClaudeSessionState)
         case claudeStatusTextChanged(worktreeId: String, text: String)
+        case claudeActivityTextChanged(worktreeId: String, text: String)
+        /// Fired by the TTL effect scheduled in `claudeActivityTextChanged`
+        /// to clear the activity slot once the UI ticker has hard-cut back
+        /// to the static label.
+        case claudeActivityExpired(worktreeId: String)
         /// Inject `slashCommand` (e.g. `/klause-next`, `/klause-review`) into
         /// the worktree's tmux session via `TmuxClient.sendKeys`. The meister
         /// reads it as if the user typed it.
@@ -265,7 +274,13 @@ struct WorktreeFeature {
         case refreshWorktreeStats(String)
         case prInfoPoll
         case claudeStatusWatcher
+        case claudeActivityExpiry(String)
     }
+
+    /// How long an activity line lives before the reducer wipes it so
+    /// snapshots (`getStatus`, debug panel) don't leak stale narration.
+    /// Matches `ClaudeStatusLineView.freshness` — keep in sync.
+    nonisolated private static let claudeActivityTTL: Duration = .seconds(30)
 
     /// How long to wait for the meister's MCP HelloFrame after a spawn before
     /// declaring the meister disconnected. A real hello from the shim normally
@@ -285,6 +300,7 @@ struct WorktreeFeature {
     @Dependency(\.continuousClock) var clock
     @Dependency(\.mcpServerClient) var mcpServerClient
     @Dependency(\.claudeStatusClient) var claudeStatusClient
+    @Dependency(\.date) var date
 
     /// Effect that loads the set of local branches for the given repo into the
     /// Create sheet's collision-check cache. Shared by `createSheetShown` and
@@ -1606,10 +1622,35 @@ struct WorktreeFeature {
                 case .working:
                     break
                 }
+                // Activity text is session-scoped; only wipe it when the session
+                // itself goes away. Idle/blocked/error can still carry ambient
+                // narration ("waiting on user feedback"). Cancel the pending
+                // TTL timer so it doesn't fire into an already-empty slot.
+                if claudeState == .offline {
+                    state.worktrees[id: worktreeId]?.claudeActivityText = nil
+                    state.worktrees[id: worktreeId]?.claudeActivityUpdatedAt = nil
+                    return .cancel(id: CancelID.claudeActivityExpiry(worktreeId))
+                }
                 return .none
 
             case let .claudeStatusTextChanged(worktreeId, text):
                 state.worktrees[id: worktreeId]?.claudeStatusText = text
+                return .none
+
+            case let .claudeActivityTextChanged(worktreeId, text):
+                state.worktrees[id: worktreeId]?.claudeActivityText = text
+                state.worktrees[id: worktreeId]?.claudeActivityUpdatedAt = date.now
+                // Re-arm the TTL timer: cancelInFlight ensures each fresh
+                // narration resets the clock rather than stacking timers.
+                return .run { send in
+                    try? await clock.sleep(for: Self.claudeActivityTTL)
+                    await send(.claudeActivityExpired(worktreeId: worktreeId))
+                }
+                .cancellable(id: CancelID.claudeActivityExpiry(worktreeId), cancelInFlight: true)
+
+            case let .claudeActivityExpired(worktreeId):
+                state.worktrees[id: worktreeId]?.claudeActivityText = nil
+                state.worktrees[id: worktreeId]?.claudeActivityUpdatedAt = nil
                 return .none
 
             case let .sendSlashCommandRequested(worktreeId, slashCommand):
