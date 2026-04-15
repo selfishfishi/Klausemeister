@@ -45,8 +45,6 @@ struct SwimlaneRowView: View {
 
     /// Indices 1–6 of the Everforest palette — red, green, yellow, blue,
     /// magenta, cyan. Excludes bg/fg (0 and 7) and bright/alt variants.
-    /// Matches `SwimlaneHeaderView`'s palette derivation so the swimlane
-    /// comet cycles through the same colours as the button comet did.
     private var themeCycleColors: [Color] {
         let indices = [1, 2, 3, 4, 5, 6]
         return indices.compactMap { idx in
@@ -57,20 +55,42 @@ struct SwimlaneRowView: View {
 
     /// Deterministic per-worktree phase offset in `[0, 6.0)` seconds —
     /// desyncs the comet rotation across rows so they don't all show the
-    /// same angle and colour at the same moment. Same ID always yields the
-    /// same offset, so the visual identity of a lane stays stable.
+    /// same angle and colour at the same moment.
     private static func phaseOffset(for id: String) -> Double {
         let sum = id.utf8.reduce(0) { $0 &+ Int($1) }
         return Double(sum % 600) / 100.0
     }
 
+    // MARK: - Layout
+
     private var rowContent: some View {
-        HStack(alignment: .center, spacing: 10) {
-            SwimlaneHeaderView(
+        VStack(alignment: .leading, spacing: 12) {
+            headerRow
+            contentRow
+            footerRow
+        }
+        .padding(14)
+        .frame(minHeight: 120, alignment: .top)
+        .glassEffect(
+            .regular.tint(tint.opacity(0.04)),
+            in: RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
+        )
+    }
+
+    private var headerRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            SwimlaneHeaderView(worktree: worktree)
+            Spacer()
+            ellipsisMenu
+        }
+    }
+
+    private var contentRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SwimlaneAdvanceButton(
                 worktree: worktree,
                 onSendSlashCommand: onSendSlashCommand
             )
-
             SwimlaneBarRow(
                 worktree: worktree,
                 onMarkComplete: onMarkComplete,
@@ -83,47 +103,14 @@ struct SwimlaneRowView: View {
                 onDropToOutbox: onDropToOutbox
             )
         }
-        .padding(10)
-        // Extra breathing room so the advance button's phosphor-trail halo
-        // doesn't bleed into the branch/stats footer overlaid at the bottom.
-        .padding(.bottom, 14)
-        // Lock the row to the height it reaches in its busiest state so
-        // empty / idle rows don't collapse and jitter the layout around
-        // them. Content pins to the top so the identity/advance column and
-        // the queue cards stay in their natural positions; the footer
-        // overlay still tracks the bottom edge.
-        .frame(minHeight: 120, alignment: .top)
-        .overlay(alignment: .topTrailing) {
-            Menu {
-                Button(role: .destructive) { onDelete() } label: {
-                    Label("Delete worktree", systemImage: "trash")
-                }
-                Button { onRemove() } label: {
-                    Label("Remove from Klausemeister", systemImage: "minus.circle")
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 28, minHeight: 28)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(6)
-        }
-        .overlay(alignment: .bottomLeading) { branchAndStatsFooter }
-        .glassEffect(
-            .regular.tint(tint.opacity(0.04)),
-            in: RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
-        )
     }
 
     @ViewBuilder
-    private var branchAndStatsFooter: some View {
+    private var footerRow: some View {
         let branch = worktree.currentBranch
         let stats = worktree.gitStats.flatMap { $0.isEmpty ? nil : $0 }
         if branch != nil || stats != nil {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 if let branch {
                     Text(branch)
                         .font(.caption2)
@@ -140,15 +127,30 @@ struct SwimlaneRowView: View {
                     GitStatsLineView(stats: stats)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
         }
+    }
+
+    private var ellipsisMenu: some View {
+        Menu {
+            Button(role: .destructive) { onDelete() } label: {
+                Label("Delete worktree", systemImage: "trash")
+            }
+            Button { onRemove() } label: {
+                Label("Remove from Klausemeister", systemImage: "minus.circle")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 28, minHeight: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
 /// Rotating comet border around the whole swimlane while the meister is
-/// actively running a tool. Same math as the former button-level
-/// `WorkingScanlineView`: AngularGradient stroke sweeping around the shape
+/// actively running a tool. AngularGradient stroke sweeping around the shape
 /// (~1.5s per revolution) with a blurred halo + crisp highlight composed
 /// via `.plusLighter`, and a colour cycling through the theme palette
 /// (~6s full sweep). `phaseOffset` desyncs rows so the comets look
@@ -157,9 +159,7 @@ private struct SwimlaneWorkingCometOverlay: View {
     let cycleColors: [Color]
     let phaseOffset: Double
 
-    /// Seconds per full revolution of the comet head.
     private let rotationPeriod: Double = 1.5
-    /// Seconds per full sweep through every colour in `cycleColors`.
     private let colorCyclePeriod: Double = 6.0
 
     var body: some View {
