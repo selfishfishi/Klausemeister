@@ -2,7 +2,7 @@ import AppKit
 import GhosttyKit
 import QuartzCore
 
-// swiftlint:disable type_body_length
+// swiftlint:disable type_body_length file_length
 /// NSView that hosts a ghostty terminal surface with proper keyboard handling.
 /// Follows the Calyx/Ghostty pattern: CAMetalLayer backing, raw keycode input,
 /// interpretKeyEvents for IME, and explicit first responder management.
@@ -362,12 +362,47 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
 
     override func scrollWheel(with event: NSEvent) {
         guard let surface else { return }
-        ghostty_surface_mouse_scroll(
-            surface,
-            event.scrollingDeltaX,
-            event.scrollingDeltaY,
-            0 // scroll mods (packed int, 0 = none)
+
+        var deltaX = event.scrollingDeltaX
+        var deltaY = event.scrollingDeltaY
+        let precision = event.hasPreciseScrollingDeltas
+        if precision {
+            // Match upstream Ghostty's 2x multiplier for high-precision
+            // (trackpad / Magic Mouse) input; without the precision bit below,
+            // libghostty would treat pixel-deltas as line-clicks.
+            deltaX *= 2
+            deltaY *= 2
+        }
+
+        let mods = Self.packScrollMods(
+            precision: precision,
+            momentum: Self.momentumPhase(from: event.momentumPhase)
         )
+        ghostty_surface_mouse_scroll(surface, deltaX, deltaY, mods)
+    }
+
+    /// Pack precision + momentum into `ghostty_input_scroll_mods_t`.
+    /// Bit 0 = precision, bits 1-3 = `ghostty_input_mouse_momentum_e`.
+    private static func packScrollMods(
+        precision: Bool,
+        momentum: ghostty_input_mouse_momentum_e
+    ) -> ghostty_input_scroll_mods_t {
+        var value: Int32 = 0
+        if precision { value |= 0b0000_0001 }
+        value |= Int32(momentum.rawValue) << 1
+        return value
+    }
+
+    private static func momentumPhase(from phase: NSEvent.Phase) -> ghostty_input_mouse_momentum_e {
+        switch phase {
+        case .began: GHOSTTY_MOUSE_MOMENTUM_BEGAN
+        case .stationary: GHOSTTY_MOUSE_MOMENTUM_STATIONARY
+        case .changed: GHOSTTY_MOUSE_MOMENTUM_CHANGED
+        case .ended: GHOSTTY_MOUSE_MOMENTUM_ENDED
+        case .cancelled: GHOSTTY_MOUSE_MOMENTUM_CANCELLED
+        case .mayBegin: GHOSTTY_MOUSE_MOMENTUM_MAY_BEGIN
+        default: GHOSTTY_MOUSE_MOMENTUM_NONE
+        }
     }
 
     private func sendMouse(
@@ -490,4 +525,4 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
     }
 }
 
-// swiftlint:enable type_body_length
+// swiftlint:enable type_body_length file_length
