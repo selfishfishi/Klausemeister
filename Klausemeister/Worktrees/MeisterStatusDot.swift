@@ -1,4 +1,24 @@
+import AppKit
 import SwiftUI
+
+/// Attaches a native AppKit tooltip to an invisible `NSView` sibling.
+/// Used where SwiftUI's `.help()` is unreliable — most notably when the
+/// target view lives inside a `Button(.plain)`, whose hover interception
+/// suppresses `.help()` on children. The AppKit tooltip tracking area
+/// is managed by the `NSView` itself and fires independently of SwiftUI.
+private struct NativeTooltipView: NSViewRepresentable {
+    let tooltip: String
+
+    func makeNSView(context _: Context) -> NSView {
+        let view = NSView()
+        view.toolTip = tooltip
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context _: Context) {
+        nsView.toolTip = tooltip
+    }
+}
 
 /// Small glowing circle indicating the MCP connection status of a worktree's
 /// meister. Pulses when running (`.running`); shows a static error glow when
@@ -103,8 +123,8 @@ struct WorktreeStatusDot: View {
                 )
                 .frame(width: 18, height: 18)
                 .contentShape(Rectangle())
+                .background(NativeTooltipView(tooltip: tooltip))
         }
-        .help(tooltip)
     }
 
     private var isMeisterConnected: Bool {
