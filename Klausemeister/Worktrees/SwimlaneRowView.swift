@@ -73,10 +73,38 @@ struct SwimlaneRowView: View {
             .buttonStyle(.plain)
             .padding(6)
         }
+        .overlay(alignment: .bottomLeading) { branchAndStatsFooter }
         .glassEffect(
             .regular.tint(tint.opacity(0.04)),
             in: RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
         )
+    }
+
+    @ViewBuilder
+    private var branchAndStatsFooter: some View {
+        let branch = worktree.currentBranch
+        let stats = worktree.gitStats.flatMap { $0.isEmpty ? nil : $0 }
+        if branch != nil || stats != nil {
+            HStack(spacing: 5) {
+                if let branch {
+                    Text(branch)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                if branch != nil, stats != nil {
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                if let stats {
+                    GitStatsLineView(stats: stats)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+        }
     }
 }
 
