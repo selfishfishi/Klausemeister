@@ -50,8 +50,9 @@ struct SwimlaneHeaderView: View {
                 Text(nextCommand.verbLabel)
                     .font(.caption.weight(.medium))
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.glassProminent)
             .controlSize(.small)
+            .tint(themeColors.accentColor)
             .disabled(!isEnabled)
             .help(tooltip)
         }
