@@ -55,6 +55,9 @@ struct SwimlaneRowView: View {
             )
         }
         .padding(10)
+        // Extra breathing room so the advance button's phosphor-trail halo
+        // doesn't bleed into the branch/stats footer overlaid at the bottom.
+        .padding(.bottom, 14)
         .overlay(alignment: .topTrailing) {
             Menu {
                 Button(role: .destructive) { onDelete() } label: {
