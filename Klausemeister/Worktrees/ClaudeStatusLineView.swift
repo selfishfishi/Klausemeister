@@ -54,7 +54,7 @@ struct ClaudeStatusLineView: View {
             }
             return tool ?? "Working…"
         case .idle:
-            return "Waiting for input"
+            return "Idle"
         case .blocked:
             return "Needs approval"
         case .error:

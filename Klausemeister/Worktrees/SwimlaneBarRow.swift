@@ -12,8 +12,10 @@ struct SwimlaneBarRow: View {
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
     var onSelectIssue: ((_ issueId: String) -> Void)?
-    /// Inject `/klause-<command>` into the meister's tmux session. The caller
-    /// passes the full slash command string (e.g. `"/klause-next"`).
+    /// Inject a fully-qualified slash command (e.g. `"/klause-workflow:klause-next"`)
+    /// into the meister's tmux session. Commands must include the plugin
+    /// namespace because the meister's Claude Code only resolves short
+    /// forms for user-typed input, not injected input.
     var onSendSlashCommand: ((_ slashCommand: String) -> Void)?
     /// Kanban-style state jump for the active issue — Linear-only move, does
     /// not invoke any `/klause-*` command.
@@ -209,7 +211,9 @@ struct SwimlaneBarRow: View {
         validCommands: [WorkflowCommand]
     ) -> some View {
         if let onSendSlashCommand {
-            Button("Next (/klause-next)") { onSendSlashCommand("/klause-next") }
+            Button("Next (/klause-next)") {
+                onSendSlashCommand("/klause-workflow:klause-next")
+            }
         }
         let runnable = validCommands.compactMap { cmd -> (WorkflowCommand, String)? in
             guard let slash = cmd.slashCommand else { return nil }
