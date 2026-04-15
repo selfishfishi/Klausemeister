@@ -203,9 +203,11 @@ struct AppFeature {
                     do {
                         let detail = try await linearAPIClient.fetchTicketDetail(issueId)
                         await send(.inspectorDetailFetched(.success(detail)))
+                    } catch is CancellationError {
+                        // A newer selection owns state; don't overwrite with an error.
                     } catch {
                         await send(.inspectorDetailFetched(
-                            .failure(InspectorFetchError(message: error.localizedDescription))
+                            .failure(InspectorFetchError.from(error))
                         ))
                     }
                 }
@@ -216,7 +218,7 @@ struct AppFeature {
                 case let .success(detail):
                     state.inspectorDetail = .loaded(detail)
                 case let .failure(err):
-                    state.inspectorDetail = .error(err.message)
+                    state.inspectorDetail = .error(err)
                 }
                 return .none
 
@@ -414,11 +416,9 @@ struct AppFeature {
     ) -> Effect<Action> {
         switch command {
         case .toggleSidebar:
-            state.showSidebar.toggle()
-            return .none
+            return .send(.toggleSidebar)
         case .toggleInspector:
-            state.showInspector.toggle()
-            return .none
+            return .send(.toggleInspector)
         case .showMeister:
             state.showMeister = true
             state.worktree.selectedWorktreeId = nil
@@ -454,19 +454,4 @@ struct AppFeature {
             return .none
         }
     }
-}
-
-enum InspectorSelection: Equatable {
-    case ticket(id: String)
-}
-
-enum InspectorDetailLoadState: Equatable {
-    case empty
-    case loading
-    case error(String)
-    case loaded(InspectorTicketDetail)
-}
-
-struct InspectorFetchError: Error, Equatable {
-    let message: String
 }

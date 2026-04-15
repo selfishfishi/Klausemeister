@@ -72,21 +72,39 @@ struct LinearTeam: Equatable, Identifiable, Codable {
 // MARK: - Inspector ticket detail
 
 struct InspectorTicketDetail: Equatable {
+    struct Project: Equatable {
+        let id: String
+        let name: String
+    }
+
     let id: String
     let identifier: String
     let title: String
     let descriptionMarkdown: String?
-    let url: String
-    let projectName: String?
-    let projectId: String?
+    let url: URL
+    let project: Project?
     let status: InspectorTicketStatus
     let attachedPRs: [AttachedPullRequest]
 }
 
 struct InspectorTicketStatus: Equatable {
+    enum StatusType: String, Equatable {
+        case backlog
+        case unstarted
+        case started
+        case completed
+        case canceled
+        case triage
+        case unknown
+
+        init(fromLinear raw: String) {
+            self = Self(rawValue: raw.lowercased()) ?? .unknown
+        }
+    }
+
     let id: String
     let name: String
-    let type: String
+    let type: StatusType
 }
 
 struct AttachedPullRequest: Equatable, Identifiable {
@@ -98,10 +116,23 @@ struct AttachedPullRequest: Equatable, Identifiable {
         case unknown
     }
 
+    /// Repo + PR number are all-or-nothing: when the parser extracts them
+    /// from either Attachment.metadata or a GitHub URL regex, it always
+    /// produces both. Modeling them as one optional prevents callers from
+    /// ever seeing `(number != nil, repo == nil)` or vice versa.
+    struct GitHubRef: Equatable {
+        let owner: String
+        let name: String
+        let number: Int
+
+        var fullName: String {
+            "\(owner)/\(name)"
+        }
+    }
+
     let id: String
-    let url: String
+    let url: URL
     let title: String
-    let number: Int?
-    let repo: String?
+    let github: GitHubRef?
     let state: State
 }

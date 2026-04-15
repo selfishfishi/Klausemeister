@@ -11,12 +11,30 @@ struct MarkdownTextView: View {
 
     var body: some View {
         Markdown(markdown)
-            .markdownTheme(.inspector(themeColors: themeColors))
+            .markdownTheme(ThemeCache.shared.theme(for: themeColors))
             .markdownTextStyle {
                 FontFamilyVariant(.normal)
                 FontSize(.em(1.0))
             }
             .textSelection(.enabled)
+    }
+}
+
+/// Theme construction is expensive (chain of builder closures reallocated every
+/// call). Views re-evaluate `body` frequently; cache by background hex so each
+/// theme variant pays the cost once per session.
+@MainActor
+private final class ThemeCache {
+    static let shared = ThemeCache()
+
+    private var cache: [String: Theme] = [:]
+
+    func theme(for themeColors: ThemeColors) -> Theme {
+        let key = themeColors.background
+        if let cached = cache[key] { return cached }
+        let built = Theme.inspector(themeColors: themeColors)
+        cache[key] = built
+        return built
     }
 }
 
