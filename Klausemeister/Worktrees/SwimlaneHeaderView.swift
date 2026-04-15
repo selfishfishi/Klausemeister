@@ -43,27 +43,32 @@ struct SwimlaneHeaderView: View {
     private var advanceButton: some View {
         if let nextCommand, let onSendSlashCommand {
             let (isEnabled, tooltip) = advanceAffordance(nextCommand: nextCommand)
-            Button {
-                onSendSlashCommand("/klause-workflow:klause-next")
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "play.fill")
-                        .imageScale(.small)
-                    Text(nextCommand.verbLabel)
+            let isWorking: Bool = {
+                guard worktree.meisterStatus == .running else { return false }
+                if case .working = worktree.claudeStatus { return true }
+                return false
+            }()
+
+            if isWorking {
+                WorkingScanlineView(accent: themeColors.accentColor, label: nextCommand.verbLabel)
+                    .help(tooltip)
+            } else {
+                Button {
+                    onSendSlashCommand("/klause-workflow:klause-next")
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "play.fill")
+                            .imageScale(.small)
+                        Text(nextCommand.verbLabel)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(themeColors.accentColor)
                 }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(themeColors.accentColor)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .glassEffect(
-                    .regular.tint(themeColors.accentColor.opacity(0.35)).interactive(),
-                    in: Capsule()
-                )
+                .buttonStyle(LiquidGlassActionButtonStyle(accent: themeColors.accentColor))
+                .disabled(!isEnabled)
+                .opacity(isEnabled ? 1 : 0.5)
+                .help(tooltip)
             }
-            .buttonStyle(.plain)
-            .disabled(!isEnabled)
-            .opacity(isEnabled ? 1 : 0.5)
-            .help(tooltip)
         }
     }
 
@@ -107,6 +112,90 @@ struct SwimlaneHeaderView: View {
             return (false, "Meister is waiting for approval")
         case .idle, .error, .offline:
             return (true, "Run /klause-next in \(worktree.name)")
+        }
+    }
+}
+
+// MARK: - Liquid Glass button style
+
+/// Custom button style for the swimlane Advance button. Wraps the label in a
+/// Liquid Glass capsule that shifts tint + scales slightly on press for
+/// tactile feedback. `.interactive()` on the glass handles the native
+/// lensing response; this style adds the extra motion polish.
+private struct LiquidGlassActionButtonStyle: ButtonStyle {
+    let accent: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .glassEffect(
+                .regular
+                    .tint(accent.opacity(configuration.isPressed ? 0.55 : 0.35))
+                    .interactive(),
+                in: Capsule()
+            )
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Working-state animated progress
+
+/// Replaces the Advance button while the meister is actively running a
+/// tool. The capsule keeps its Liquid Glass material but the label is
+/// swapped for a breathing scanline — a bright accent-tinted band sweeps
+/// left-to-right through the glass while the tint opacity pulses
+/// sinusoidally. Communicates "busy" without stealing visual weight.
+private struct WorkingScanlineView: View {
+    let accent: Color
+    let label: String
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let sweepPeriod = 1.6
+            let pulsePeriod = 2.4
+            let sweepPhase = (t.truncatingRemainder(dividingBy: sweepPeriod)) / sweepPeriod
+            let pulsePhase = 0.5 + 0.5 * sin(t * 2 * .pi / pulsePeriod)
+            let tintOpacity = 0.25 + 0.2 * pulsePhase
+
+            // Keep layout width identical to the normal button by rendering
+            // the same label content, but hide it visually so only the
+            // scanline reads.
+            HStack(spacing: 4) {
+                Image(systemName: "play.fill").imageScale(.small)
+                Text(label)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(accent.opacity(0.0001)) // measurable but invisible
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                GeometryReader { proxy in
+                    let bandWidth: CGFloat = max(proxy.size.width * 0.35, 18)
+                    let travel = proxy.size.width + bandWidth
+                    let offsetX = CGFloat(sweepPhase) * travel - bandWidth / 2
+
+                    LinearGradient(
+                        colors: [
+                            .clear,
+                            accent.opacity(0.85),
+                            .clear
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: bandWidth)
+                    .offset(x: offsetX)
+                    .allowsHitTesting(false)
+                }
+                .clipShape(Capsule())
+            )
+            .glassEffect(
+                .regular.tint(accent.opacity(tintOpacity)),
+                in: Capsule()
+            )
         }
     }
 }
