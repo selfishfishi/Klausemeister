@@ -50,7 +50,7 @@ struct SwimlaneHeaderView: View {
                 Text(nextCommand.verbLabel)
                     .font(.caption.weight(.medium))
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.glass)
             .controlSize(.small)
             .disabled(!isEnabled)
             .help(tooltip)
