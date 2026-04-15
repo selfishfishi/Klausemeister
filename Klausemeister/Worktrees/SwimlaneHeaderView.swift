@@ -185,14 +185,6 @@ private struct WorkingScanlineView: View {
         .foregroundStyle(accent.opacity(0.0001))
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(
-            Capsule()
-                .fill(Color.clear)
-                .glassEffect(
-                    .regular.tint(accent.opacity(0.25)),
-                    in: Capsule()
-                )
-        )
         .overlay(
             rotatingTrail(rotationDegrees: rotationDegrees, hueDegrees: hueDegrees)
         )
