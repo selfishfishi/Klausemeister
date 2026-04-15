@@ -47,10 +47,14 @@ struct SwimlaneHeaderView: View {
             Button {
                 onSendSlashCommand("/klause-workflow:klause-next")
             } label: {
-                Text(nextCommand.verbLabel)
-                    .font(.caption.weight(.medium))
+                HStack(spacing: 4) {
+                    Image(systemName: "play.fill")
+                        .imageScale(.small)
+                    Text(nextCommand.verbLabel)
+                }
+                .font(.caption.weight(.semibold))
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.glass)
             .controlSize(.small)
             .tint(themeColors.accentColor)
             .disabled(!isEnabled)
