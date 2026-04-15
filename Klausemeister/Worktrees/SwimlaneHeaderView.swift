@@ -11,13 +11,22 @@ struct SwimlaneHeaderView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                MeisterStatusDot(status: worktree.meisterStatus)
+                WorktreeStatusDot(
+                    meisterStatus: worktree.meisterStatus,
+                    claudeStatus: worktree.claudeStatus
+                )
                 Text(worktree.name)
                     .font(.body)
                     .lineLimit(1)
             }
 
-            if let branch = worktree.currentBranch {
+            if let processing = worktree.processing {
+                Text(processing.title)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .help("\(processing.identifier) · \(processing.title)")
+            } else if let branch = worktree.currentBranch {
                 Text(branch)
                     .font(.caption)
                     .foregroundStyle(.tertiary)

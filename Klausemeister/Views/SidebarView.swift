@@ -109,11 +109,20 @@ struct SidebarWorktreeRow: View {
             onSelect()
         } label: {
             HStack(spacing: 6) {
-                MeisterStatusDot(status: worktree.meisterStatus)
+                WorktreeStatusDot(
+                    meisterStatus: worktree.meisterStatus,
+                    claudeStatus: worktree.claudeStatus
+                )
                 VStack(alignment: .leading, spacing: 1) {
                     Text(worktree.name)
                         .lineLimit(1)
-                    if let branch = worktree.currentBranch {
+                    if let processing = worktree.processing {
+                        Text(processing.title)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .help("\(processing.identifier) · \(processing.title)")
+                    } else if let branch = worktree.currentBranch {
                         Text(branch)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
