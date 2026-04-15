@@ -29,6 +29,25 @@ enum WorkflowCommand: String, CaseIterable, Equatable, Hashable {
         case .push: "Push"
         }
     }
+
+    /// The literal slash command the meister Claude Code recognises for this
+    /// transition, or `nil` for machine-internal commands with no user-facing
+    /// equivalent. Used by the swimlane UI to inject via `tmux send-keys`.
+    ///
+    /// `.complete` is internal — it's applied by `/klause-open-pr` when the
+    /// branch has no commits, and there's no direct `/klause-complete` skill.
+    var slashCommand: String? {
+        switch self {
+        case .define: "/klause-define"
+        case .execute: "/klause-execute"
+        case .review: "/klause-review"
+        case .openPR: "/klause-open-pr"
+        case .babysit: "/klause-babysit"
+        case .pull: "/klause-pull"
+        case .push: "/klause-push"
+        case .complete: nil
+        }
+    }
 }
 
 /// The product state: a pair of kanban (ticket lifecycle) and worktree

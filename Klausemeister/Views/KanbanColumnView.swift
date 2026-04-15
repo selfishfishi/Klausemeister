@@ -13,7 +13,6 @@ struct KanbanColumnView: View {
     let onAssignToWorktree: (_ issue: LinearIssue, _ worktreeId: String) -> Void
     let onRemove: (_ issueId: String) -> Void
     let onDrop: (_ issueId: String) -> Void
-    var onAdvance: ((_ worktreeId: String) -> Void)?
     var onCardTapped: ((_ issueId: String) -> Void)?
 
     @Environment(\.themeColors) private var themeColors
@@ -90,45 +89,6 @@ struct KanbanColumnView: View {
             .padding(.horizontal, 14)
     }
 
-    /// The "Advance" action for a given issue, or `nil` if this issue is not
-    /// currently in any worktree's processing slot (the only place where
-    /// /klause-next is meaningful). KLA-185.
-    private func advanceAction(for issue: LinearIssue) -> KanbanIssueCardView.AdvanceAction? {
-        guard let worktree = worktrees.first(where: { $0.processing?.id == issue.id }) else {
-            return nil
-        }
-        guard let kanban = issue.meisterState,
-              let nextCommand = ProductState(kanban: kanban, queue: .processing).nextCommand
-        else {
-            return nil
-        }
-        let isEnabled: Bool
-        let tooltip: String
-        switch worktree.claudeStatus {
-        case .idle:
-            isEnabled = true
-            tooltip = "Run /klause-next in \(worktree.name)"
-        case .working:
-            isEnabled = false
-            tooltip = "Meister is working…"
-        case .blocked:
-            isEnabled = false
-            tooltip = "Meister is waiting for approval"
-        case .error:
-            isEnabled = false
-            tooltip = "Meister error — check the terminal"
-        case .offline:
-            isEnabled = false
-            tooltip = "Meister not connected"
-        }
-        return KanbanIssueCardView.AdvanceAction(
-            worktreeId: worktree.id,
-            label: nextCommand.verbLabel,
-            isEnabled: isEnabled,
-            tooltip: tooltip
-        )
-    }
-
     private var cards: some View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 10) {
@@ -142,11 +102,9 @@ struct KanbanColumnView: View {
                         worktreeName: assignedWorktreeNames[issue.id],
                         teamKey: team?.key,
                         teamTint: team.map { themeColors.teamTint(colorIndex: $0.colorIndex) },
-                        advance: advanceAction(for: issue),
                         onMoveToStatus: onMoveToStatus,
                         onAssignToWorktree: onAssignToWorktree,
                         onRemove: onRemove,
-                        onAdvance: onAdvance,
                         onCardTapped: onCardTapped
                     )
                 }

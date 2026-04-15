@@ -109,16 +109,6 @@ struct IssueCardView: View {
 // MARK: - Kanban variant (drag + context menu)
 
 struct KanbanIssueCardView: View {
-    /// Parameters for the in-card "Advance" button shown on processing-slot
-    /// cards (KLA-185). The owning column supplies `nil` when the issue isn't
-    /// in a worktree's processing slot or has no valid next workflow command.
-    struct AdvanceAction: Equatable {
-        let worktreeId: String
-        let label: String
-        let isEnabled: Bool
-        let tooltip: String
-    }
-
     let issue: LinearIssue
     let tint: Color
     let worktrees: [Worktree]
@@ -126,11 +116,9 @@ struct KanbanIssueCardView: View {
     var worktreeName: String?
     var teamKey: String?
     var teamTint: Color?
-    var advance: AdvanceAction?
     let onMoveToStatus: (_ issueId: String, _ target: MeisterState) -> Void
     let onAssignToWorktree: (_ issue: LinearIssue, _ worktreeId: String) -> Void
     let onRemove: (_ issueId: String) -> Void
-    var onAdvance: ((_ worktreeId: String) -> Void)?
     var onCardTapped: ((_ issueId: String) -> Void)?
 
     @Environment(\.keyBindings) private var bindings
@@ -190,27 +178,12 @@ struct KanbanIssueCardView: View {
     }
 
     private var cardContent: some View {
-        VStack(spacing: 6) {
-            IssueCardView(
-                issue: issue,
-                tint: tint,
-                worktreeName: worktreeName,
-                teamKey: teamKey,
-                teamTint: teamTint
-            )
-            if let advance, let onAdvance {
-                Button {
-                    onAdvance(advance.worktreeId)
-                } label: {
-                    Text(advance.label)
-                        .font(.caption.weight(.medium))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(!advance.isEnabled)
-                .help(advance.tooltip)
-            }
-        }
+        IssueCardView(
+            issue: issue,
+            tint: tint,
+            worktreeName: worktreeName,
+            teamKey: teamKey,
+            teamTint: teamTint
+        )
     }
 }

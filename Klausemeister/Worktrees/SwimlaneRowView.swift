@@ -16,6 +16,8 @@ struct SwimlaneRowView: View {
     var onDropToProcessing: ((_ issueId: String) -> Void)?
     var onDropToOutbox: ((_ issueId: String) -> Void)?
     var onSelectIssue: ((_ issueId: String) -> Void)?
+    var onSendSlashCommand: ((_ slashCommand: String) -> Void)?
+    var onMoveIssueStatus: ((_ issueId: String, _ target: MeisterState) -> Void)?
 
     @Environment(\.themeColors) private var themeColors
     @Environment(\.swimlaneAnimating) private var isAnimating
@@ -44,6 +46,8 @@ struct SwimlaneRowView: View {
                 onMarkComplete: onMarkComplete,
                 onReturnToMeister: onReturnToMeister,
                 onSelectIssue: onSelectIssue,
+                onSendSlashCommand: onSendSlashCommand,
+                onMoveIssueStatus: onMoveIssueStatus,
                 onDropToInbox: onDropToInbox,
                 onDropToProcessing: onDropToProcessing,
                 onDropToOutbox: onDropToOutbox
