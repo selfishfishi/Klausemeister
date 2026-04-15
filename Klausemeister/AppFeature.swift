@@ -372,6 +372,14 @@ struct AppFeature {
                         ))),
                         debugEffect
                     )
+                case let .activityReported(worktreeId, text):
+                    return .merge(
+                        .send(.worktree(.claudeActivityTextChanged(
+                            worktreeId: worktreeId,
+                            text: text
+                        ))),
+                        debugEffect
+                    )
                 case let .meisterHelloReceived(worktreeId):
                     return .merge(
                         .send(.worktree(.meisterHelloReceived(worktreeId: worktreeId))),

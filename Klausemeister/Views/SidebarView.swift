@@ -138,7 +138,9 @@ struct SidebarWorktreeRow: View {
                     }
                     ClaudeStatusLineView(
                         state: worktree.claudeStatus,
-                        text: worktree.claudeStatusText
+                        progressText: worktree.claudeStatusText,
+                        activityText: worktree.claudeActivityText,
+                        activityUpdatedAt: worktree.claudeActivityUpdatedAt
                     )
                 }
                 Spacer()

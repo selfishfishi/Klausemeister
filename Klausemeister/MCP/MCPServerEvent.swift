@@ -15,6 +15,13 @@ enum MCPServerEvent: Equatable {
     /// (or, eventually, the per-session sidebar UI in KLA-80) decides how to render it.
     case progressReported(worktreeId: String, itemId: String, statusText: String)
 
+    /// A tool reported ambient narration ("what the meister is doing right now").
+    /// Unlike `progressReported` this has no `itemId` — activity is session-scoped,
+    /// not ticket-scoped, so the meister can narrate while idle or between tickets.
+    /// The UI shows it as a ticker-style scrolling line that decays after ~30s
+    /// of silence, falling back to the static status label.
+    case activityReported(worktreeId: String, text: String)
+
     /// The meister Claude Code for the given worktree completed its handshake
     /// (shim sent a valid HelloFrame). `WorktreeFeature` uses this to flip
     /// the worktree's `meisterStatus` to `.running`.

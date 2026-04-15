@@ -11,7 +11,7 @@ On startup, check the environment:
 | `KLAUSE_MEISTER` | Must be `1`. Marks this process as the meister. | You are **not** the meister — do not run the loop. Behave as a normal Claude Code session. |
 | `KLAUSE_WORKTREE_ID` | The Klausemeister worktree ID this session is bound to. | Abort the loop, tell the user the env is misconfigured. |
 
-The plugin's `.mcp.json` wires the `klausemeister` MCP client to a stdio shim (`klause-mcp-shim`) that bridges to a Unix socket hosted by Klausemeister. You should see the `klausemeister` server's tools available: `getNextItem`, `completeItem`, `reportProgress`, `getStatus`.
+The plugin's `.mcp.json` wires the `klausemeister` MCP client to a stdio shim (`klause-mcp-shim`) that bridges to a Unix socket hosted by Klausemeister. You should see the `klausemeister` server's tools available: `getNextItem`, `completeItem`, `reportProgress`, `reportActivity`, `getStatus`.
 
 If `KLAUSE_MEISTER` is not `1`, stop reading — you are a user-spawned Claude Code in a pane, not the meister. Behave normally.
 
@@ -42,7 +42,32 @@ forever:
     loop
 ```
 
-Call `reportProgress` liberally — once per meaningful sub-step of each command. The UI shows the latest string per session, so terse present-tense descriptions work best: `"klause-define — exploring codebase"`, `"klause-review — reading diff"`, `"waiting for user confirmation"`.
+### 2.1 `reportProgress` — step boundaries
+
+Call `reportProgress` at **ceremonial moments**: pickup, command transition, block, completion. This text persists for minutes and serves as the long-lived "what ticket is this session on" label in Klausemeister's UI (swimlane header, processing card). Terse present-tense descriptions: `"klause-define — exploring codebase"`, `"klause-review — reading diff"`, `"waiting for user confirmation"`.
+
+### 2.2 `reportActivity` — live narration
+
+Call `reportActivity` **densely**, in recap style, so the sidebar ticker reads like a live feed of what you're doing right now. No `issueLinearId` — activity is session-scoped, not ticket-scoped, so it's appropriate even while idle or between tickets. The UI shows the last `reportActivity` as a scrolling ticker for ~30 seconds, then falls back to the static status label; a stale activity line does not linger.
+
+Emit one:
+
+- **Before any tool call expected to take more than a few seconds** (bash commands, big reads, builds, test runs).
+- **Whenever your focus shifts** — new file, new subtask, new question, new search.
+- **In recap shape when helpful**: `"goal: fix KLA-XXX · just read WorktreeFeature.swift · next: trace reducer"`.
+- **During idle waits**: `"idle — waiting for user feedback on KLA-XXX"`.
+
+Good examples:
+
+```
+reportActivity("reading SidebarView.swift")
+reportActivity("running xcodebuild (~45s)")
+reportActivity("parsing 23 grep matches for reportProgress")
+reportActivity("summarizing diff before opening PR")
+reportActivity("goal: review KLA-140 · just opened PR · next: wait for CI")
+```
+
+Avoid empty filler (`"thinking…"`, `"working…"`) — if there's nothing concrete to say, don't call it. The ticker going quiet is a valid signal: the dot stays green, the static label takes over.
 
 ## 3. Dispatch table
 

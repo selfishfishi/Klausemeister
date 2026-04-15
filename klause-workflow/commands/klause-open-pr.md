@@ -19,7 +19,7 @@ Check by calling `getProductState`:
 
 1. **Report progress.** Call `reportProgress(issueLinearId, "klause-open-pr — running pre-flight checks")`.
 
-2. **Check for code changes.** Run `git log origin/main..HEAD --oneline` to see if there are any commits on this branch.
+2. **Check for code changes.** Call `reportActivity("klause-open-pr — checking for commits on this branch")`. Run `git log origin/main..HEAD --oneline` to see if there are any commits on this branch.
 
    **If no commits exist** (empty branch — typical for audit/research tickets):
    - Tell the user: "No code changes on this branch — completing without PR."
@@ -27,7 +27,7 @@ Check by calling `getProductState`:
    - Report: "Ticket completed without PR. Run `/klause-next` (or `/klause-push`) to free the processing slot."
    - **Stop here.** Do not proceed to step 3.
 
-3. **Run pre-flight checks.** Invoke `/open-pr` which handles the full lifecycle:
+3. **Run pre-flight checks.** Call `reportActivity("klause-open-pr — running make format && make lint")` before the heavy work. Invoke `/open-pr` which handles the full lifecycle:
    - Detects quality tools from CLAUDE.md / Makefile (format, lint)
    - Runs formatter (`make format`)
    - Runs linter (`make lint --strict`)
