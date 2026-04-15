@@ -87,6 +87,12 @@ struct SwimlaneRowView: View {
         // Extra breathing room so the advance button's phosphor-trail halo
         // doesn't bleed into the branch/stats footer overlaid at the bottom.
         .padding(.bottom, 14)
+        // Lock the row to the height it reaches in its busiest state so
+        // empty / idle rows don't collapse and jitter the layout around
+        // them. Content pins to the top so the identity/advance column and
+        // the queue cards stay in their natural positions; the footer
+        // overlay still tracks the bottom edge.
+        .frame(minHeight: 120, alignment: .top)
         .overlay(alignment: .topTrailing) {
             Menu {
                 Button(role: .destructive) { onDelete() } label: {
