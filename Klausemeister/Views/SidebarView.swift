@@ -132,6 +132,13 @@ struct SidebarWorktreeRow: View {
                     if let stats = worktree.gitStats, !stats.isEmpty {
                         GitStatsLineView(stats: stats)
                     }
+                    if let progress = worktree.claudeStatusText, !progress.isEmpty {
+                        Text(progress)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
                 Spacer()
                 if worktree.totalIssueCount > 0 {
