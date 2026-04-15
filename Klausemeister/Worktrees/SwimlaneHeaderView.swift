@@ -10,39 +10,29 @@ struct SwimlaneHeaderView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                WorktreeStatusDot(
-                    meisterStatus: worktree.meisterStatus,
-                    claudeStatus: worktree.claudeStatus
-                )
-                Text(worktree.name)
-                    .font(.body)
-                    .lineLimit(1)
-            }
-
-            if let processing = worktree.processing {
-                Text(processing.identifier)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .help("\(processing.identifier) · \(processing.title)")
-            } else if let branch = worktree.currentBranch {
-                Text(branch)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-
-            if let stats = worktree.gitStats, !stats.isEmpty {
-                GitStatsLineView(stats: stats)
+            // Group 1: identity (name + ticket id).
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    WorktreeStatusDot(
+                        meisterStatus: worktree.meisterStatus,
+                        claudeStatus: worktree.claudeStatus
+                    )
+                    Text(worktree.name)
+                        .font(.body)
+                        .lineLimit(1)
+                }
+                if let processing = worktree.processing {
+                    Text(processing.identifier)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .help("\(processing.identifier) · \(processing.title)")
+                }
             }
 
             // The ClaudeStatusLineView and the Advance button overlap in
-            // the working state (both show the tool / reportProgress text),
-            // and again in the blocked state (both say the session is
-            // waiting). When the button is already communicating the live
-            // signal, skip the status line — no redundant "TaskUpdate" /
-            // "Needs approval" lines above an already-expressive capsule.
+            // the working/blocked states — when the button already
+            // expresses the state, skip the line to avoid duplicate text.
             if !advanceButtonCoversStatus {
                 ClaudeStatusLineView(
                     state: worktree.claudeStatus,
@@ -51,9 +41,37 @@ struct SwimlaneHeaderView: View {
             }
 
             advanceButton
+
+            // Footer: branch · git stats on a single line.
+            branchAndStatsFooter
         }
         .padding(10)
         .frame(minWidth: 140, idealWidth: 160, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private var branchAndStatsFooter: some View {
+        let branch = worktree.currentBranch
+        let stats = worktree.gitStats.flatMap { $0.isEmpty ? nil : $0 }
+        if branch != nil || stats != nil {
+            HStack(spacing: 5) {
+                if let branch {
+                    Text(branch)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                if branch != nil, stats != nil {
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                if let stats {
+                    GitStatsLineView(stats: stats)
+                }
+            }
+        }
     }
 
     @ViewBuilder
