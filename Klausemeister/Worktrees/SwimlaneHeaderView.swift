@@ -33,7 +33,6 @@ struct SwimlaneHeaderView: View {
                 text: worktree.claudeStatusText
             )
 
-            statusPill
             advanceButton
         }
         .padding(10)
@@ -102,27 +101,6 @@ struct SwimlaneHeaderView: View {
             return (false, "Meister is waiting for approval")
         case .idle, .error, .offline:
             return (true, "Run /klause-next in \(worktree.name)")
-        }
-    }
-
-    @ViewBuilder
-    private var statusPill: some View {
-        let (label, tint) = statusLabelAndTint
-        Text(label)
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(tint.opacity(0.15), in: Capsule())
-    }
-
-    private var statusLabelAndTint: (String, Color) {
-        if worktree.processing != nil {
-            ("ACTIVE", themeColors.accentColor)
-        } else if !worktree.inbox.isEmpty {
-            ("QUEUED", themeColors.warningColor)
-        } else {
-            ("IDLE", .secondary)
         }
     }
 }
