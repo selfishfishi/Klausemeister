@@ -69,6 +69,15 @@ struct Worktree: Equatable, Identifiable {
     var isActive: Bool {
         processing != nil
     }
+
+    /// True while the meister is alive AND Claude is actively running a tool.
+    /// Drives the rotating-comet swimlane border so at-a-glance you can tell
+    /// which lanes are in motion.
+    var isMeisterWorking: Bool {
+        guard meisterStatus == .running else { return false }
+        if case .working = claudeStatus { return true }
+        return false
+    }
 }
 
 /// Lifecycle status of the tmux session bound to a worktree. Reconciled at app

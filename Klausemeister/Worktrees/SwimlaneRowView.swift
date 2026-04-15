@@ -32,7 +32,36 @@ struct SwimlaneRowView: View {
                     )
                 }
             }
+            .overlay {
+                if worktree.isMeisterWorking {
+                    SwimlaneWorkingCometOverlay(
+                        cycleColors: themeCycleColors,
+                        phaseOffset: Self.phaseOffset(for: worktree.id)
+                    )
+                }
+            }
             .animation(.easeInOut(duration: 0.3), value: worktree.isActive)
+    }
+
+    /// Indices 1–6 of the Everforest palette — red, green, yellow, blue,
+    /// magenta, cyan. Excludes bg/fg (0 and 7) and bright/alt variants.
+    /// Matches `SwimlaneHeaderView`'s palette derivation so the swimlane
+    /// comet cycles through the same colours as the button comet did.
+    private var themeCycleColors: [Color] {
+        let indices = [1, 2, 3, 4, 5, 6]
+        return indices.compactMap { idx in
+            guard idx < themeColors.palette.count else { return nil }
+            return Color(hexString: themeColors.palette[idx])
+        }
+    }
+
+    /// Deterministic per-worktree phase offset in `[0, 6.0)` seconds —
+    /// desyncs the comet rotation across rows so they don't all show the
+    /// same angle and colour at the same moment. Same ID always yields the
+    /// same offset, so the visual identity of a lane stays stable.
+    private static func phaseOffset(for id: String) -> Double {
+        let sum = id.utf8.reduce(0) { $0 &+ Int($1) }
+        return Double(sum % 600) / 100.0
     }
 
     private var rowContent: some View {
@@ -108,6 +137,87 @@ struct SwimlaneRowView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
         }
+    }
+}
+
+/// Rotating comet border around the whole swimlane while the meister is
+/// actively running a tool. Same math as the former button-level
+/// `WorkingScanlineView`: AngularGradient stroke sweeping around the shape
+/// (~1.5s per revolution) with a blurred halo + crisp highlight composed
+/// via `.plusLighter`, and a colour cycling through the theme palette
+/// (~6s full sweep). `phaseOffset` desyncs rows so the comets look
+/// independent.
+private struct SwimlaneWorkingCometOverlay: View {
+    let cycleColors: [Color]
+    let phaseOffset: Double
+
+    /// Seconds per full revolution of the comet head.
+    private let rotationPeriod: Double = 1.5
+    /// Seconds per full sweep through every colour in `cycleColors`.
+    private let colorCyclePeriod: Double = 6.0
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+            let elapsed = timeline.date.timeIntervalSinceReferenceDate - phaseOffset
+            let rotationDegrees = (elapsed / rotationPeriod)
+                .truncatingRemainder(dividingBy: 1) * 360
+            let headColor = interpolatedColor(at: elapsed)
+            rotatingTrail(rotationDegrees: rotationDegrees, headColor: headColor)
+        }
+    }
+
+    private func interpolatedColor(at elapsed: Double) -> Color {
+        guard !cycleColors.isEmpty else { return .white }
+        guard cycleColors.count > 1 else { return cycleColors[0] }
+        let count = Double(cycleColors.count)
+        let raw = (elapsed / colorCyclePeriod)
+            .truncatingRemainder(dividingBy: 1)
+        // `truncatingRemainder` can return negatives when `elapsed` is
+        // negative (phaseOffset subtraction early after reference epoch);
+        // wrap into [0, 1) before scaling.
+        let progress = (raw < 0 ? raw + 1 : raw) * count
+        let index = Int(progress) % cycleColors.count
+        let nextIndex = (index + 1) % cycleColors.count
+        let fraction = progress - Double(index)
+        return cycleColors[index].mix(with: cycleColors[nextIndex], by: fraction)
+    }
+
+    @ViewBuilder
+    private func rotatingTrail(rotationDegrees: Double, headColor: Color) -> some View {
+        let stops: [Gradient.Stop] = [
+            .init(color: .clear, location: 0.00),
+            .init(color: .clear, location: 0.50),
+            .init(color: headColor.opacity(0.25), location: 0.68),
+            .init(color: headColor.opacity(0.70), location: 0.82),
+            .init(color: headColor, location: 0.94),
+            .init(color: Color.white, location: 1.00)
+        ]
+
+        ZStack {
+            RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
+                .stroke(
+                    AngularGradient(
+                        gradient: Gradient(stops: stops),
+                        center: .center,
+                        angle: .degrees(rotationDegrees)
+                    ),
+                    lineWidth: 3.2
+                )
+                .blur(radius: 3.5)
+
+            RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
+                .stroke(
+                    AngularGradient(
+                        gradient: Gradient(stops: stops),
+                        center: .center,
+                        angle: .degrees(rotationDegrees)
+                    ),
+                    lineWidth: 1.2
+                )
+                .blur(radius: 0.6)
+        }
+        .blendMode(.plusLighter)
+        .allowsHitTesting(false)
     }
 }
 
