@@ -34,17 +34,22 @@ enum WorkflowCommand: String, CaseIterable, Equatable, Hashable {
     /// transition, or `nil` for machine-internal commands with no user-facing
     /// equivalent. Used by the swimlane UI to inject via `tmux send-keys`.
     ///
+    /// Commands are namespaced under the `klause-workflow` plugin — the
+    /// fully-qualified form `/klause-workflow:<name>` is what the meister's
+    /// Claude Code accepts on stdin; the bare `/klause-<name>` form only
+    /// works for user-typed input disambiguation.
+    ///
     /// `.complete` is internal — it's applied by `/klause-open-pr` when the
-    /// branch has no commits, and there's no direct `/klause-complete` skill.
+    /// branch has no commits, and there's no direct `complete` skill.
     var slashCommand: String? {
         switch self {
-        case .define: "/klause-define"
-        case .execute: "/klause-execute"
-        case .review: "/klause-review"
-        case .openPR: "/klause-open-pr"
-        case .babysit: "/klause-babysit"
-        case .pull: "/klause-pull"
-        case .push: "/klause-push"
+        case .define: "/klause-workflow:klause-define"
+        case .execute: "/klause-workflow:klause-execute"
+        case .review: "/klause-workflow:klause-review"
+        case .openPR: "/klause-workflow:klause-open-pr"
+        case .babysit: "/klause-workflow:klause-babysit"
+        case .pull: "/klause-workflow:klause-pull"
+        case .push: "/klause-workflow:klause-push"
         case .complete: nil
         }
     }

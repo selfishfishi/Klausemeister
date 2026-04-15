@@ -45,7 +45,7 @@ struct SwimlaneHeaderView: View {
         if let nextCommand, let onSendSlashCommand {
             let (isEnabled, tooltip) = advanceAffordance(nextCommand: nextCommand)
             Button {
-                onSendSlashCommand("/klause-next")
+                onSendSlashCommand("/klause-workflow:klause-next")
             } label: {
                 Text(nextCommand.verbLabel)
                     .font(.caption.weight(.medium))

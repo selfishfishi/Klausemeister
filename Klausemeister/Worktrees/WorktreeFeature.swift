@@ -1599,15 +1599,26 @@ struct WorktreeFeature {
             case let .sendSlashCommandRequested(worktreeId, slashCommand):
                 // TmuxClient.sendKeys appends the `Enter` keyword itself — do
                 // not add "\r" or "\n" to `slashCommand`.
-                guard let worktree = state.worktrees[id: worktreeId] else { return .none }
+                guard let worktree = state.worktrees[id: worktreeId] else {
+                    Self.log.warning(
+                        "sendSlashCommand: worktree \(worktreeId) not found in state"
+                    )
+                    return .none
+                }
                 let sessionName = WorktreeConfig.tmuxSessionName(
                     forWorktreeName: worktree.name,
                     repoName: worktree.repoName
+                )
+                Self.log.info(
+                    "sendSlashCommand: \(slashCommand) → \(sessionName)"
                 )
                 return .run { [tmuxClient] send in
                     do {
                         try await tmuxClient.sendKeys(sessionName, slashCommand)
                     } catch {
+                        Self.log.error(
+                            "sendSlashCommand failed for \(sessionName): \(String(describing: error))"
+                        )
                         await send(.delegate(.errorOccurred(
                             message: "Failed to send \(slashCommand): \(error.localizedDescription)"
                         )))
