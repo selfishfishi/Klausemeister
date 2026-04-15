@@ -9,7 +9,6 @@ struct SwimlaneRowView: View {
     let tint: Color
     let onDelete: () -> Void
     let onRemove: () -> Void
-    var teamFor: ((_ issueId: String) -> LinearTeam?)?
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
     var onDropToInbox: ((_ issueId: String) -> Void)?
@@ -45,7 +44,6 @@ struct SwimlaneRowView: View {
 
             SwimlaneBarRow(
                 worktree: worktree,
-                teamFor: teamFor,
                 onMarkComplete: onMarkComplete,
                 onReturnToMeister: onReturnToMeister,
                 onSelectIssue: onSelectIssue,

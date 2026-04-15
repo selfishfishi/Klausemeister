@@ -8,7 +8,6 @@ import SwiftUI
 /// three logical zones is still an independent drop target.
 struct SwimlaneBarRow: View {
     let worktree: Worktree
-    var teamFor: ((_ issueId: String) -> LinearTeam?)?
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
     var onSelectIssue: ((_ issueId: String) -> Void)?
@@ -111,9 +110,6 @@ struct SwimlaneBarRow: View {
 
     private func queuedPill(_ issue: LinearIssue) -> some View {
         HStack(spacing: 3) {
-            if let team = teamFor?(issue.id) {
-                teamKeyLabel(team, opacity: 0.85)
-            }
             Text(issue.identifier)
                 .font(.system(.caption, design: .monospaced).weight(.medium))
                 .foregroundStyle(queuedTint.opacity(0.85))
@@ -141,9 +137,6 @@ struct SwimlaneBarRow: View {
 
     private func donePill(_ issue: LinearIssue) -> some View {
         HStack(spacing: 3) {
-            if let team = teamFor?(issue.id) {
-                teamKeyLabel(team, opacity: 0.55)
-            }
             Text(issue.identifier)
                 .font(.system(.caption2, design: .monospaced).weight(.medium))
                 .foregroundStyle(doneTint.opacity(0.55))
@@ -170,9 +163,6 @@ struct SwimlaneBarRow: View {
         let validCommands = productState?.validCommands ?? []
 
         return HStack(spacing: 10) {
-            if let team = teamFor?(issue.id) {
-                teamKeyLabel(team, opacity: 1.0)
-            }
             Text(issue.identifier)
                 .font(.system(.caption, design: .monospaced).weight(.semibold))
                 .foregroundStyle(activeTint)
@@ -263,14 +253,5 @@ struct SwimlaneBarRow: View {
     private func targetingRing(isOn: Bool, tint: Color) -> some View {
         RoundedRectangle(cornerRadius: 4, style: .continuous)
             .strokeBorder(tint.opacity(isOn ? 0.7 : 0), lineWidth: 2)
-    }
-
-    // MARK: - Team badge helper
-
-    private func teamKeyLabel(_ team: LinearTeam, opacity: Double) -> some View {
-        let color = themeColors.teamTint(colorIndex: team.colorIndex)
-        return Text(team.key)
-            .font(.system(.caption2, design: .monospaced).weight(.bold))
-            .foregroundStyle(color.opacity(opacity))
     }
 }

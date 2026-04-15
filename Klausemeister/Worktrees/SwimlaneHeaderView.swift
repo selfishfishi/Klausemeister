@@ -37,10 +37,18 @@ struct SwimlaneHeaderView: View {
                 GitStatsLineView(stats: stats)
             }
 
-            ClaudeStatusLineView(
-                state: worktree.claudeStatus,
-                text: worktree.claudeStatusText
-            )
+            // The ClaudeStatusLineView and the Advance button overlap in
+            // the working state (both show the tool / reportProgress text),
+            // and again in the blocked state (both say the session is
+            // waiting). When the button is already communicating the live
+            // signal, skip the status line — no redundant "TaskUpdate" /
+            // "Needs approval" lines above an already-expressive capsule.
+            if !advanceButtonCoversStatus {
+                ClaudeStatusLineView(
+                    state: worktree.claudeStatus,
+                    text: worktree.claudeStatusText
+                )
+            }
 
             advanceButton
         }
@@ -63,7 +71,8 @@ struct SwimlaneHeaderView: View {
             if isWorking {
                 WorkingScanlineView(
                     cycleColors: themeCycleColors,
-                    label: nextCommand.verbLabel
+                    label: nextCommand.verbLabel,
+                    progressText: currentProgressText
                 )
                 .help(tooltip)
             } else if isBlocked {
@@ -90,6 +99,31 @@ struct SwimlaneHeaderView: View {
                 .help(tooltip)
             }
         }
+    }
+
+    /// Whether the Advance button is in a state that already conveys the
+    /// live session status inside the capsule (working scanline with tool
+    /// text, or blocked glow with "?") — in which case we can skip the
+    /// separate ClaudeStatusLineView above it.
+    private var advanceButtonCoversStatus: Bool {
+        guard worktree.meisterStatus == .running else { return false }
+        switch worktree.claudeStatus {
+        case .working, .blocked: return true
+        case .idle, .error, .offline: return false
+        }
+    }
+
+    /// The text to surface inside the button while the meister is working.
+    /// Prefers rich `reportProgress` output; falls back to the last tool
+    /// name reported by the hook; nil when nothing is available.
+    private var currentProgressText: String? {
+        if let text = worktree.claudeStatusText, !text.isEmpty { return text }
+        if case let .working(tool) = worktree.claudeStatus,
+           let tool, !tool.isEmpty
+        {
+            return tool
+        }
+        return nil
     }
 
     /// Indices 1–6 of the Everforest palette — red, green, yellow, blue,
@@ -187,7 +221,12 @@ private struct WorkingScanlineView: View {
     /// the theme's main colours (red/green/yellow/blue/magenta/cyan),
     /// excluding background and foreground.
     let cycleColors: [Color]
+    /// The idle-state label — used as an invisible width spacer so the
+    /// button's width stays stable when toggling into the working state.
     let label: String
+    /// Live progress text (tool name or reportProgress string). Shown
+    /// inside the capsule, truncated to one line.
+    var progressText: String?
 
     /// Seconds per full revolution of the comet head.
     private let rotationPeriod: Double = 1.5
@@ -206,7 +245,10 @@ private struct WorkingScanlineView: View {
         let rotationDegrees = (elapsed / rotationPeriod)
             .truncatingRemainder(dividingBy: 1) * 360
         let headColor = interpolatedColor(at: elapsed)
+        let displayText = progressText ?? "Working…"
 
+        // Invisible spacer to anchor the capsule at the idle-button width,
+        // so the working state doesn't cause the swimlane header to resize.
         HStack(spacing: 4) {
             Image(systemName: "play.fill").imageScale(.small)
             Text(label)
@@ -215,6 +257,15 @@ private struct WorkingScanlineView: View {
         .foregroundStyle(Color.clear.opacity(0.0001))
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+        .overlay(
+            Text(displayText)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(headColor)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 8)
+                .shadow(color: headColor.opacity(0.4), radius: 2)
+        )
         .overlay(
             rotatingTrail(rotationDegrees: rotationDegrees, headColor: headColor)
         )
