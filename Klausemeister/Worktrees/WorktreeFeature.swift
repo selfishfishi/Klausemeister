@@ -230,7 +230,6 @@ struct WorktreeFeature {
         case mcpItemAddedToInbox(worktreeId: String, issueLinearId: String)
         case mcpItemAddedToInboxResolved(worktreeId: String, issue: LinearIssue)
 
-        /// Inspector selection (KLA-189)
         case queueRowTapped(issueId: String)
 
         case alert(PresentationAction<Alert>)
@@ -702,8 +701,6 @@ struct WorktreeFeature {
                         }
                     }
                     .cancellable(id: CancelID.prInfoPoll, cancelInFlight: true),
-                    // Long-lived Claude session status stream
-                    // (KLA-135: ClaudeStatusClient).
                     .run { [claudeStatusClient] send in
                         for await update in claudeStatusClient.stateChanges() {
                             await send(.claudeStatusChanged(
@@ -1600,19 +1597,21 @@ struct WorktreeFeature {
                 return .none
 
             case let .sendSlashCommandRequested(worktreeId, slashCommand):
-                // Inject `slashCommand` into the meister's tmux session. The
-                // view layer is responsible for gating on `claudeStatus`; the
-                // effect still attempts to send regardless so a user clicking
-                // through a disabled-but-stale control doesn't silently no-op.
                 // TmuxClient.sendKeys appends the `Enter` keyword itself — do
-                // not add "\r" or "\n".
+                // not add "\r" or "\n" to `slashCommand`.
                 guard let worktree = state.worktrees[id: worktreeId] else { return .none }
                 let sessionName = WorktreeConfig.tmuxSessionName(
                     forWorktreeName: worktree.name,
                     repoName: worktree.repoName
                 )
-                return .run { [tmuxClient] _ in
-                    try? await tmuxClient.sendKeys(sessionName, slashCommand)
+                return .run { [tmuxClient] send in
+                    do {
+                        try await tmuxClient.sendKeys(sessionName, slashCommand)
+                    } catch {
+                        await send(.delegate(.errorOccurred(
+                            message: "Failed to send \(slashCommand): \(error.localizedDescription)"
+                        )))
+                    }
                 }
 
             case let .moveIssueStatusRequested(issueId, target):

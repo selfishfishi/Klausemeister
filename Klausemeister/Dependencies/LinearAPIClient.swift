@@ -630,7 +630,6 @@ nonisolated private let pullRequestURLRegex: NSRegularExpression? = try? NSRegul
 )
 
 /// Decodes a GraphQL ticket-detail response and maps to `InspectorTicketDetail`.
-/// Exposed at internal visibility so tests can feed raw JSON directly.
 nonisolated func decodeTicketDetail(
     from data: Data, requestedId: String
 ) async throws -> InspectorTicketDetail {
@@ -638,21 +637,26 @@ nonisolated func decodeTicketDetail(
     guard let issue = envelope.data.issue else {
         throw LinearAPIError.issueNotFound(requestedId)
     }
+    guard let issueURL = URL(string: issue.url) else {
+        throw LinearAPIError.graphQLErrors(["Issue URL is malformed: \(issue.url)"])
+    }
     let attached = (issue.attachments?.nodes ?? [])
         .filter { ($0.sourceType ?? "").lowercased() == "github" }
-        .map(mapPullRequestAttachment)
+        .compactMap(mapPullRequestAttachment)
+    let project = issue.project.map {
+        InspectorTicketDetail.Project(id: $0.id, name: $0.name)
+    }
     return InspectorTicketDetail(
         id: issue.id,
         identifier: issue.identifier,
         title: issue.title,
         descriptionMarkdown: issue.description,
-        url: issue.url,
-        projectName: issue.project?.name,
-        projectId: issue.project?.id,
+        url: issueURL,
+        project: project,
         status: InspectorTicketStatus(
             id: issue.state.id,
             name: issue.state.name,
-            type: issue.state.type
+            type: .init(fromLinear: issue.state.type)
         ),
         attachedPRs: attached
     )
@@ -660,17 +664,20 @@ nonisolated func decodeTicketDetail(
 
 nonisolated private func mapPullRequestAttachment(
     _ node: TicketDetailResponse.DataEnvelope.Issue.Attachments.Node
-) -> AttachedPullRequest {
+) -> AttachedPullRequest? {
+    guard let url = URL(string: node.url) else {
+        ticketDetailLog.warning(
+            "PR attachment URL malformed; dropping attachment. url=\(node.url, privacy: .public)"
+        )
+        return nil
+    }
     let metadata = node.metadata
-    let state = parsePRState(metadata: metadata, url: node.url)
-    let (repo, number) = parseRepoAndNumber(metadata: metadata, url: node.url)
     return AttachedPullRequest(
         id: node.id,
-        url: node.url,
+        url: url,
         title: node.title,
-        number: number,
-        repo: repo,
-        state: state
+        github: parseGitHubRef(metadata: metadata, url: node.url),
+        state: parsePRState(metadata: metadata, url: node.url)
     )
 }
 
@@ -683,33 +690,53 @@ nonisolated private func parsePRState(
         ticketDetailLog.warning("PR attachment missing state; url=\(url, privacy: .public)")
         return .unknown
     }
-    return AttachedPullRequest.State(rawValue: raw.lowercased()) ?? .unknown
+    if let state = AttachedPullRequest.State(rawValue: raw.lowercased()) {
+        return state
+    }
+    ticketDetailLog.warning(
+        "Unrecognized PR state '\(raw, privacy: .public)' from Linear; url=\(url, privacy: .public)"
+    )
+    return .unknown
 }
 
-nonisolated private func parseRepoAndNumber(
+/// Prefers Attachment.metadata values when both repo and number are present;
+/// falls back to parsing the URL (`https://github.com/<owner>/<repo>/pull/<n>`).
+/// Returns nil when neither source yields a complete ref.
+nonisolated private func parseGitHubRef(
     metadata: JSONValue?, url: String
-) -> (repo: String?, number: Int?) {
-    let metadataRepo = metadata?.object("repo")?.stringValue
-        ?? metadata?.object("repository")?.stringValue
-    let metadataNumber = metadata?.object("number")?.intValue
-    if metadataRepo != nil, metadataNumber != nil {
-        return (metadataRepo, metadataNumber)
+) -> AttachedPullRequest.GitHubRef? {
+    if let fromMetadata = refFromMetadata(metadata) {
+        return fromMetadata
     }
-    // Fall back to URL parsing: https://github.com/<owner>/<repo>/pull/<n>
-    guard let regex = pullRequestURLRegex else { return (metadataRepo, metadataNumber) }
+    return refFromURL(url)
+}
+
+nonisolated private func refFromMetadata(_ metadata: JSONValue?) -> AttachedPullRequest.GitHubRef? {
+    guard let metadata,
+          let combined = metadata.object("repo")?.stringValue
+          ?? metadata.object("repository")?.stringValue,
+          let number = metadata.object("number")?.intValue
+    else { return nil }
+    let parts = combined.split(separator: "/", maxSplits: 1).map(String.init)
+    guard parts.count == 2 else { return nil }
+    return .init(owner: parts[0], name: parts[1], number: number)
+}
+
+nonisolated private func refFromURL(_ url: String) -> AttachedPullRequest.GitHubRef? {
+    guard let regex = pullRequestURLRegex else { return nil }
     let range = NSRange(url.startIndex ..< url.endIndex, in: url)
     guard let match = regex.firstMatch(in: url, range: range),
           match.numberOfRanges == 4,
           let ownerRange = Range(match.range(at: 1), in: url),
           let repoRange = Range(match.range(at: 2), in: url),
-          let numberRange = Range(match.range(at: 3), in: url)
-    else {
-        return (metadataRepo, metadataNumber)
-    }
-    let owner = String(url[ownerRange])
-    let repoName = String(url[repoRange])
-    let parsedNumber = Int(url[numberRange])
-    return (metadataRepo ?? "\(owner)/\(repoName)", metadataNumber ?? parsedNumber)
+          let numberRange = Range(match.range(at: 3), in: url),
+          let number = Int(url[numberRange])
+    else { return nil }
+    return .init(
+        owner: String(url[ownerRange]),
+        name: String(url[repoRange]),
+        number: number
+    )
 }
 
 // MARK: - API Errors

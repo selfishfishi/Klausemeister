@@ -7,16 +7,8 @@ struct TerminalContainerView: View {
 
     @Environment(\.themeColors) private var themeColors
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var didSeedInspectorPref = false
     @AppStorage("inspectorOpen") private var inspectorOpenPref: Bool = false
-
-    private var inspectorViewState: TicketInspectorView.ViewState {
-        switch store.inspectorDetail {
-        case .empty: .empty
-        case .loading: .loading
-        case let .error(message): .error(message)
-        case let .loaded(detail): .loaded(detail)
-        }
-    }
 
     var body: some View {
         ZStack {
@@ -56,7 +48,12 @@ struct TerminalContainerView: View {
             .safeAreaInset(edge: .trailing, spacing: 0) {
                 if store.showInspector {
                     TicketInspectorView(
-                        state: inspectorViewState,
+                        state: store.inspectorDetail,
+                        onRetry: {
+                            if case let .ticket(id) = store.inspectorSelection {
+                                store.send(.inspectorSelectionRequested(issueId: id))
+                            }
+                        },
                         onClose: { store.send(.toggleInspector) }
                     )
                     .frame(width: 320)
@@ -110,17 +107,22 @@ struct TerminalContainerView: View {
             }
         }
         .onChange(of: store.showInspector) { _, newValue in
-            if inspectorOpenPref != newValue {
-                inspectorOpenPref = newValue
-            }
+            inspectorOpenPref = newValue
         }
         .navigationTitle("")
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .tint(themeColors.accentColor)
         .environment(\.keyBindings, store.keyBindings)
         .task {
-            if inspectorOpenPref != store.showInspector {
-                store.send(.toggleInspector)
+            // Seed TCA state from @AppStorage on first appearance. Guarded by a
+            // separate flag so repeated .task firings don't loop against the
+            // `.onChange` above (which would overwrite the persisted value if
+            // `showInspector` was toggled before `.task` ran).
+            if !didSeedInspectorPref {
+                didSeedInspectorPref = true
+                if inspectorOpenPref != store.showInspector {
+                    store.send(.toggleInspector)
+                }
             }
             store.send(.onAppear)
         }

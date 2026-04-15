@@ -2,14 +2,7 @@ import AppKit
 import SwiftUI
 
 struct TicketInspectorView: View {
-    enum ViewState: Equatable {
-        case empty
-        case loading
-        case error(String)
-        case loaded(InspectorTicketDetail)
-    }
-
-    let state: ViewState
+    let state: InspectorDetailLoadState
     var onOpenLinear: (URL) -> Void = { NSWorkspace.shared.open($0) }
     var onOpenPR: (URL) -> Void = { NSWorkspace.shared.open($0) }
     var onRetry: (() -> Void)?
@@ -35,9 +28,9 @@ struct TicketInspectorView: View {
     private var topBar: some View {
         HStack(spacing: 8) {
             Spacer(minLength: 0)
-            if case let .loaded(detail) = state, let url = URL(string: detail.url) {
+            if case let .loaded(detail) = state {
                 Button {
-                    onOpenLinear(url)
+                    onOpenLinear(detail.url)
                 } label: {
                     Image(systemName: "arrow.up.right.square")
                         .font(.body)
@@ -76,8 +69,8 @@ struct TicketInspectorView: View {
                     .font(.caption)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case let .error(message):
-            errorView(message)
+        case let .error(error):
+            errorView(error.userMessage)
         case let .loaded(detail):
             loadedView(detail)
         }
@@ -127,8 +120,8 @@ struct TicketInspectorView: View {
                 .font(.title3.weight(.semibold))
             HStack(spacing: 8) {
                 statusPill(detail.status)
-                if let project = detail.projectName {
-                    Text(project)
+                if let project = detail.project {
+                    Text(project.name)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -160,19 +153,15 @@ struct TicketInspectorView: View {
 
     private func prRow(_ attachment: AttachedPullRequest) -> some View {
         Button {
-            if let url = URL(string: attachment.url) {
-                onOpenPR(url)
-            }
+            onOpenPR(attachment.url)
         } label: {
             HStack(spacing: 6) {
                 prStateIcon(attachment.state)
                     .foregroundStyle(prColor(attachment.state))
-                if let number = attachment.number {
-                    Text("#\(number)")
+                if let ref = attachment.github {
+                    Text("#\(ref.number)")
                         .foregroundStyle(prColor(attachment.state))
-                }
-                if let repo = attachment.repo {
-                    Text(repo)
+                    Text(ref.fullName)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
@@ -206,13 +195,12 @@ struct TicketInspectorView: View {
             .foregroundStyle(statusColor(status.type))
     }
 
-    private func statusColor(_ type: String) -> Color {
-        switch type.lowercased() {
-        case "started": blueColor
-        case "completed": themeColors.accentColor
-        case "canceled": redColor
-        case "unstarted", "backlog", "triage": .secondary
-        default: .secondary
+    private func statusColor(_ type: InspectorTicketStatus.StatusType) -> Color {
+        switch type {
+        case .started: blueColor
+        case .completed: themeColors.accentColor
+        case .canceled: redColor
+        case .unstarted, .backlog, .triage, .unknown: .secondary
         }
     }
 
@@ -248,6 +236,9 @@ struct TicketInspectorView: View {
     }
 }
 
+// swiftlint:disable:next force_unwrapping
+private let samplePreviewURL = URL(string: "https://linear.app/example/issue/KLA-188")!
+
 #Preview("loaded") {
     TicketInspectorView(state: .loaded(InspectorTicketDetail(
         id: "x",
@@ -258,20 +249,25 @@ struct TicketInspectorView: View {
 
         **Scope**: sections, states, theme-aware colors.
         """,
-        url: "https://linear.app/example/issue/KLA-188",
-        projectName: "The Inspector",
-        projectId: "p1",
-        status: InspectorTicketStatus(id: "s1", name: "In Progress", type: "started"),
+        url: samplePreviewURL,
+        project: .init(id: "p1", name: "The Inspector"),
+        status: .init(id: "s1", name: "In Progress", type: .started),
         attachedPRs: [
-            AttachedPullRequest(
-                id: "a1", url: "https://github.com/selfishfishi/Klausemeister/pull/138",
+            .init(
+                id: "a1",
+                // swiftlint:disable:next force_unwrapping
+                url: URL(string: "https://github.com/selfishfishi/Klausemeister/pull/138")!,
                 title: "Scaffold Inspector sidebar with Cmd+L toggle",
-                number: 138, repo: "selfishfishi/Klausemeister", state: .merged
+                github: .init(owner: "selfishfishi", name: "Klausemeister", number: 138),
+                state: .merged
             ),
-            AttachedPullRequest(
-                id: "a2", url: "https://github.com/selfishfishi/Klausemeister/pull/140",
+            .init(
+                id: "a2",
+                // swiftlint:disable:next force_unwrapping
+                url: URL(string: "https://github.com/selfishfishi/Klausemeister/pull/140")!,
                 title: "Fetch Linear ticket detail + attached PRs",
-                number: 140, repo: "selfishfishi/Klausemeister", state: .open
+                github: .init(owner: "selfishfishi", name: "Klausemeister", number: 140),
+                state: .open
             )
         ]
     )))
@@ -286,7 +282,7 @@ struct TicketInspectorView: View {
 }
 
 #Preview("error") {
-    TicketInspectorView(state: .error("Could not reach Linear. Check your connection."))
+    TicketInspectorView(state: .error(.transport(message: "Could not reach Linear.")))
         .frame(width: 340, height: 500)
         .environment(\.themeColors, AppTheme.darkMedium.colors)
 }
