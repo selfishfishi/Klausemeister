@@ -38,7 +38,10 @@ struct SwimlaneRowView: View {
 
     private var rowContent: some View {
         HStack(alignment: .center, spacing: 10) {
-            SwimlaneHeaderView(worktree: worktree)
+            SwimlaneHeaderView(
+                worktree: worktree,
+                onSendSlashCommand: onSendSlashCommand
+            )
 
             SwimlaneBarRow(
                 worktree: worktree,
