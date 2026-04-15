@@ -10,41 +10,31 @@ struct SwimlaneHeaderView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                WorktreeStatusDot(
-                    meisterStatus: worktree.meisterStatus,
-                    claudeStatus: worktree.claudeStatus
-                )
-                Text(worktree.name)
-                    .font(.body)
-                    .lineLimit(1)
+            // Identity: status dot + worktree name, ticket id directly under.
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    WorktreeStatusDot(
+                        meisterStatus: worktree.meisterStatus,
+                        claudeStatus: worktree.claudeStatus
+                    )
+                    Text(worktree.name)
+                        .font(.body)
+                        .lineLimit(1)
+                }
+                if let processing = worktree.processing {
+                    Text(processing.identifier)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .help("\(processing.identifier) · \(processing.title)")
+                }
             }
-
-            if let processing = worktree.processing {
-                Text(processing.title)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .help("\(processing.identifier) · \(processing.title)")
-            } else if let branch = worktree.currentBranch {
-                Text(branch)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-
-            if let stats = worktree.gitStats, !stats.isEmpty {
-                GitStatsLineView(stats: stats)
-            }
-
-            ClaudeStatusLineView(
-                state: worktree.claudeStatus,
-                progressText: worktree.claudeStatusText,
-                activityText: worktree.claudeActivityText,
-                activityUpdatedAt: worktree.claudeActivityUpdatedAt
-            )
 
             advanceButton
+                // Breathing room so the rotating phosphor trail's blurred
+                // halo can extend beyond the capsule without getting
+                // clipped by the neighbouring views.
+                .padding(.vertical, 6)
         }
         .padding(10)
         .frame(minWidth: 140, idealWidth: 160, alignment: .topLeading)
@@ -65,7 +55,8 @@ struct SwimlaneHeaderView: View {
             if isWorking {
                 WorkingScanlineView(
                     cycleColors: themeCycleColors,
-                    label: nextCommand.verbLabel
+                    label: nextCommand.verbLabel,
+                    progressText: currentProgressText
                 )
                 .help(tooltip)
             } else if isBlocked {
@@ -92,6 +83,19 @@ struct SwimlaneHeaderView: View {
                 .help(tooltip)
             }
         }
+    }
+
+    /// The text to surface inside the button while the meister is working.
+    /// Prefers rich `reportProgress` output; falls back to the last tool
+    /// name reported by the hook; nil when nothing is available.
+    private var currentProgressText: String? {
+        if let text = worktree.claudeStatusText, !text.isEmpty { return text }
+        if case let .working(tool) = worktree.claudeStatus,
+           let tool, !tool.isEmpty
+        {
+            return tool
+        }
+        return nil
     }
 
     /// Indices 1–6 of the Everforest palette — red, green, yellow, blue,
@@ -189,7 +193,12 @@ private struct WorkingScanlineView: View {
     /// the theme's main colours (red/green/yellow/blue/magenta/cyan),
     /// excluding background and foreground.
     let cycleColors: [Color]
+    /// The idle-state label — used as an invisible width spacer so the
+    /// button's width stays stable when toggling into the working state.
     let label: String
+    /// Live progress text (tool name or reportProgress string). Shown
+    /// inside the capsule, truncated to one line.
+    var progressText: String?
 
     /// Seconds per full revolution of the comet head.
     private let rotationPeriod: Double = 1.5
@@ -208,7 +217,10 @@ private struct WorkingScanlineView: View {
         let rotationDegrees = (elapsed / rotationPeriod)
             .truncatingRemainder(dividingBy: 1) * 360
         let headColor = interpolatedColor(at: elapsed)
+        let displayText = progressText ?? "Working…"
 
+        // Invisible spacer to anchor the capsule at the idle-button width,
+        // so the working state doesn't cause the swimlane header to resize.
         HStack(spacing: 4) {
             Image(systemName: "play.fill").imageScale(.small)
             Text(label)
@@ -217,6 +229,15 @@ private struct WorkingScanlineView: View {
         .foregroundStyle(Color.clear.opacity(0.0001))
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
+        .overlay(
+            Text(displayText)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(headColor)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 8)
+                .shadow(color: headColor.opacity(0.4), radius: 2)
+        )
         .overlay(
             rotatingTrail(rotationDegrees: rotationDegrees, headColor: headColor)
         )

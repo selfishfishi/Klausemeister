@@ -618,8 +618,18 @@ struct WorktreeFeature {
                     )
                 }
 
+                // Carry runtime state (git stats, meister/claude lifecycle,
+                // tmux status, current branch, rich progress text) over from
+                // the previous worktrees list so a re-fired onAppear doesn't
+                // flash stale-looking "empty" rows before the background
+                // refreshes catch back up. Only DB-sourced fields come from
+                // the fresh record.
+                let previousWorktreesByID = Dictionary(
+                    uniqueKeysWithValues: state.worktrees.map { ($0.id, $0) }
+                )
                 state.worktrees = IdentifiedArrayOf(uniqueElements: worktreeRecords.map { record in
                     let items = queueItemsByWorktree[record.worktreeId] ?? []
+                    let previous = previousWorktreesByID[record.worktreeId]
                     return Worktree(
                         id: record.worktreeId,
                         name: record.name,
@@ -627,6 +637,12 @@ struct WorktreeFeature {
                         gitWorktreePath: record.gitWorktreePath,
                         repoId: record.repoId,
                         repoName: record.repoId.flatMap { repoNames[$0] },
+                        currentBranch: previous?.currentBranch,
+                        tmuxSessionStatus: previous?.tmuxSessionStatus ?? .unknown,
+                        meisterStatus: previous?.meisterStatus ?? .none,
+                        claudeStatus: previous?.claudeStatus ?? .offline,
+                        claudeStatusText: previous?.claudeStatusText,
+                        gitStats: previous?.gitStats,
                         inbox: items
                             .filter { $0.queuePosition == .inbox }
                             .sorted { $0.sortOrder < $1.sortOrder }
