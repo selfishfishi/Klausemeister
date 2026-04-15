@@ -541,8 +541,11 @@ struct WorktreeFeature {
 
         guard needsSpawn else {
             return .run { [surfaceManager] _ in
-                await MainActor.run {
-                    _ = surfaceManager.createSurface(worktreeId, workingDirectory, command)
+                let created = await MainActor.run {
+                    surfaceManager.createSurface(worktreeId, workingDirectory, command)
+                }
+                if created {
+                    _ = await surfaceManager.focus(worktreeId)
                 }
             }
         }
@@ -559,6 +562,9 @@ struct WorktreeFeature {
                     surfaceManager.createSurface(worktreeId, workingDirectory, command)
                 }
                 Self.log.info("terminalActivationEffect: createSurface returned \(created, privacy: .public)")
+                if created {
+                    _ = await surfaceManager.focus(worktreeId)
+                }
                 try await clock.sleep(for: Self.meisterHelloGracePeriod)
                 await send(.meisterSpawnFailed(worktreeId: worktreeId))
             } catch is CancellationError {
