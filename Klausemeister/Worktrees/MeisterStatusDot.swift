@@ -101,6 +101,8 @@ struct WorktreeStatusDot: View {
                     color: color.opacity(glowOpacity(phase: phase, intensity: intensity)),
                     radius: glowRadius(phase: phase)
                 )
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
         }
         .help(tooltip)
     }
