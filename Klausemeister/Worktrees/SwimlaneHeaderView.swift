@@ -10,7 +10,7 @@ struct SwimlaneHeaderView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Group 1: identity (name + ticket id).
+            // Identity: status dot + worktree name, ticket id directly under.
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     WorktreeStatusDot(
@@ -30,48 +30,10 @@ struct SwimlaneHeaderView: View {
                 }
             }
 
-            // The ClaudeStatusLineView and the Advance button overlap in
-            // the working/blocked states — when the button already
-            // expresses the state, skip the line to avoid duplicate text.
-            if !advanceButtonCoversStatus {
-                ClaudeStatusLineView(
-                    state: worktree.claudeStatus,
-                    text: worktree.claudeStatusText
-                )
-            }
-
             advanceButton
-
-            // Footer: branch · git stats on a single line.
-            branchAndStatsFooter
         }
         .padding(10)
         .frame(minWidth: 140, idealWidth: 160, alignment: .topLeading)
-    }
-
-    @ViewBuilder
-    private var branchAndStatsFooter: some View {
-        let branch = worktree.currentBranch
-        let stats = worktree.gitStats.flatMap { $0.isEmpty ? nil : $0 }
-        if branch != nil || stats != nil {
-            HStack(spacing: 5) {
-                if let branch {
-                    Text(branch)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                if branch != nil, stats != nil {
-                    Text("·")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                if let stats {
-                    GitStatsLineView(stats: stats)
-                }
-            }
-        }
     }
 
     @ViewBuilder
@@ -116,18 +78,6 @@ struct SwimlaneHeaderView: View {
                 .opacity(isEnabled ? 1 : 0.5)
                 .help(tooltip)
             }
-        }
-    }
-
-    /// Whether the Advance button is in a state that already conveys the
-    /// live session status inside the capsule (working scanline with tool
-    /// text, or blocked glow with "?") — in which case we can skip the
-    /// separate ClaudeStatusLineView above it.
-    private var advanceButtonCoversStatus: Bool {
-        guard worktree.meisterStatus == .running else { return false }
-        switch worktree.claudeStatus {
-        case .working, .blocked: return true
-        case .idle, .error, .offline: return false
         }
     }
 
