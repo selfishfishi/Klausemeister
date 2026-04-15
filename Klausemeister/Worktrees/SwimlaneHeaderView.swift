@@ -50,8 +50,11 @@ struct SwimlaneHeaderView: View {
             }()
 
             if isWorking {
-                WorkingScanlineView(accent: themeColors.accentColor, label: nextCommand.verbLabel)
-                    .help(tooltip)
+                WorkingScanlineView(
+                    cycleColors: themeCycleColors,
+                    label: nextCommand.verbLabel
+                )
+                .help(tooltip)
             } else {
                 Button {
                     onSendSlashCommand("/klause-workflow:klause-next")
@@ -69,6 +72,17 @@ struct SwimlaneHeaderView: View {
                 .opacity(isEnabled ? 1 : 0.5)
                 .help(tooltip)
             }
+        }
+    }
+
+    /// Indices 1–6 of the Everforest palette — red, green, yellow, blue,
+    /// magenta, cyan. Excludes bg/fg (0 and 7) and bright/alt variants.
+    /// Used to colour-cycle the working-state border.
+    private var themeCycleColors: [Color] {
+        let indices = [1, 2, 3, 4, 5, 6]
+        return indices.compactMap { idx in
+            guard idx < themeColors.palette.count else { return nil }
+            return Color(hexString: themeColors.palette[idx])
         }
     }
 
@@ -145,22 +159,23 @@ private struct LiquidGlassActionButtonStyle: ButtonStyle {
 // MARK: - Working-state animated progress
 
 /// Replaces the Advance button while the meister is actively running a
-/// tool. Interior stays Liquid Glass. The border becomes a bright comet
-/// head of an AngularGradient sweeping around the capsule at ~1.5s per
-/// revolution with a phosphor trail (soft halo + crisp highlight, blurred,
-/// `.plusLighter` blended). A slow `hueRotation` cycles the trail through
-/// neighbouring hues so the "busy" state reads as kinetic without locking
-/// to a single colour.
+/// tool. Transparent interior. The border is a bright comet head of an
+/// AngularGradient sweeping around the capsule (~1.5s per revolution)
+/// with a phosphor trail (soft halo + crisp highlight, blurred,
+/// `.plusLighter` blended). The comet's colour smoothly cycles through
+/// the supplied palette so the state reads as kinetic without locking to
+/// a single hue.
 private struct WorkingScanlineView: View {
-    let accent: Color
+    /// Palette the comet head cycles through, in display order. Typically
+    /// the theme's main colours (red/green/yellow/blue/magenta/cyan),
+    /// excluding background and foreground.
+    let cycleColors: [Color]
     let label: String
 
     /// Seconds per full revolution of the comet head.
     private let rotationPeriod: Double = 1.5
-    /// Peak-to-peak hue shift in degrees.
-    private let hueExcursion: Double = 40
-    /// Seconds per full hue cycle.
-    private let huePeriod: Double = 6.0
+    /// Seconds per full sweep through every colour in `cycleColors`.
+    private let colorCyclePeriod: Double = 6.0
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
@@ -171,33 +186,46 @@ private struct WorkingScanlineView: View {
     @ViewBuilder
     private func animatedBody(time: Date) -> some View {
         let elapsed = time.timeIntervalSinceReferenceDate
-        let rotationDegrees = (elapsed / rotationPeriod).truncatingRemainder(dividingBy: 1) * 360
-        let hueDegrees = sin(elapsed * 2 * .pi / huePeriod) * hueExcursion
+        let rotationDegrees = (elapsed / rotationPeriod)
+            .truncatingRemainder(dividingBy: 1) * 360
+        let headColor = interpolatedColor(at: elapsed)
 
-        // Same label content as the rest-state button, rendered near-invisible
-        // so the working-state view has identical width and avoids layout
-        // jumps when toggling between states.
         HStack(spacing: 4) {
             Image(systemName: "play.fill").imageScale(.small)
             Text(label)
         }
         .font(.caption.weight(.semibold))
-        .foregroundStyle(accent.opacity(0.0001))
+        .foregroundStyle(Color.clear.opacity(0.0001))
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .overlay(
-            rotatingTrail(rotationDegrees: rotationDegrees, hueDegrees: hueDegrees)
+            rotatingTrail(rotationDegrees: rotationDegrees, headColor: headColor)
         )
     }
 
+    /// Linearly interpolate between adjacent `cycleColors` entries based on
+    /// elapsed time, wrapping at the end so the cycle loops.
+    private func interpolatedColor(at elapsed: Double) -> Color {
+        guard !cycleColors.isEmpty else { return .white }
+        guard cycleColors.count > 1 else { return cycleColors[0] }
+
+        let count = Double(cycleColors.count)
+        let progress = ((elapsed / colorCyclePeriod)
+            .truncatingRemainder(dividingBy: 1)) * count
+        let index = Int(progress) % cycleColors.count
+        let nextIndex = (index + 1) % cycleColors.count
+        let fraction = progress - Double(index)
+        return cycleColors[index].mix(with: cycleColors[nextIndex], by: fraction)
+    }
+
     @ViewBuilder
-    private func rotatingTrail(rotationDegrees: Double, hueDegrees: Double) -> some View {
+    private func rotatingTrail(rotationDegrees: Double, headColor: Color) -> some View {
         let stops: [Gradient.Stop] = [
             .init(color: .clear, location: 0.00),
             .init(color: .clear, location: 0.50),
-            .init(color: accent.opacity(0.25), location: 0.68),
-            .init(color: accent.opacity(0.70), location: 0.82),
-            .init(color: accent, location: 0.94),
+            .init(color: headColor.opacity(0.25), location: 0.68),
+            .init(color: headColor.opacity(0.70), location: 0.82),
+            .init(color: headColor, location: 0.94),
             .init(color: Color.white, location: 1.00)
         ]
 
@@ -225,7 +253,6 @@ private struct WorkingScanlineView: View {
                 .blur(radius: 0.6)
         }
         .blendMode(.plusLighter)
-        .hueRotation(.degrees(hueDegrees))
         .allowsHitTesting(false)
     }
 }
