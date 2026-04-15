@@ -33,11 +33,8 @@ struct SwimlaneHeaderView: View {
                 text: worktree.claudeStatusText
             )
 
-            HStack(spacing: 6) {
-                statusPill
-                Spacer(minLength: 0)
-                advanceButton
-            }
+            statusPill
+            advanceButton
         }
         .padding(10)
         .frame(minWidth: 140, idealWidth: 160, alignment: .topLeading)
