@@ -281,7 +281,7 @@ actor MCPSocketListener {
             guard clientFD >= 0 else { return }
             debugLog("accepted connection fd=\(clientFD)")
             Task {
-                await self.spawnConnectionHandler(
+                self.spawnConnectionHandler(
                     socketFD: clientFD,
                     eventContinuation: eventContinuation
                 )
@@ -296,7 +296,7 @@ actor MCPSocketListener {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 source.setCancelHandler { [self] in
                     Darwin.close(listenFD)
-                    Task { await self.cancelAllConnectionTasks() }
+                    Task { self.cancelAllConnectionTasks() }
                     continuation.resume()
                 }
             }

@@ -97,7 +97,7 @@ struct InspectorTicketStatus: Equatable {
         case triage
         case unknown
 
-        init(fromLinear raw: String) {
+        nonisolated init(fromLinear raw: String) {
             self = Self(rawValue: raw.lowercased()) ?? .unknown
         }
     }

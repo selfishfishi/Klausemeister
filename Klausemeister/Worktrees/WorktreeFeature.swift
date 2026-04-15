@@ -1692,8 +1692,7 @@ struct WorktreeFeature {
                 if !alreadyPresent {
                     // DB write already happened in the enqueueItem handler —
                     // only fetch the issue record to update in-memory state.
-                    return .run { send in
-                        @Dependency(\.databaseClient) var databaseClient
+                    return .run { [databaseClient] send in
                         if let record = try await databaseClient.fetchImportedIssue(issueLinearId) {
                             let issue = LinearIssue(from: record)
                             await send(.mcpItemAddedToInboxResolved(
