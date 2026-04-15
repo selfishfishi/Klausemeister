@@ -86,9 +86,11 @@ struct SwimlaneHeaderView: View {
     }
 
     /// The text to surface inside the button while the meister is working.
-    /// Prefers rich `reportProgress` output; falls back to the last tool
-    /// name reported by the hook; nil when nothing is available.
+    /// Priority: live `reportActivity` narration (nil-clamped by the reducer
+    /// TTL so freshness is already enforced) → the step-boundary
+    /// `reportProgress` text → the last tool name from the hook → nil.
     private var currentProgressText: String? {
+        if let text = worktree.claudeActivityText, !text.isEmpty { return text }
         if let text = worktree.claudeStatusText, !text.isEmpty { return text }
         if case let .working(tool) = worktree.claudeStatus,
            let tool, !tool.isEmpty
