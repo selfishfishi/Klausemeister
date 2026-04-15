@@ -169,19 +169,27 @@ struct SwimlaneBarRow: View {
         let validCommands = productState?.validCommands ?? []
         let (isAdvanceEnabled, advanceTooltip) = advanceAffordance(issue: issue, nextCommand: nextCommand)
 
+        // Tappable summary (identifier + title) is split from the trailing
+        // action controls so clicks on the Advance button never leak up to
+        // `onSelectIssue` as a second selection event.
         return HStack(spacing: 10) {
-            if let team = teamFor?(issue.id) {
-                teamKeyLabel(team, opacity: 1.0)
+            HStack(spacing: 10) {
+                if let team = teamFor?(issue.id) {
+                    teamKeyLabel(team, opacity: 1.0)
+                }
+                Text(issue.identifier)
+                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(activeTint)
+                Text(issue.title)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            Text(issue.identifier)
-                .font(.system(.caption, design: .monospaced).weight(.semibold))
-                .foregroundStyle(activeTint)
-            Text(issue.title)
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { onSelectIssue?(issue.id) }
+
             if issue.isOrphaned {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption)
@@ -211,8 +219,6 @@ struct SwimlaneBarRow: View {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .strokeBorder(activeTint.opacity(0.65), lineWidth: 1.2)
         )
-        .contentShape(Rectangle())
-        .onTapGesture { onSelectIssue?(issue.id) }
         .draggable(issue.id)
         .contextMenu { activeContextMenu(issue: issue, validCommands: validCommands) }
     }
