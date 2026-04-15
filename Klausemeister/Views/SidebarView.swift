@@ -122,6 +122,15 @@ struct SidebarWorktreeRow: View {
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                             .help("\(processing.identifier) · \(processing.title)")
+                    } else if let branch = worktree.currentBranch {
+                        Text(branch)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    if let stats = worktree.gitStats, !stats.isEmpty {
+                        GitStatsLineView(stats: stats)
                     }
                 }
                 Spacer()
