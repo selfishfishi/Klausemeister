@@ -71,19 +71,32 @@ struct SwimlaneHeaderView: View {
     }
 
     /// Whether the Advance button should be enabled, plus a contextual
-    /// tooltip. Enable requires the meister session to be idle.
+    /// tooltip.
+    ///
+    /// Primary gate is `meisterStatus` — whether the tmux-hosted Claude Code
+    /// process is alive. That's the reliable "can we `send-keys` right now"
+    /// signal. `claudeStatus` is a secondary gate that flags known-busy
+    /// states (working / blocked) so we don't interrupt mid-tool-call, but
+    /// stale or offline `claudeStatus` on a running meister does NOT block —
+    /// otherwise a Klausemeister restart that leaves status files frozen >60s
+    /// ago (stale) would grey out every button despite the sessions being
+    /// fully reachable.
     private func advanceAffordance(nextCommand _: WorkflowCommand) -> (Bool, String) {
+        switch worktree.meisterStatus {
+        case .none, .disconnected:
+            return (false, "Meister not running")
+        case .spawning:
+            return (false, "Meister starting…")
+        case .running:
+            break
+        }
         switch worktree.claudeStatus {
-        case .idle:
-            (true, "Run /klause-next in \(worktree.name)")
         case .working:
-            (false, "Meister is working…")
+            return (false, "Meister is working…")
         case .blocked:
-            (false, "Meister is waiting for approval")
-        case .error:
-            (false, "Meister error — check the terminal")
-        case .offline:
-            (false, "Meister not connected")
+            return (false, "Meister is waiting for approval")
+        case .idle, .error, .offline:
+            return (true, "Run /klause-next in \(worktree.name)")
         }
     }
 
