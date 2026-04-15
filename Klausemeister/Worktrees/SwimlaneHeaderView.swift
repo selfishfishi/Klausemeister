@@ -21,7 +21,7 @@ struct SwimlaneHeaderView: View {
             }
 
             if let processing = worktree.processing {
-                Text(processing.title)
+                Text(processing.identifier)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)

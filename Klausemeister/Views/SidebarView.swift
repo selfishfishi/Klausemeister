@@ -117,7 +117,7 @@ struct SidebarWorktreeRow: View {
                     Text(worktree.name)
                         .lineLimit(1)
                     if let processing = worktree.processing {
-                        Text(processing.title)
+                        Text(processing.identifier)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
