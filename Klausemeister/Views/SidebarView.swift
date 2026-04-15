@@ -113,7 +113,7 @@ struct SidebarWorktreeRow: View {
                     meisterStatus: worktree.meisterStatus,
                     claudeStatus: worktree.claudeStatus
                 )
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(worktree.name)
                         .lineLimit(1)
                     if let processing = worktree.processing {
@@ -163,7 +163,7 @@ struct SidebarWorktreeRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.vertical, 4)
+        .padding(.vertical, 7)
         .listRowBackground(
             isSelected
                 ? RoundedRectangle(cornerRadius: 6)
