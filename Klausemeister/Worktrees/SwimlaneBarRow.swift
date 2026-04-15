@@ -165,47 +165,25 @@ struct SwimlaneBarRow: View {
 
     private func activeBox(_ issue: LinearIssue) -> some View {
         let productState = issue.meisterState.map { ProductState(kanban: $0, queue: .processing) }
-        let nextCommand = productState?.nextCommand
         let validCommands = productState?.validCommands ?? []
-        let (isAdvanceEnabled, advanceTooltip) = advanceAffordance(issue: issue, nextCommand: nextCommand)
 
-        // Tappable summary (identifier + title) is split from the trailing
-        // action controls so clicks on the Advance button never leak up to
-        // `onSelectIssue` as a second selection event.
         return HStack(spacing: 10) {
-            HStack(spacing: 10) {
-                if let team = teamFor?(issue.id) {
-                    teamKeyLabel(team, opacity: 1.0)
-                }
-                Text(issue.identifier)
-                    .font(.system(.caption, design: .monospaced).weight(.semibold))
-                    .foregroundStyle(activeTint)
-                Text(issue.title)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            if let team = teamFor?(issue.id) {
+                teamKeyLabel(team, opacity: 1.0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture { onSelectIssue?(issue.id) }
-
+            Text(issue.identifier)
+                .font(.system(.caption, design: .monospaced).weight(.semibold))
+                .foregroundStyle(activeTint)
+            Text(issue.title)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
             if issue.isOrphaned {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
-            }
-            if let nextCommand, let onSendSlashCommand {
-                Button {
-                    onSendSlashCommand("/klause-next")
-                } label: {
-                    Text(nextCommand.verbLabel)
-                        .font(.caption.weight(.medium))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(!isAdvanceEnabled)
-                .help(advanceTooltip)
             }
         }
         .padding(.horizontal, 14)
@@ -219,6 +197,8 @@ struct SwimlaneBarRow: View {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .strokeBorder(activeTint.opacity(0.65), lineWidth: 1.2)
         )
+        .contentShape(Rectangle())
+        .onTapGesture { onSelectIssue?(issue.id) }
         .draggable(issue.id)
         .contextMenu { activeContextMenu(issue: issue, validCommands: validCommands) }
     }
@@ -259,27 +239,6 @@ struct SwimlaneBarRow: View {
         if let onReturnToMeister {
             Button("Return to Meister") { onReturnToMeister(issue.id) }
                 .keyboardShortcut(for: .returnIssueToMeister, in: bindings)
-        }
-    }
-
-    /// Whether the Advance button should be enabled, plus a tooltip explaining
-    /// why it's disabled when applicable.
-    private func advanceAffordance(
-        issue _: LinearIssue,
-        nextCommand: WorkflowCommand?
-    ) -> (Bool, String) {
-        guard nextCommand != nil else { return (false, "No next command") }
-        switch worktree.claudeStatus {
-        case .idle:
-            return (true, "Run /klause-next in \(worktree.name)")
-        case .working:
-            return (false, "Meister is working…")
-        case .blocked:
-            return (false, "Meister is waiting for approval")
-        case .error:
-            return (false, "Meister error — check the terminal")
-        case .offline:
-            return (false, "Meister not connected")
         }
     }
 
