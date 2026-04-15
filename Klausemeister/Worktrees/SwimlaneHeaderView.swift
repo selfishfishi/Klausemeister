@@ -52,11 +52,17 @@ struct SwimlaneHeaderView: View {
                     Text(nextCommand.verbLabel)
                 }
                 .font(.caption.weight(.semibold))
+                .foregroundStyle(themeColors.accentColor)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .glassEffect(
+                    .regular.tint(themeColors.accentColor.opacity(0.35)).interactive(),
+                    in: Capsule()
+                )
             }
-            .buttonStyle(.glass)
-            .controlSize(.small)
-            .tint(themeColors.accentColor)
+            .buttonStyle(.plain)
             .disabled(!isEnabled)
+            .opacity(isEnabled ? 1 : 0.5)
             .help(tooltip)
         }
     }
