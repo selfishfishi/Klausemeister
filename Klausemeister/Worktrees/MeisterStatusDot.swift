@@ -3,6 +3,8 @@ import SwiftUI
 /// Small glowing circle indicating the MCP connection status of a worktree's
 /// meister. Pulses when running (`.running`); shows a static error glow when
 /// disconnected; dims to a flat dot with no glow for `.none` and `.spawning`.
+/// Used standalone in the Debug panel; sidebar and swimlane rows use
+/// `WorktreeStatusDot` instead to fold in the Claude session signal.
 struct MeisterStatusDot: View {
     let status: MeisterStatus
 
@@ -65,5 +67,101 @@ struct MeisterStatusDot: View {
 
     private func pulsePhase(date: Date, period: Double) -> Double {
         0.5 + 0.5 * sin(date.timeIntervalSinceReferenceDate * 2 * .pi / period)
+    }
+}
+
+/// Unified connectivity indicator for a worktree row. Folds the meister's MCP
+/// status and the Claude session's hook-reachability into a single traffic
+/// light: green when both sides are connected, yellow when exactly one is,
+/// red when neither is. Hovering reveals which side is offline. "Green" is
+/// about connection health, not whether Claude is actively doing work — an
+/// idle-but-reachable session still counts as green.
+struct WorktreeStatusDot: View {
+    let meisterStatus: MeisterStatus
+    let claudeStatus: ClaudeSessionState
+
+    @Environment(\.themeColors) private var themeColors
+    @Environment(\.swimlaneAnimating) private var isAnimating
+
+    var body: some View {
+        TimelineView(.animation(
+            minimumInterval: 1.0 / 30.0,
+            paused: !isFullyHealthy || !isAnimating
+        )) { timeline in
+            let phase = (isFullyHealthy && isAnimating)
+                ? 0.5 + 0.5 * sin(timeline.date.timeIntervalSinceReferenceDate * 2 * .pi / 3.0)
+                : 0.0
+            let intensity = themeColors.glowIntensity
+            let color = dotColor
+
+            Circle()
+                .fill(color)
+                .frame(width: 6, height: 6)
+                .shadow(
+                    color: color.opacity(glowOpacity(phase: phase, intensity: intensity)),
+                    radius: glowRadius(phase: phase)
+                )
+        }
+        .help(tooltip)
+    }
+
+    private var isMeisterConnected: Bool {
+        meisterStatus == .running
+    }
+
+    private var isClaudeConnected: Bool {
+        if case .offline = claudeStatus { return false }
+        return true
+    }
+
+    private var connectedCount: Int {
+        (isMeisterConnected ? 1 : 0) + (isClaudeConnected ? 1 : 0)
+    }
+
+    private var isFullyHealthy: Bool {
+        connectedCount == 2
+    }
+
+    private var dotColor: Color {
+        switch connectedCount {
+        case 2: themeColors.accentColor
+        case 1: themeColors.warningColor
+        default: themeColors.errorColor
+        }
+    }
+
+    private func glowOpacity(phase: Double, intensity: Double) -> Double {
+        switch connectedCount {
+        case 2: (0.4 + 0.4 * phase) * intensity
+        case 1: 0.5 * intensity
+        default: 0.5 * intensity
+        }
+    }
+
+    private func glowRadius(phase: Double) -> CGFloat {
+        connectedCount == 2 ? 3 + 3 * phase : 3
+    }
+
+    private var tooltip: String {
+        "Meister: \(meisterLabel) · Claude: \(claudeLabel)"
+    }
+
+    private var meisterLabel: String {
+        switch meisterStatus {
+        case .none: "not running"
+        case .spawning: "starting…"
+        case .running: "running"
+        case .disconnected: "disconnected"
+        }
+    }
+
+    private var claudeLabel: String {
+        switch claudeStatus {
+        case .working: "working"
+        case .idle: "idle"
+        case .blocked: "blocked"
+        case .error: "error"
+        case .offline: "offline"
+        }
     }
 }
