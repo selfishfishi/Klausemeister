@@ -48,9 +48,17 @@ struct SwimlaneHeaderView: View {
                 if case .working = worktree.claudeStatus { return true }
                 return false
             }()
+            let isBlocked = worktree.meisterStatus == .running
+                && worktree.claudeStatus == .blocked
 
             if isWorking {
                 WorkingScanlineView(
+                    cycleColors: themeCycleColors,
+                    label: nextCommand.verbLabel
+                )
+                .help(tooltip)
+            } else if isBlocked {
+                BlockedGlowView(
                     cycleColors: themeCycleColors,
                     label: nextCommand.verbLabel
                 )
@@ -216,6 +224,131 @@ private struct WorkingScanlineView: View {
         let nextIndex = (index + 1) % cycleColors.count
         let fraction = progress - Double(index)
         return cycleColors[index].mix(with: cycleColors[nextIndex], by: fraction)
+    }
+
+    @ViewBuilder
+    private func rotatingTrail(rotationDegrees: Double, headColor: Color) -> some View {
+        let stops: [Gradient.Stop] = [
+            .init(color: .clear, location: 0.00),
+            .init(color: .clear, location: 0.50),
+            .init(color: headColor.opacity(0.25), location: 0.68),
+            .init(color: headColor.opacity(0.70), location: 0.82),
+            .init(color: headColor, location: 0.94),
+            .init(color: Color.white, location: 1.00)
+        ]
+
+        ZStack {
+            Capsule()
+                .stroke(
+                    AngularGradient(
+                        gradient: Gradient(stops: stops),
+                        center: .center,
+                        angle: .degrees(rotationDegrees)
+                    ),
+                    lineWidth: 3.2
+                )
+                .blur(radius: 3.5)
+
+            Capsule()
+                .stroke(
+                    AngularGradient(
+                        gradient: Gradient(stops: stops),
+                        center: .center,
+                        angle: .degrees(rotationDegrees)
+                    ),
+                    lineWidth: 1.2
+                )
+                .blur(radius: 0.6)
+        }
+        .blendMode(.plusLighter)
+        .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Blocked (waiting for user input) state
+
+/// Replaces the Advance button when the meister is idle on a permission /
+/// elicitation prompt (`claudeStatus == .blocked`). Same rotating comet
+/// and colour cycle as `WorkingScanlineView`, plus a centred `?` whose
+/// glyph is also masked by the rotating gradient — so the same light
+/// visibly sweeps across both the capsule border and the question mark
+/// itself.
+private struct BlockedGlowView: View {
+    let cycleColors: [Color]
+    let label: String
+
+    private let rotationPeriod: Double = 1.5
+    private let colorCyclePeriod: Double = 6.0
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+            animatedBody(time: timeline.date)
+        }
+    }
+
+    @ViewBuilder
+    private func animatedBody(time: Date) -> some View {
+        let elapsed = time.timeIntervalSinceReferenceDate
+        let rotationDegrees = (elapsed / rotationPeriod)
+            .truncatingRemainder(dividingBy: 1) * 360
+        let headColor = interpolatedColor(at: elapsed)
+
+        ZStack {
+            // Invisible spacer matching the normal button's content so width
+            // stays consistent with the idle state.
+            HStack(spacing: 4) {
+                Image(systemName: "play.fill").imageScale(.small)
+                Text(label)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color.clear.opacity(0.0001))
+
+            // Centred question mark, lit by the same rotating gradient so the
+            // comet head appears to trace through the glyph as it passes.
+            rotatingGlyph(rotationDegrees: rotationDegrees, headColor: headColor)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .overlay(
+            rotatingTrail(rotationDegrees: rotationDegrees, headColor: headColor)
+        )
+    }
+
+    private func interpolatedColor(at elapsed: Double) -> Color {
+        guard !cycleColors.isEmpty else { return .white }
+        guard cycleColors.count > 1 else { return cycleColors[0] }
+        let count = Double(cycleColors.count)
+        let progress = ((elapsed / colorCyclePeriod)
+            .truncatingRemainder(dividingBy: 1)) * count
+        let index = Int(progress) % cycleColors.count
+        let nextIndex = (index + 1) % cycleColors.count
+        let fraction = progress - Double(index)
+        return cycleColors[index].mix(with: cycleColors[nextIndex], by: fraction)
+    }
+
+    @ViewBuilder
+    private func rotatingGlyph(rotationDegrees: Double, headColor: Color) -> some View {
+        let stops: [Gradient.Stop] = [
+            .init(color: headColor.opacity(0.35), location: 0.00),
+            .init(color: headColor.opacity(0.35), location: 0.55),
+            .init(color: headColor.opacity(0.65), location: 0.75),
+            .init(color: headColor, location: 0.92),
+            .init(color: Color.white, location: 1.00)
+        ]
+
+        // Paint the angular gradient, then mask it with the question-mark
+        // glyph — so the glyph appears drawn in the rotating light.
+        AngularGradient(
+            gradient: Gradient(stops: stops),
+            center: .center,
+            angle: .degrees(rotationDegrees)
+        )
+        .mask(
+            Image(systemName: "questionmark")
+                .font(.caption.weight(.bold))
+        )
+        .shadow(color: headColor.opacity(0.9), radius: 3)
+        .blendMode(.plusLighter)
     }
 
     @ViewBuilder
