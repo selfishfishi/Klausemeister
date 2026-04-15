@@ -9,16 +9,6 @@ struct WorktreeSwimlaneView: View {
     @Environment(\.themeColors) private var themeColors
     @State private var isPanelVisible = false
 
-    private var showTeamBadges: Bool {
-        teams.count > 1
-    }
-
-    private var teamsByID: [String: LinearTeam] {
-        showTeamBadges
-            ? Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0) })
-            : [:]
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
@@ -74,25 +64,22 @@ struct WorktreeSwimlaneView: View {
     }
 
     private var swimlanes: some View {
-        // Compute expensive lookups once per render pass so they aren't
-        // rebuilt inside every ForEach iteration.
         let tints = themeColors.swimlaneRowTints
-        let cachedTeamsByID = teamsByID
         return ScrollView(.vertical) {
             LazyVStack(spacing: 12) {
                 ForEach(store.repositories) { repo in
-                    repoSection(repo: repo, tints: tints, teamsByID: cachedTeamsByID)
+                    repoSection(repo: repo, tints: tints)
                 }
                 let ungrouped = store.worktrees.filter { $0.repoId == nil }
                 ForEach(ungrouped) { worktree in
-                    swimlaneRow(worktree: worktree, tints: tints, teamsByID: cachedTeamsByID)
+                    swimlaneRow(worktree: worktree, tints: tints)
                 }
             }
             .padding(12)
         }
     }
 
-    private func repoSection(repo: Repository, tints: [Color], teamsByID: [String: LinearTeam]) -> some View {
+    private func repoSection(repo: Repository, tints: [Color]) -> some View {
         let isCollapsed = store.collapsedRepoIds.contains(repo.id)
         let repoWorktrees = store.worktrees.filter { $0.repoId == repo.id }
 
@@ -157,7 +144,7 @@ struct WorktreeSwimlaneView: View {
                         .padding(12)
                 } else {
                     ForEach(repoWorktrees) { worktree in
-                        swimlaneRow(worktree: worktree, tints: tints, teamsByID: teamsByID)
+                        swimlaneRow(worktree: worktree, tints: tints)
                     }
                 }
             }
@@ -175,17 +162,8 @@ struct WorktreeSwimlaneView: View {
         return palette[Int(sum % UInt(palette.count))]
     }
 
-    private func swimlaneRow(worktree: Worktree, tints: [Color], teamsByID: [String: LinearTeam]) -> some View {
+    private func swimlaneRow(worktree: Worktree, tints: [Color]) -> some View {
         let rowTint = rowTint(for: worktree, palette: tints)
-
-        // Build a per-worktree issue→team lookup once, instead of
-        // reconstructing the allIssues array for every pill render.
-        let issueTeamLookup: [String: LinearTeam]? = showTeamBadges ? {
-            let allIssues = worktree.inbox + [worktree.processing].compactMap(\.self) + worktree.outbox
-            return Dictionary(uniqueKeysWithValues: allIssues.compactMap { issue in
-                teamsByID[issue.teamId].map { (issue.id, $0) }
-            })
-        }() : nil
 
         return SwimlaneRowView(
             worktree: worktree,
@@ -195,9 +173,6 @@ struct WorktreeSwimlaneView: View {
             },
             onRemove: {
                 store.send(.removeWorktreeTapped(worktreeId: worktree.id))
-            },
-            teamFor: issueTeamLookup.map { lookup in
-                { issueId in lookup[issueId] }
             },
             onMarkComplete: {
                 store.send(.markAsCompleteTapped(worktreeId: worktree.id))
