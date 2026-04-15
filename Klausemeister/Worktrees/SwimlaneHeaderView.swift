@@ -118,25 +118,117 @@ struct SwimlaneHeaderView: View {
 
 // MARK: - Liquid Glass button style
 
-/// Custom button style for the swimlane Advance button. Wraps the label in a
-/// Liquid Glass capsule that shifts tint + scales slightly on press for
-/// tactile feedback. `.interactive()` on the glass handles the native
-/// lensing response; this style adds the extra motion polish.
+/// Custom button style for the swimlane Advance button.
+///
+/// Inside: a Liquid Glass capsule with a subtle accent tint and native
+/// `.interactive()` lensing response.
+///
+/// Border: a single bright arc of a rotating `AngularGradient` masked to
+/// the capsule stroke. A slight blur + `.plusLighter` blend mode gives the
+/// glow the phosphor-trail quality of an old CRT beam. The whole border
+/// layer slowly hue-rotates over ~20s so the trail gradually cycles
+/// through neighbouring colours.
+///
+/// Press: springy scaleEffect with interactiveSpring, plus a deeper
+/// accent tint and a momentary brighten of the glow.
 private struct LiquidGlassActionButtonStyle: ButtonStyle {
     let accent: Color
 
+    /// Seconds per full revolution of the comet head. Slower than it feels
+    /// like it should be — 4s reads as "alive" without becoming noisy.
+    private let rotationPeriod: Double = 4.0
+    /// Peak-to-peak hue shift in degrees. ±30 keeps us in the adjacent
+    /// colour neighbourhood of the theme accent without becoming rainbow.
+    private let hueExcursion: Double = 30
+    /// Seconds per hue-cycle loop (full sine period).
+    private let huePeriod: Double = 18.0
+
     func makeBody(configuration: Configuration) -> some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+            animatedBody(configuration: configuration, time: timeline.date)
+        }
+    }
+
+    @ViewBuilder
+    private func animatedBody(configuration: Configuration, time: Date) -> some View {
+        let elapsed = time.timeIntervalSinceReferenceDate
+        let rotationDegrees = (elapsed / rotationPeriod).truncatingRemainder(dividingBy: 1) * 360
+        let hueDegrees = sin(elapsed * 2 * .pi / huePeriod) * hueExcursion
+        let pressBoost = configuration.isPressed ? 1.35 : 1.0
+
         configuration.label
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .glassEffect(
-                .regular
-                    .tint(accent.opacity(configuration.isPressed ? 0.55 : 0.35))
-                    .interactive(),
-                in: Capsule()
+            .background(
+                Capsule()
+                    .fill(Color.clear)
+                    .glassEffect(
+                        .regular
+                            .tint(accent.opacity(configuration.isPressed ? 0.4 : 0.22))
+                            .interactive(),
+                        in: Capsule()
+                    )
             )
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+            .overlay(
+                rotatingBorder(
+                    rotationDegrees: rotationDegrees,
+                    hueDegrees: hueDegrees,
+                    pressBoost: pressBoost
+                )
+            )
+            .scaleEffect(configuration.isPressed ? 0.93 : 1.0)
+            .animation(
+                .interactiveSpring(response: 0.28, dampingFraction: 0.55),
+                value: configuration.isPressed
+            )
+    }
+
+    @ViewBuilder
+    private func rotatingBorder(
+        rotationDegrees: Double,
+        hueDegrees: Double,
+        pressBoost: Double
+    ) -> some View {
+        // Gradient stops: most of the ring is transparent, with one bright
+        // "comet head" concentrated in the last ~15% that fades behind into
+        // a phosphor trail.
+        let stops: [Gradient.Stop] = [
+            .init(color: .clear, location: 0.00),
+            .init(color: .clear, location: 0.55),
+            .init(color: accent.opacity(0.18 * pressBoost), location: 0.70),
+            .init(color: accent.opacity(0.55 * pressBoost), location: 0.85),
+            .init(color: accent.opacity(0.95 * pressBoost), location: 0.95),
+            .init(color: Color.white.opacity(0.95 * pressBoost), location: 1.00)
+        ]
+
+        ZStack {
+            // Wide, soft halo — does most of the "glow" work
+            Capsule()
+                .stroke(
+                    AngularGradient(
+                        gradient: Gradient(stops: stops),
+                        center: .center,
+                        angle: .degrees(rotationDegrees)
+                    ),
+                    lineWidth: 2.8
+                )
+                .blur(radius: 3.2)
+
+            // Crisper highlight over the top, same gradient
+            Capsule()
+                .stroke(
+                    AngularGradient(
+                        gradient: Gradient(stops: stops),
+                        center: .center,
+                        angle: .degrees(rotationDegrees)
+                    ),
+                    lineWidth: 1.0
+                )
+                .blur(radius: 0.5)
+        }
+        .blendMode(.plusLighter)
+        .hueRotation(.degrees(hueDegrees))
+        .allowsHitTesting(false)
     }
 }
 
