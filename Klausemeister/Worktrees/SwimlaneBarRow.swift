@@ -35,6 +35,19 @@ struct SwimlaneBarRow: View {
     private let activeTint: Color = MeisterState.inProgress.tint
     private let doneTint: Color = MeisterState.inReview.tint
 
+    private var cometCycleColors: [Color] {
+        let indices = [1, 2, 3, 4, 5, 6]
+        return indices.compactMap { idx in
+            guard idx < themeColors.palette.count else { return nil }
+            return Color(hexString: themeColors.palette[idx])
+        }
+    }
+
+    private static func phaseOffset(for id: String) -> Double {
+        let sum = id.utf8.reduce(0) { $0 &+ Int($1) }
+        return Double(sum % 600) / 100.0
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
             inboxSection
@@ -196,6 +209,15 @@ struct SwimlaneBarRow: View {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .strokeBorder(activeTint.opacity(0.65), lineWidth: 1.2)
         )
+        .overlay {
+            if worktree.isMeisterWorking {
+                SwimlaneWorkingCometOverlay(
+                    cycleColors: cometCycleColors,
+                    phaseOffset: Self.phaseOffset(for: worktree.id),
+                    cornerRadius: 4
+                )
+            }
+        }
         .contentShape(Rectangle())
         .onTapGesture { onSelectIssue?(issue.id) }
         .draggable(issue.id)
