@@ -32,14 +32,6 @@ struct SwimlaneRowView: View {
                     )
                 }
             }
-            .overlay {
-                if worktree.isMeisterWorking {
-                    SwimlaneWorkingCometOverlay(
-                        cycleColors: themeCycleColors,
-                        phaseOffset: Self.phaseOffset(for: worktree.id)
-                    )
-                }
-            }
             .animation(.easeInOut(duration: 0.3), value: worktree.isActive)
     }
 
@@ -155,9 +147,10 @@ struct SwimlaneRowView: View {
 /// via `.plusLighter`, and a colour cycling through the theme palette
 /// (~6s full sweep). `phaseOffset` desyncs rows so the comets look
 /// independent.
-private struct SwimlaneWorkingCometOverlay: View {
+struct SwimlaneWorkingCometOverlay: View {
     let cycleColors: [Color]
     let phaseOffset: Double
+    var cornerRadius: CGFloat = swimlaneGlassCornerRadius
 
     private let rotationPeriod: Double = 1.5
     private let colorCyclePeriod: Double = 6.0
@@ -200,7 +193,7 @@ private struct SwimlaneWorkingCometOverlay: View {
         ]
 
         ZStack {
-            RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .stroke(
                     AngularGradient(
                         gradient: Gradient(stops: stops),
@@ -211,7 +204,7 @@ private struct SwimlaneWorkingCometOverlay: View {
                 )
                 .blur(radius: 3.5)
 
-            RoundedRectangle(cornerRadius: swimlaneGlassCornerRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .stroke(
                     AngularGradient(
                         gradient: Gradient(stops: stops),
