@@ -26,7 +26,7 @@ struct SwimlaneAdvanceButton: View {
                 if isWorking {
                     WorkingProgressPill(
                         label: nextCommand.verbLabel,
-                        progressText: currentProgressText,
+                        progressText: currentToolName,
                         accent: themeColors.accentColor
                     )
                     .help(tooltip)
@@ -57,13 +57,10 @@ struct SwimlaneAdvanceButton: View {
         }
     }
 
-    /// The text to surface inside the button while the meister is working.
-    /// Priority: live `reportActivity` narration (nil-clamped by the reducer
-    /// TTL so freshness is already enforced) → the step-boundary
-    /// `reportProgress` text → the last tool name from the hook → nil.
-    private var currentProgressText: String? {
-        if let text = worktree.claudeActivityText, !text.isEmpty { return text }
-        if let text = worktree.claudeStatusText, !text.isEmpty { return text }
+    /// The current tool name from the hook — shown as plain text in the
+    /// working state. Activity and progress go to the marquee ticker
+    /// below the processing box, not here.
+    private var currentToolName: String? {
         if case let .working(tool) = worktree.claudeStatus,
            let tool, !tool.isEmpty
         {
