@@ -104,6 +104,13 @@ struct SidebarWorktreeRow: View {
     @Environment(\.keyBindings) private var bindings
     @State private var isHovering = false
 
+    private var shimmerPaletteColors: [Color] {
+        [1, 2, 3, 4, 5, 6].compactMap { idx in
+            guard idx < themeColors.palette.count else { return nil }
+            return Color(hexString: themeColors.palette[idx])
+        }
+    }
+
     var body: some View {
         Button {
             onSelect()
@@ -117,8 +124,8 @@ struct SidebarWorktreeRow: View {
                     if worktree.isMeisterWorking {
                         ShimmerText(
                             text: worktree.name,
-                            baseColor: themeColors.accentColor,
-                            highlightColor: themeColors.accentColor.mix(with: .white, by: 0.6)
+                            cycleColors: shimmerPaletteColors,
+                            baseColor: themeColors.accentColor
                         )
                     } else {
                         Text(worktree.name)
