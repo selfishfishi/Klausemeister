@@ -147,8 +147,8 @@ struct SidebarWorktreeRow: View {
                     if let stats = worktree.gitStats, !stats.isEmpty {
                         GitStatsLineView(stats: stats)
                     }
-                    if let progress = worktree.claudeStatusText, !progress.isEmpty {
-                        Text(progress)
+                    if let statusText = sidebarStatusText {
+                        Text(statusText)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -194,6 +194,21 @@ struct SidebarWorktreeRow: View {
             }
             .keyboardShortcut(for: .deleteWorktree, in: bindings)
         }
+    }
+
+    /// Best-available status text for the sidebar. Priority:
+    /// 1. `reportActivity` — live narration (60s TTL)
+    /// 2. `reportProgress` — step-boundary label (cleared on idle)
+    /// 3. `last_tool` — hook-written tool name
+    private var sidebarStatusText: String? {
+        if let text = worktree.claudeActivityText, !text.isEmpty { return text }
+        if let text = worktree.claudeStatusText, !text.isEmpty { return text }
+        if case let .working(tool) = worktree.claudeStatus,
+           let tool, !tool.isEmpty
+        {
+            return tool
+        }
+        return nil
     }
 }
 
