@@ -132,7 +132,12 @@ struct WorktreeStatusDot: View {
     }
 
     private var isClaudeConnected: Bool {
-        if case .offline = claudeStatus { return false }
+        if case .offline = claudeStatus {
+            // The hook status file can go stale during idle stretches (>60s
+            // without a tool call). But if the MCP connection is alive the
+            // Claude process must be too — treat stale-but-connected as green.
+            return isMeisterConnected
+        }
         return true
     }
 
