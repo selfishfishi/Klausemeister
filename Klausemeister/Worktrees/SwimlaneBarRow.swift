@@ -132,15 +132,12 @@ struct SwimlaneBarRow: View {
     }
 
     /// Best-available narration for the news ticker under the processing box.
-    /// Priority: live activity → step-boundary progress → hook tool name.
+    /// Priority: live activity → step-boundary progress. Hook tool name
+    /// (`last_tool`) is deliberately excluded — it's too terse and noisy
+    /// for a headline ticker ("Bash", "Edit" etc. flash by on every call).
     private var tickerText: String? {
         if let text = worktree.claudeActivityText, !text.isEmpty { return text }
         if let text = worktree.claudeStatusText, !text.isEmpty { return text }
-        if case let .working(tool) = worktree.claudeStatus,
-           let tool, !tool.isEmpty
-        {
-            return tool
-        }
         return nil
     }
 
