@@ -46,12 +46,16 @@ struct SwimlaneBarRow: View {
     // MARK: - Sections
 
     private var inboxSection: some View {
-        HStack(spacing: 5) {
-            ForEach(worktree.inbox.reversed(), id: \.id) { issue in
-                queuedPill(issue)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 5) {
+                ForEach(worktree.inbox.reversed(), id: \.id) { issue in
+                    queuedPill(issue)
+                }
             }
+            .frame(minHeight: 34)
         }
-        .frame(minWidth: 32, minHeight: 34, alignment: .trailing)
+        .defaultScrollAnchor(.trailing)
+        .frame(maxWidth: .infinity, alignment: .trailing)
         .contentShape(Rectangle())
         .overlay(targetingRing(isOn: inboxTargeted, tint: queuedTint))
         .animation(.easeInOut(duration: 0.15), value: inboxTargeted)
@@ -88,12 +92,15 @@ struct SwimlaneBarRow: View {
     }
 
     private var outboxSection: some View {
-        HStack(spacing: 5) {
-            ForEach(worktree.outbox, id: \.id) { issue in
-                donePill(issue)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 5) {
+                ForEach(worktree.outbox, id: \.id) { issue in
+                    donePill(issue)
+                }
             }
+            .frame(minHeight: 34)
         }
-        .frame(minWidth: 32, minHeight: 34, alignment: .trailing)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .overlay(targetingRing(isOn: outboxTargeted, tint: doneTint))
         .animation(.easeInOut(duration: 0.15), value: outboxTargeted)
