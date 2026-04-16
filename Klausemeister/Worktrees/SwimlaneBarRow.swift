@@ -90,6 +90,15 @@ struct SwimlaneBarRow: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: 40)
+        .overlay {
+            if worktree.isMeisterWorking {
+                SwimlaneWorkingCometOverlay(
+                    cycleColors: cometCycleColors,
+                    phaseOffset: Self.phaseOffset(for: worktree.id),
+                    cornerRadius: 4
+                )
+            }
+        }
         .overlay(targetingRing(isOn: processingTargeted, tint: activeTint))
         .animation(.easeInOut(duration: 0.15), value: processingTargeted)
         .dropDestination(for: String.self) { items, _ in
@@ -209,15 +218,6 @@ struct SwimlaneBarRow: View {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .strokeBorder(activeTint.opacity(0.65), lineWidth: 1.2)
         )
-        .overlay {
-            if worktree.isMeisterWorking {
-                SwimlaneWorkingCometOverlay(
-                    cycleColors: cometCycleColors,
-                    phaseOffset: Self.phaseOffset(for: worktree.id),
-                    cornerRadius: 4
-                )
-            }
-        }
         .contentShape(Rectangle())
         .onTapGesture { onSelectIssue?(issue.id) }
         .draggable(issue.id)
