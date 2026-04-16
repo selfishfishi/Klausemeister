@@ -103,35 +103,12 @@ struct WorktreeStatusDot: View {
     @Environment(\.themeColors) private var themeColors
 
     var body: some View {
-        // Always tick — the 6pt circle is cheap; gating on `paused:` caused
-        // the TimelineView to never un-pause when status changed to healthy.
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            let period: Double = isClaudeWorking ? 1.5 : 3.0
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            let phase = isFullyHealthy
-                ? 0.5 + 0.5 * sin(t * 2 * .pi / period)
-                : 0.0
-            let intensity = themeColors.glowIntensity
-            let color = dotColor
-            let glowColor: Color = isClaudeWorking
-                ? color.mix(with: .white, by: 0.45 * phase)
-                : color
-            let scale = isClaudeWorking ? 0.85 + 0.3 * phase : 1.0
-
-            let dotOpacity = isClaudeWorking ? 0.35 + 0.65 * phase : 1.0
-
-            Circle()
-                .fill(color.opacity(dotOpacity))
-                .frame(width: 6, height: 6)
-                .scaleEffect(scale)
-                .shadow(
-                    color: glowColor.opacity(glowOpacity(phase: phase, intensity: intensity)),
-                    radius: glowRadius(phase: phase)
-                )
-                .frame(width: 18, height: 18)
-                .contentShape(Rectangle())
-                .background(NativeTooltipView(tooltip: tooltip))
-        }
+        Circle()
+            .fill(dotColor)
+            .frame(width: 6, height: 6)
+            .frame(width: 18, height: 18)
+            .contentShape(Rectangle())
+            .background(NativeTooltipView(tooltip: tooltip))
     }
 
     private var isMeisterConnected: Bool {
@@ -140,9 +117,6 @@ struct WorktreeStatusDot: View {
 
     private var isClaudeConnected: Bool {
         if case .offline = claudeStatus {
-            // The hook status file can go stale during idle stretches (>60s
-            // without a tool call). But if the MCP connection is alive the
-            // Claude process must be too — treat stale-but-connected as green.
             return isMeisterConnected
         }
         return true
@@ -152,41 +126,12 @@ struct WorktreeStatusDot: View {
         (isMeisterConnected ? 1 : 0) + (isClaudeConnected ? 1 : 0)
     }
 
-    private var isFullyHealthy: Bool {
-        connectedCount == 2
-    }
-
-    private var isClaudeWorking: Bool {
-        guard isMeisterConnected else { return false }
-        if case .working = claudeStatus { return true }
-        return false
-    }
-
     private var dotColor: Color {
         switch connectedCount {
         case 2: themeColors.accentColor
         case 1: themeColors.warningColor
         default: themeColors.errorColor
         }
-    }
-
-    private func glowOpacity(phase: Double, intensity: Double) -> Double {
-        switch connectedCount {
-        case 2:
-            if isClaudeWorking {
-                return (0.1 + 0.9 * phase) * intensity
-            }
-            return (0.3 + 0.5 * phase) * intensity
-        case 1: return 0.5 * intensity
-        default: return 0.5 * intensity
-        }
-    }
-
-    private func glowRadius(phase: Double) -> CGFloat {
-        if connectedCount == 2 {
-            return isClaudeWorking ? 2 + 12 * phase : 3 + 3 * phase
-        }
-        return 3
     }
 
     private var tooltip: String {
