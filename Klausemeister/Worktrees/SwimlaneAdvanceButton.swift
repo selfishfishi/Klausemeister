@@ -151,40 +151,20 @@ private struct AdvanceButtonStyle: ButtonStyle {
 // MARK: - Working-state progress pill
 
 /// Replaces the Advance button while the meister is actively running a
-/// tool. Static — no rotating comet here; the kinetic signal lives on the
-/// swimlane border now (`SwimlaneWorkingCometOverlay`). This pill just
-/// surfaces the live progress text inside an accent-tinted glass capsule
-/// so users still see WHAT Claude is doing without the button also
-/// competing for motion attention.
+/// tool. Plain text — not a button, not interactive. The kinetic signal
+/// lives on the swimlane border (`SwimlaneWorkingCometOverlay`); this
+/// label just tells users WHAT Claude is doing right now.
 private struct WorkingProgressPill: View {
-    /// The idle-state label — used as an invisible width spacer so the
-    /// pill's width stays stable when toggling into the working state.
     let label: String
-    /// Live progress text (tool name or reportProgress string). Shown
-    /// inside the capsule, truncated to one line.
     var progressText: String?
     let accent: Color
 
     var body: some View {
-        let displayText = progressText ?? "Working…"
-
-        HStack(spacing: 4) {
-            Image(systemName: "play.fill").imageScale(.small)
-            Text(label)
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(Color.clear.opacity(0.0001))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .glassEffect(.regular.tint(accent.opacity(0.3)), in: Capsule())
-        .overlay(
-            Text(displayText)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(accent)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.horizontal, 8)
-        )
+        Text(progressText ?? "Working…")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(accent.opacity(0.8))
+            .lineLimit(1)
+            .truncationMode(.tail)
     }
 }
 
