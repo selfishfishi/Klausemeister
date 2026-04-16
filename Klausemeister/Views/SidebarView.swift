@@ -114,8 +114,16 @@ struct SidebarWorktreeRow: View {
                     claudeStatus: worktree.claudeStatus
                 )
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(worktree.name)
-                        .lineLimit(1)
+                    if worktree.isMeisterWorking {
+                        ShimmerText(
+                            text: worktree.name,
+                            baseColor: themeColors.accentColor,
+                            highlightColor: themeColors.accentColor.mix(with: .white, by: 0.6)
+                        )
+                    } else {
+                        Text(worktree.name)
+                            .lineLimit(1)
+                    }
                     if let processing = worktree.processing {
                         Text(processing.identifier)
                             .font(.caption2)
