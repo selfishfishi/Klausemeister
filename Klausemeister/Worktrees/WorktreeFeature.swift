@@ -1634,14 +1634,15 @@ struct WorktreeFeature {
 
             case let .claudeStatusChanged(worktreeId, claudeState):
                 state.worktrees[id: worktreeId]?.claudeStatus = claudeState
-                // Clear stale progress text on any non-working transition — the
-                // last `reportProgress` line would otherwise persist past the
-                // end of the work burst that produced it.
-                switch claudeState {
-                case .idle, .blocked, .error, .offline:
+                // Don't clear claudeStatusText on idle/blocked transitions —
+                // reportProgress is a deliberate step-level label ("klause-define
+                // — exploring codebase") that should persist until the next
+                // reportProgress call. Clearing on idle defeats its purpose
+                // because the meister's own tool-call hooks cycle through
+                // working→idle on every single tool invocation. Only wipe on
+                // offline (session died — everything stale).
+                if claudeState == .offline {
                     state.worktrees[id: worktreeId]?.claudeStatusText = nil
-                case .working:
-                    break
                 }
                 // Activity text is session-scoped; only wipe it when the session
                 // itself goes away. Idle/blocked/error can still carry ambient
