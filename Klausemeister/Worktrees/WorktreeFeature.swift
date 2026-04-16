@@ -57,6 +57,11 @@ struct Worktree: Equatable, Identifiable {
     /// while fresh; the view treats anything older than ~30s as stale.
     var claudeActivityText: String?
     var claudeActivityUpdatedAt: Date?
+    /// Persistent recap from the meister — set when `reportActivity` is
+    /// called with a `"recap: "` prefix. No TTL; persists until the next
+    /// recap or session disconnect. Overrides activity/progress in the
+    /// marquee so the user sees a summary of what the session has done.
+    var recapText: String?
     var gitStats: GitStats?
     var inbox: [LinearIssue] = []
     var processing: LinearIssue?
@@ -657,6 +662,7 @@ struct WorktreeFeature {
                         meisterStatus: previous?.meisterStatus ?? .none,
                         claudeStatus: previous?.claudeStatus ?? .offline,
                         claudeStatusText: previous?.claudeStatusText,
+                        recapText: previous?.recapText,
                         gitStats: previous?.gitStats,
                         inbox: items
                             .filter { $0.queuePosition == .inbox }
@@ -1644,6 +1650,7 @@ struct WorktreeFeature {
                 if claudeState == .offline {
                     state.worktrees[id: worktreeId]?.claudeActivityText = nil
                     state.worktrees[id: worktreeId]?.claudeActivityUpdatedAt = nil
+                    state.worktrees[id: worktreeId]?.recapText = nil
                     return .cancel(id: CancelID.claudeActivityExpiry(worktreeId))
                 }
                 return .none
@@ -1653,6 +1660,15 @@ struct WorktreeFeature {
                 return .none
 
             case let .claudeActivityTextChanged(worktreeId, text):
+                // Detect recap prefix: "recap: <summary>". Recaps persist
+                // with no TTL and override the normal marquee cascade until
+                // the next recap or session disconnect.
+                let recapPrefix = "recap: "
+                if text.hasPrefix(recapPrefix) {
+                    state.worktrees[id: worktreeId]?.recapText = String(text.dropFirst(recapPrefix.count))
+                    return .cancel(id: CancelID.claudeActivityExpiry(worktreeId))
+                }
+
                 state.worktrees[id: worktreeId]?.claudeActivityText = text
                 state.worktrees[id: worktreeId]?.claudeActivityUpdatedAt = date.now
                 // Re-arm the TTL timer: cancelInFlight ensures each fresh
