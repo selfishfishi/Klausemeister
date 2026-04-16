@@ -109,17 +109,24 @@ struct WorktreeStatusDot: View {
             paused: !isFullyHealthy || !isAnimating
         )) { timeline in
             let period: Double = isClaudeWorking ? 1.5 : 3.0
+            let t = timeline.date.timeIntervalSinceReferenceDate
             let phase = (isFullyHealthy && isAnimating)
-                ? 0.5 + 0.5 * sin(timeline.date.timeIntervalSinceReferenceDate * 2 * .pi / period)
+                ? 0.5 + 0.5 * sin(t * 2 * .pi / period)
                 : 0.0
             let intensity = themeColors.glowIntensity
             let color = dotColor
+            // When working, shift the glow between the base accent and a
+            // brighter tint so the halo appears to "breathe" through
+            // different shades of the theme green.
+            let glowColor: Color = isClaudeWorking
+                ? color.mix(with: .white, by: 0.3 * phase)
+                : color
 
             Circle()
                 .fill(color)
                 .frame(width: 6, height: 6)
                 .shadow(
-                    color: color.opacity(glowOpacity(phase: phase, intensity: intensity)),
+                    color: glowColor.opacity(glowOpacity(phase: phase, intensity: intensity)),
                     radius: glowRadius(phase: phase)
                 )
                 .frame(width: 18, height: 18)
