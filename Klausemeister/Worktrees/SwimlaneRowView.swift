@@ -59,6 +59,7 @@ struct SwimlaneRowView: View {
         VStack(alignment: .leading, spacing: 12) {
             headerRow
             contentRow
+            Spacer(minLength: 4)
             footerRow
         }
         .padding(14)

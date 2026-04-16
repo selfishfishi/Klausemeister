@@ -29,6 +29,16 @@ struct SwimlaneBarRow: View {
     @State private var processingTargeted = false
     @State private var outboxTargeted = false
 
+    // Display-state shadow: the view renders from these, not from
+    // worktree.inbox/processing/outbox directly. While the Meister
+    // view is hidden these stay frozen; on appear the diff replays
+    // as a visible conveyor-belt transition.
+    @State private var displayedInbox: [LinearIssue] = []
+    @State private var displayedProcessing: LinearIssue?
+    @State private var displayedOutbox: [LinearIssue] = []
+    @State private var isVisible = false
+    @State private var hasInitialized = false
+
     @Environment(\.themeColors) private var themeColors
 
     private let queuedTint: Color = MeisterState.todo.tint
@@ -54,13 +64,41 @@ struct SwimlaneBarRow: View {
             processingSection
             outboxSection
         }
-        .animation(.spring(duration: 0.4, bounce: 0.12), value: queueFingerprint)
+        .onAppear {
+            if !hasInitialized {
+                syncDisplayed(animated: false)
+                hasInitialized = true
+            } else if queueFingerprint != displayedFingerprint {
+                syncDisplayed(animated: true)
+            }
+            isVisible = true
+        }
+        .onDisappear { isVisible = false }
+        .onChange(of: queueFingerprint) { _, _ in
+            if isVisible { syncDisplayed(animated: true) }
+        }
     }
 
     private var queueFingerprint: [String] {
-        worktree.inbox.map(\.id)
-            + [worktree.processing?.id ?? ""]
-            + worktree.outbox.map(\.id)
+        worktree.inbox.map(\.id) + [worktree.processing?.id ?? ""] + worktree.outbox.map(\.id)
+    }
+
+    private var displayedFingerprint: [String] {
+        displayedInbox.map(\.id) + [displayedProcessing?.id ?? ""] + displayedOutbox.map(\.id)
+    }
+
+    private func syncDisplayed(animated: Bool) {
+        if animated {
+            withAnimation(.spring(duration: 0.4, bounce: 0.12)) {
+                displayedInbox = worktree.inbox
+                displayedProcessing = worktree.processing
+                displayedOutbox = worktree.outbox
+            }
+        } else {
+            displayedInbox = worktree.inbox
+            displayedProcessing = worktree.processing
+            displayedOutbox = worktree.outbox
+        }
     }
 
     // MARK: - Sections
@@ -68,7 +106,7 @@ struct SwimlaneBarRow: View {
     private var inboxSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 5) {
-                ForEach(worktree.inbox.reversed(), id: \.id) { issue in
+                ForEach(displayedInbox.reversed(), id: \.id) { issue in
                     queuedPill(issue)
                 }
             }
@@ -90,7 +128,7 @@ struct SwimlaneBarRow: View {
 
     private var processingSection: some View {
         ZStack {
-            if let processing = worktree.processing {
+            if let processing = displayedProcessing {
                 activeBox(processing)
                     .transition(.asymmetric(
                         insertion: .move(edge: .leading).combined(with: .opacity),
@@ -128,7 +166,7 @@ struct SwimlaneBarRow: View {
     private var outboxSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 5) {
-                ForEach(worktree.outbox, id: \.id) { issue in
+                ForEach(displayedOutbox, id: \.id) { issue in
                     donePill(issue)
                 }
             }
