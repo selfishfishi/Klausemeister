@@ -108,8 +108,9 @@ struct WorktreeStatusDot: View {
             minimumInterval: 1.0 / 30.0,
             paused: !isFullyHealthy || !isAnimating
         )) { timeline in
+            let period: Double = isClaudeWorking ? 1.5 : 3.0
             let phase = (isFullyHealthy && isAnimating)
-                ? 0.5 + 0.5 * sin(timeline.date.timeIntervalSinceReferenceDate * 2 * .pi / 3.0)
+                ? 0.5 + 0.5 * sin(timeline.date.timeIntervalSinceReferenceDate * 2 * .pi / period)
                 : 0.0
             let intensity = themeColors.glowIntensity
             let color = dotColor
@@ -149,6 +150,12 @@ struct WorktreeStatusDot: View {
         connectedCount == 2
     }
 
+    private var isClaudeWorking: Bool {
+        guard isMeisterConnected else { return false }
+        if case .working = claudeStatus { return true }
+        return false
+    }
+
     private var dotColor: Color {
         switch connectedCount {
         case 2: themeColors.accentColor
@@ -159,14 +166,21 @@ struct WorktreeStatusDot: View {
 
     private func glowOpacity(phase: Double, intensity: Double) -> Double {
         switch connectedCount {
-        case 2: (0.4 + 0.4 * phase) * intensity
-        case 1: 0.5 * intensity
-        default: 0.5 * intensity
+        case 2:
+            if isClaudeWorking {
+                return (0.5 + 0.5 * phase) * intensity
+            }
+            return (0.4 + 0.4 * phase) * intensity
+        case 1: return 0.5 * intensity
+        default: return 0.5 * intensity
         }
     }
 
     private func glowRadius(phase: Double) -> CGFloat {
-        connectedCount == 2 ? 3 + 3 * phase : 3
+        if connectedCount == 2 {
+            return isClaudeWorking ? 5 + 5 * phase : 3 + 3 * phase
+        }
+        return 3
     }
 
     private var tooltip: String {
