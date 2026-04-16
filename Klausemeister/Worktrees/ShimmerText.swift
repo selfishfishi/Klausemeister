@@ -24,14 +24,20 @@ struct ShimmerText: View {
             let center = -bandWidth + sweepProgress * (1.0 + 2 * bandWidth)
             let highlight = interpolatedColor(at: t)
 
+            // Clamp all three stops to [0, 1] so they stay ordered even
+            // while the band enters from or exits past the text edges.
+            let lo = max(0, min(1, center - bandWidth))
+            let mid = max(0, min(1, center))
+            let hi = max(0, min(1, center + bandWidth))
+
             Text(text)
                 .lineLimit(1)
                 .foregroundStyle(
                     .linearGradient(
                         stops: [
-                            .init(color: baseColor, location: max(0, center - bandWidth)),
-                            .init(color: highlight, location: center),
-                            .init(color: baseColor, location: min(1, center + bandWidth))
+                            .init(color: baseColor, location: lo),
+                            .init(color: highlight, location: mid),
+                            .init(color: baseColor, location: hi)
                         ],
                         startPoint: .leading,
                         endPoint: .trailing
