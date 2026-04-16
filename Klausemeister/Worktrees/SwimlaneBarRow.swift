@@ -54,6 +54,13 @@ struct SwimlaneBarRow: View {
             processingSection
             outboxSection
         }
+        .animation(.spring(duration: 0.4, bounce: 0.12), value: queueFingerprint)
+    }
+
+    private var queueFingerprint: [String] {
+        worktree.inbox.map(\.id)
+            + [worktree.processing?.id ?? ""]
+            + worktree.outbox.map(\.id)
     }
 
     // MARK: - Sections
@@ -85,8 +92,13 @@ struct SwimlaneBarRow: View {
         ZStack {
             if let processing = worktree.processing {
                 activeBox(processing)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .leading).combined(with: .opacity),
+                        removal: .move(edge: .trailing).combined(with: .opacity)
+                    ))
             } else {
                 idlePlaceholder
+                    .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 40)
@@ -162,6 +174,10 @@ struct SwimlaneBarRow: View {
                     .keyboardShortcut(for: .returnIssueToMeister, in: bindings)
             }
         }
+        .transition(.asymmetric(
+            insertion: .move(edge: .leading),
+            removal: .move(edge: .trailing)
+        ))
     }
 
     private func donePill(_ issue: LinearIssue) -> some View {
@@ -185,6 +201,10 @@ struct SwimlaneBarRow: View {
                     .keyboardShortcut(for: .returnIssueToMeister, in: bindings)
             }
         }
+        .transition(.asymmetric(
+            insertion: .move(edge: .leading),
+            removal: .move(edge: .trailing)
+        ))
     }
 
     private func activeBox(_ issue: LinearIssue) -> some View {
