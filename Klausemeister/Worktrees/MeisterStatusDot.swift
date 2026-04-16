@@ -118,8 +118,10 @@ struct WorktreeStatusDot: View {
                 : color
             let scale = isClaudeWorking ? 0.85 + 0.3 * phase : 1.0
 
+            let dotOpacity = isClaudeWorking ? 0.35 + 0.65 * phase : 1.0
+
             Circle()
-                .fill(color)
+                .fill(color.opacity(dotOpacity))
                 .frame(width: 6, height: 6)
                 .scaleEffect(scale)
                 .shadow(
