@@ -41,14 +41,14 @@ struct SwimlaneAdvanceButton: View {
                         onSendSlashCommand("/klause-workflow:klause-next")
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "play.fill")
+                            Image(systemName: "play")
                                 .imageScale(.small)
                             Text(nextCommand.verbLabel)
                         }
-                        .font(.caption.weight(.semibold))
+                        .font(.caption.weight(.medium))
                         .foregroundStyle(themeColors.accentColor)
                     }
-                    .buttonStyle(LiquidGlassActionButtonStyle(accent: themeColors.accentColor))
+                    .buttonStyle(AdvanceButtonStyle(accent: themeColors.accentColor))
                     .disabled(!isEnabled)
                     .opacity(isEnabled ? 1 : 0.5)
                     .help(tooltip)
@@ -119,28 +119,30 @@ struct SwimlaneAdvanceButton: View {
     }
 }
 
-// MARK: - Liquid Glass button style
+// MARK: - Advance button style
 
-/// Custom button style for the swimlane Advance button — calm at rest, with
-/// a springy press animation. No continuous motion; the "busy" visual lives
-/// on the swimlane row itself (`SwimlaneWorkingCometOverlay`), freeing the
-/// button to stay a calm status pill while the meister is processing.
-private struct LiquidGlassActionButtonStyle: ButtonStyle {
+/// Thin-bordered capsule that matches the queue-pill aesthetic. Transparent
+/// at rest; fills with a subtle accent wash on press. No heavy glass effect
+/// — just enough shape to read as tappable without competing with the
+/// processing box or the swimlane card container.
+private struct AdvanceButtonStyle: ButtonStyle {
     let accent: Color
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .glassEffect(
-                .regular
-                    .tint(accent.opacity(configuration.isPressed ? 0.5 : 0.3))
-                    .interactive(),
-                in: Capsule()
+            .background(
+                Capsule()
+                    .fill(accent.opacity(configuration.isPressed ? 0.12 : 0))
             )
-            .scaleEffect(configuration.isPressed ? 0.93 : 1.0)
+            .overlay(
+                Capsule()
+                    .strokeBorder(accent.opacity(0.4), lineWidth: 1)
+            )
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
             .animation(
-                .interactiveSpring(response: 0.28, dampingFraction: 0.55),
+                .interactiveSpring(response: 0.25, dampingFraction: 0.6),
                 value: configuration.isPressed
             )
     }
