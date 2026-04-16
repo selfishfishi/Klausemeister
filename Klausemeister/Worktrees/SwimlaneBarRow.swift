@@ -49,7 +49,7 @@ struct SwimlaneBarRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
+        HStack(alignment: .center, spacing: 16) {
             inboxSection
             processingSection
             outboxSection
