@@ -289,7 +289,7 @@ struct WorktreeFeature {
     /// How long an activity line lives before the reducer wipes it so
     /// snapshots (`getStatus`, debug panel) don't leak stale narration.
     /// Matches `ClaudeStatusLineView.freshness` — keep in sync.
-    nonisolated private static let claudeActivityTTL: Duration = .seconds(30)
+    nonisolated private static let claudeActivityTTL: Duration = .seconds(60)
 
     /// How long to wait for the meister's MCP HelloFrame after a spawn before
     /// declaring the meister disconnected. A real hello from the shim normally
