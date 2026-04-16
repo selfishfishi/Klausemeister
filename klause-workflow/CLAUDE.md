@@ -69,6 +69,16 @@ reportActivity("goal: review KLA-140 · just opened PR · next: wait for CI")
 
 Avoid empty filler (`"thinking…"`, `"working…"`) — if there's nothing concrete to say, don't call it. The ticker going quiet is a valid signal: the dot stays green, the static label takes over.
 
+### 2.3 `reportActivity("recap: ...")` — session summary
+
+After a `/compact` or whenever the conversation context is summarised, emit a **recap** via `reportActivity` with the literal prefix `recap: `:
+
+```
+reportActivity("recap: shipped KLA-134-137, iterated on swimlane polish, fixing marquee ticker")
+```
+
+The `recap:` prefix tells Klausemeister to store the text persistently (no 60s TTL) and display it as a sticky headline in the swimlane marquee until the next recap or session disconnect. Keep it to one sentence — it scrolls as a ticker.
+
 ## 3. Dispatch table
 
 | Pulled Linear state | Command | Next state on success |
