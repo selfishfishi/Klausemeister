@@ -114,12 +114,14 @@ struct WorktreeStatusDot: View {
             let intensity = themeColors.glowIntensity
             let color = dotColor
             let glowColor: Color = isClaudeWorking
-                ? color.mix(with: .white, by: 0.3 * phase)
+                ? color.mix(with: .white, by: 0.45 * phase)
                 : color
+            let scale = isClaudeWorking ? 0.85 + 0.3 * phase : 1.0
 
             Circle()
                 .fill(color)
                 .frame(width: 6, height: 6)
+                .scaleEffect(scale)
                 .shadow(
                     color: glowColor.opacity(glowOpacity(phase: phase, intensity: intensity)),
                     radius: glowRadius(phase: phase)
@@ -170,9 +172,9 @@ struct WorktreeStatusDot: View {
         switch connectedCount {
         case 2:
             if isClaudeWorking {
-                return (0.5 + 0.5 * phase) * intensity
+                return (0.1 + 0.9 * phase) * intensity
             }
-            return (0.4 + 0.4 * phase) * intensity
+            return (0.3 + 0.5 * phase) * intensity
         case 1: return 0.5 * intensity
         default: return 0.5 * intensity
         }
@@ -180,7 +182,7 @@ struct WorktreeStatusDot: View {
 
     private func glowRadius(phase: Double) -> CGFloat {
         if connectedCount == 2 {
-            return isClaudeWorking ? 5 + 5 * phase : 3 + 3 * phase
+            return isClaudeWorking ? 2 + 12 * phase : 3 + 3 * phase
         }
         return 3
     }
