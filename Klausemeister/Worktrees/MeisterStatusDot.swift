@@ -103,10 +103,9 @@ struct WorktreeStatusDot: View {
     @Environment(\.themeColors) private var themeColors
 
     var body: some View {
-        TimelineView(.animation(
-            minimumInterval: 1.0 / 30.0,
-            paused: !isFullyHealthy
-        )) { timeline in
+        // Always tick — the 6pt circle is cheap; gating on `paused:` caused
+        // the TimelineView to never un-pause when status changed to healthy.
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
             let period: Double = isClaudeWorking ? 1.5 : 3.0
             let t = timeline.date.timeIntervalSinceReferenceDate
             let phase = isFullyHealthy
@@ -114,9 +113,6 @@ struct WorktreeStatusDot: View {
                 : 0.0
             let intensity = themeColors.glowIntensity
             let color = dotColor
-            // When working, shift the glow between the base accent and a
-            // brighter tint so the halo appears to "breathe" through
-            // different shades of the theme green.
             let glowColor: Color = isClaudeWorking
                 ? color.mix(with: .white, by: 0.3 * phase)
                 : color
