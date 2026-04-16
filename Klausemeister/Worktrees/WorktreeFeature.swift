@@ -57,6 +57,11 @@ struct Worktree: Equatable, Identifiable {
     /// while fresh; the view treats anything older than ~30s as stale.
     var claudeActivityText: String?
     var claudeActivityUpdatedAt: Date?
+    /// Persistent recap from the meister — set when `reportActivity` is
+    /// called with a `"recap: "` prefix. No TTL; persists until the next
+    /// recap or session disconnect. Overrides activity/progress in the
+    /// marquee so the user sees a summary of what the session has done.
+    var recapText: String?
     var gitStats: GitStats?
     var inbox: [LinearIssue] = []
     var processing: LinearIssue?
@@ -289,7 +294,7 @@ struct WorktreeFeature {
     /// How long an activity line lives before the reducer wipes it so
     /// snapshots (`getStatus`, debug panel) don't leak stale narration.
     /// Matches `ClaudeStatusLineView.freshness` — keep in sync.
-    nonisolated private static let claudeActivityTTL: Duration = .seconds(30)
+    nonisolated private static let claudeActivityTTL: Duration = .seconds(60)
 
     /// How long to wait for the meister's MCP HelloFrame after a spawn before
     /// declaring the meister disconnected. A real hello from the shim normally
@@ -657,6 +662,7 @@ struct WorktreeFeature {
                         meisterStatus: previous?.meisterStatus ?? .none,
                         claudeStatus: previous?.claudeStatus ?? .offline,
                         claudeStatusText: previous?.claudeStatusText,
+                        recapText: previous?.recapText,
                         gitStats: previous?.gitStats,
                         inbox: items
                             .filter { $0.queuePosition == .inbox }
@@ -1628,14 +1634,15 @@ struct WorktreeFeature {
 
             case let .claudeStatusChanged(worktreeId, claudeState):
                 state.worktrees[id: worktreeId]?.claudeStatus = claudeState
-                // Clear stale progress text on any non-working transition — the
-                // last `reportProgress` line would otherwise persist past the
-                // end of the work burst that produced it.
-                switch claudeState {
-                case .idle, .blocked, .error, .offline:
+                // Don't clear claudeStatusText on idle/blocked transitions —
+                // reportProgress is a deliberate step-level label ("klause-define
+                // — exploring codebase") that should persist until the next
+                // reportProgress call. Clearing on idle defeats its purpose
+                // because the meister's own tool-call hooks cycle through
+                // working→idle on every single tool invocation. Only wipe on
+                // offline (session died — everything stale).
+                if claudeState == .offline {
                     state.worktrees[id: worktreeId]?.claudeStatusText = nil
-                case .working:
-                    break
                 }
                 // Activity text is session-scoped; only wipe it when the session
                 // itself goes away. Idle/blocked/error can still carry ambient
@@ -1644,6 +1651,7 @@ struct WorktreeFeature {
                 if claudeState == .offline {
                     state.worktrees[id: worktreeId]?.claudeActivityText = nil
                     state.worktrees[id: worktreeId]?.claudeActivityUpdatedAt = nil
+                    state.worktrees[id: worktreeId]?.recapText = nil
                     return .cancel(id: CancelID.claudeActivityExpiry(worktreeId))
                 }
                 return .none
@@ -1653,6 +1661,15 @@ struct WorktreeFeature {
                 return .none
 
             case let .claudeActivityTextChanged(worktreeId, text):
+                // Detect recap prefix: "recap: <summary>". Recaps persist
+                // with no TTL and override the normal marquee cascade until
+                // the next recap or session disconnect.
+                let recapPrefix = "recap: "
+                if text.hasPrefix(recapPrefix) {
+                    state.worktrees[id: worktreeId]?.recapText = String(text.dropFirst(recapPrefix.count))
+                    return .cancel(id: CancelID.claudeActivityExpiry(worktreeId))
+                }
+
                 state.worktrees[id: worktreeId]?.claudeActivityText = text
                 state.worktrees[id: worktreeId]?.claudeActivityUpdatedAt = date.now
                 // Re-arm the TTL timer: cancelInFlight ensures each fresh

@@ -127,40 +127,56 @@ struct SwimlaneBarRow: View {
     }
 
     private var processingSection: some View {
-        ZStack {
-            if let processing = displayedProcessing {
-                activeBox(processing)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .leading).combined(with: .opacity),
-                        removal: .move(edge: .trailing).combined(with: .opacity)
-                    ))
-            } else {
-                idlePlaceholder
-                    .transition(.opacity)
+        VStack(spacing: 4) {
+            ZStack {
+                if let processing = displayedProcessing {
+                    activeBox(processing)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .leading).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        ))
+                } else {
+                    idlePlaceholder
+                        .transition(.opacity)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 40)
+            .overlay {
+                if worktree.isMeisterWorking {
+                    SwimlaneWorkingCometOverlay(
+                        cycleColors: cometCycleColors,
+                        phaseOffset: Self.phaseOffset(for: worktree.id),
+                        cornerRadius: 4
+                    )
+                }
+            }
+            .overlay(targetingRing(isOn: processingTargeted, tint: activeTint))
+            .animation(.easeInOut(duration: 0.15), value: processingTargeted)
+            .dropDestination(for: String.self) { items, _ in
+                guard worktree.processing == nil,
+                      let id = items.first,
+                      let onDropToProcessing
+                else { return false }
+                onDropToProcessing(id)
+                return true
+            } isTargeted: { targeted in
+                processingTargeted = targeted && worktree.processing == nil
+            }
+
+            if let text = tickerText {
+                ActivityMarquee(text: text, tint: activeTint)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 40)
-        .overlay {
-            if worktree.isMeisterWorking {
-                SwimlaneWorkingCometOverlay(
-                    cycleColors: cometCycleColors,
-                    phaseOffset: Self.phaseOffset(for: worktree.id),
-                    cornerRadius: 4
-                )
-            }
-        }
-        .overlay(targetingRing(isOn: processingTargeted, tint: activeTint))
-        .animation(.easeInOut(duration: 0.15), value: processingTargeted)
-        .dropDestination(for: String.self) { items, _ in
-            guard worktree.processing == nil,
-                  let id = items.first,
-                  let onDropToProcessing
-            else { return false }
-            onDropToProcessing(id)
-            return true
-        } isTargeted: { targeted in
-            processingTargeted = targeted && worktree.processing == nil
-        }
+    }
+
+    /// Best-available narration for the news ticker under the processing box.
+    /// Priority: recap (persistent) → live activity → step-boundary progress.
+    /// Hook tool name (`last_tool`) excluded — too terse for a headline.
+    private var tickerText: String? {
+        if let text = worktree.recapText, !text.isEmpty { return text }
+        if let text = worktree.claudeActivityText, !text.isEmpty { return text }
+        if let text = worktree.claudeStatusText, !text.isEmpty { return text }
+        return nil
     }
 
     private var outboxSection: some View {
