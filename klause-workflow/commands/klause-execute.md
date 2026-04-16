@@ -28,6 +28,16 @@ Call `transition(command: "execute")`. This validates the state machine and upda
 
 Call `reportActivity("klause-execute — reading complexity label")`. Fetch the Linear issue and check its labels for a complexity label (`simple`, `medium`, or `complex`). These are stamped by `/klause-define`.
 
+**If no complexity label is present, refuse by default.** Tickets that entered Todo without passing through `/klause-define` (bug reports, `/klause-schedule` output, manual Linear moves) have historically been silently downgraded to `medium`, bypassing `/feature-dev:feature-dev` for work that needed it.
+
+Print:
+
+> Ticket `<KLA-ID>` has no complexity label. Run `/klause-define` first (preferred — it also assesses definition depth), or re-invoke as `/klause-execute --force-medium` to bypass labeling and run the plan-then-execute strategy anyway.
+
+Then stop. Do not transition, do not begin work.
+
+The `--force-medium` escape hatch is the only supported way to skip labeling. Do not silently default.
+
 ### 3. Execute based on complexity
 
 | Label | Strategy |
@@ -35,7 +45,10 @@ Call `reportActivity("klause-execute — reading complexity label")`. Fetch the 
 | `simple` | **Direct execution.** Just do the work — read the ticket, make the changes, commit. No planning phase, no architecture design. Announce: "Simple complexity — executing directly." |
 | `medium` | **Plan then execute.** Enter plan mode to design the approach, then implement. Announce: "Medium complexity — planning first." |
 | `complex` | **Full guided development.** Invoke `/feature-dev:feature-dev` with the ticket identifier. This handles codebase exploration, clarifying questions, architecture design, implementation, and quality review. Announce: "Complex — running feature-dev." Throughout, narrate densely via `reportActivity` — e.g. `"feature-dev — exploring similar features"`, `"feature-dev — drafting architecture"`, `"feature-dev — implementing state layer"`. |
-| *(no label)* | **Default to medium.** If `/klause-define` didn't stamp a label (e.g. older ticket), use the plan-then-execute strategy. Announce: "No complexity label found — defaulting to medium (plan then execute)." |
+| *(no label)* | **Refuse.** See step 2. Do not default. |
+| `--force-medium` flag | **Plan then execute** (same as `medium`). Announce: "Labeling bypassed via --force-medium — planning first." |
+
+Call `reportProgress` with the routing decision so the Meister UI reflects it, e.g. `reportProgress(issueLinearId, "klause-execute — KLA-200 labeled complex → feature-dev")`.
 
 ### 4. Report completion
 

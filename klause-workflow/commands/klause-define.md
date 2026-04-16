@@ -32,21 +32,36 @@ In a single assessment, determine **both**:
 | **Standard** | Design choices involved, multi-file change, integration points. Description has gaps or ambiguity. | Explore relevant codebase areas, ask clarifying questions, write requirements and design notes. |
 | **Heavy** | Architectural, large, cross-cutting. May be too big for one ticket. | Full codebase exploration, multiple rounds of questions, detailed requirements/constraints/references. May suggest splitting into sub-tickets. |
 
-**B) Complexity label** — which execution strategy `/klause:execute` should use:
+**B) Complexity label** — which execution strategy `/klause-execute` should use.
 
-| Label | When | Execution strategy |
+**When in doubt, go up one tier.** Under-labeling is the failure mode this rubric is tuned against: `medium` silently bypasses feature-dev for work that needed planning. Over-labeling costs a planning pass on work that didn't need one — cheap by comparison.
+
+**Any one signal in the `complex` list forces `complex`, regardless of file count.**
+
+| Label | Triggers (any one) | Execution strategy |
 |---|---|---|
-| `simple` | One-file changes, config, typos, renames, clear single-step work | Direct execution — just do it, no planning |
-| `medium` | Multi-file but scoped, clear approach, no major design decisions | Enter plan mode first, then execute |
-| `complex` | Design choices, architectural, cross-cutting, multiple systems | Run `/feature-dev:feature-dev` for full guided development |
+| `simple` | Truly one-file. Mechanical. No design decisions. No new types, no new APIs. Work is "replace X with Y" where Y is obvious from the ticket. | Direct execution — just do it, no planning |
+| `medium` | Multi-file but mechanical. Clear approach stated in the ticket. No new dependency client, no new reducer, no new TCA action enum case that crosses features. Presentation-only SwiftUI wiring, straightforward data plumbing. | Enter plan mode first, then execute |
+| `complex` | **Any one of:** new or substantially modified dependency client (live + test + schema) · new TCA feature or reducer · cross-feature delegate action · state-machine or workflow change (klause-\*, kanban transitions) · C interop / libghostty callback change · work crossing reducer ↔ dependency ↔ persistence boundaries · unresolved design choice the ticket does not answer · multi-repo or multi-skill change (app + plugin). | Run `/feature-dev:feature-dev` for full guided development |
 
-**Decision heuristics:**
-1. **Description length and detail** — one-liner with clear intent → trivial/simple; open questions → standard+/medium+
+**Worked examples (real KLA tickets):**
+
+* `simple` — [KLA-181](https://linear.app/selfishfish/issue/KLA-181) "Replace blocking GCD dispatch in SocketTransport": one file, well-known pattern (`readabilityHandler` + `terminationHandler`), no new types.
+* `medium` — [KLA-188](https://linear.app/selfishfish/issue/KLA-188) "TicketInspectorView presentation": new SwiftUI file, plain value types + closures, no store, clear spec in the ticket.
+* `complex` — [KLA-185](https://linear.app/selfishfish/issue/KLA-185) "Send /klause-workflow commands from Meister UI": new dependency client, reverse channel via tmux, crosses reducer / dependency / subprocess layers, design choices in the ticket body.
+
+**Counter-examples (commonly mis-labeled):**
+
+* [KLA-170](https://linear.app/selfishfish/issue/KLA-170) "Implement /klause-babysit + update workflow skills" looks like a skill edit but added a new command, changed the state machine, and touched no-code-ticket detection — **complex**, not medium.
+* [KLA-180](https://linear.app/selfishfish/issue/KLA-180) "Scheduling skill: topo sort + queue assignment" is a new skill with an algorithm and a new MCP tool — **complex**, not medium.
+
+**Decision heuristics for definition depth (orthogonal to complexity):**
+1. **Description length and detail** — one-liner with clear intent → trivial/light; open questions → standard+
 2. **Scope signals** — "refactor", "redesign", "migrate", "replace" → heavier; "fix", "update", "add", "rename" with a specific target → lighter
 3. **Existing sub-items** — if acceptance criteria or task lists already present, less definition needed
-4. **Codebase touchpoints** — multiple systems or files referenced in the description → heavier complexity
+4. **Codebase touchpoints** — multiple systems or files referenced → heavier definition
 
-Note: definition depth and complexity usually correlate but aren't identical. "Add dark mode toggle" is light definition (clear what to do) but medium complexity (touches multiple files).
+Definition depth and complexity usually correlate but aren't identical. "Add dark mode toggle" is light definition (clear what to do) but medium complexity (touches multiple files).
 
 ### 3. Apply definition
 
