@@ -101,16 +101,15 @@ struct WorktreeStatusDot: View {
     let claudeStatus: ClaudeSessionState
 
     @Environment(\.themeColors) private var themeColors
-    @Environment(\.swimlaneAnimating) private var isAnimating
 
     var body: some View {
         TimelineView(.animation(
             minimumInterval: 1.0 / 30.0,
-            paused: !isFullyHealthy || !isAnimating
+            paused: !isFullyHealthy
         )) { timeline in
             let period: Double = isClaudeWorking ? 1.5 : 3.0
             let t = timeline.date.timeIntervalSinceReferenceDate
-            let phase = (isFullyHealthy && isAnimating)
+            let phase = isFullyHealthy
                 ? 0.5 + 0.5 * sin(t * 2 * .pi / period)
                 : 0.0
             let intensity = themeColors.glowIntensity
