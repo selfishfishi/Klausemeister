@@ -8,7 +8,9 @@ struct TerminalContainerView: View {
     @Environment(\.themeColors) private var themeColors
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var didSeedInspectorPref = false
+    @State private var didPrimeInitialTheme = false
     @AppStorage("inspectorOpen") private var inspectorOpenPref: Bool = false
+    @AppStorage("selectedTheme") private var selectedTheme: AppTheme = .everforestDarkMedium
 
     var body: some View {
         ZStack {
@@ -123,6 +125,10 @@ struct TerminalContainerView: View {
                 if inspectorOpenPref != store.showInspector {
                     store.send(.toggleInspector)
                 }
+            }
+            if !didPrimeInitialTheme {
+                didPrimeInitialTheme = true
+                store.send(.initialThemeSeeded(selectedTheme))
             }
             store.send(.onAppear)
         }

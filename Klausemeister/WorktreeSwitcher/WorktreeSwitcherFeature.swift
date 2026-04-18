@@ -10,16 +10,6 @@ struct WorktreeSwitcherFeature {
         var items: [SwitcherItem] = []
         var selectedIndex: Int = 0
 
-        var filteredItems: [SwitcherItem] {
-            let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-            guard !search.isEmpty else { return items }
-            return items.filter { item in
-                item.name.lowercased().contains(search)
-                    || (item.branch?.lowercased().contains(search) ?? false)
-            }
-        }
-
         init(worktrees: [Worktree]) {
             var result: [SwitcherItem] = [.meister]
             for worktree in worktrees {
@@ -118,6 +108,20 @@ struct WorktreeSwitcherFeature {
             case .delegate, .binding:
                 return .none
             }
+        }
+    }
+}
+
+// MARK: - Derived State
+
+extension WorktreeSwitcherFeature.State {
+    var filteredItems: [WorktreeSwitcherFeature.SwitcherItem] {
+        let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !search.isEmpty else { return items }
+        return items.filter { item in
+            item.name.lowercased().contains(search)
+                || (item.branch?.lowercased().contains(search) ?? false)
         }
     }
 }

@@ -14,9 +14,9 @@ extension GhosttyAppClient: DependencyKey {
         rebuild: { theme in GhosttyApp.shared.rebuild(theme: theme) }
     )
     nonisolated static let testValue = GhosttyAppClient(
-        app: { nil },
-        tick: {},
-        rebuild: { _ in }
+        app: unimplemented("GhosttyAppClient.app", placeholder: nil),
+        tick: unimplemented("GhosttyAppClient.tick"),
+        rebuild: unimplemented("GhosttyAppClient.rebuild")
     )
 }
 

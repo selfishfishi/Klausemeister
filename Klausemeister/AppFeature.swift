@@ -30,6 +30,7 @@ struct AppFeature {
         case inspectorSelectionRequested(issueId: String)
         case inspectorDetailFetched(Result<InspectorTicketDetail, InspectorFetchError>)
         case themeChanged(AppTheme)
+        case initialThemeSeeded(AppTheme)
         case oauthCallbackReceived(URL)
         case showMeister
         case meister(MeisterFeature.Action)
@@ -228,6 +229,13 @@ struct AppFeature {
                         ghosttyApp.rebuild(theme)
                         surfaceManager.recreateAllSurfaces()
                     }
+                }
+
+            case let .initialThemeSeeded(theme):
+                // Primes libghostty with the persisted theme on first window
+                // appearance; no surfaces exist yet so skip recreation.
+                return .run { _ in
+                    await MainActor.run { ghosttyApp.rebuild(theme) }
                 }
 
             case let .oauthCallbackReceived(url):

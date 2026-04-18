@@ -41,19 +41,29 @@ extension SurfaceManager {
 }
 
 extension SurfaceManager: DependencyKey {
+    /// The real instance is built via `.live(surfaceStore:ghosttyApp:)` and
+    /// injected through `withDependencies` at `Store` creation. Accessing
+    /// these defaults means the override never ran — fail loudly so the
+    /// bug surfaces instead of silently no-oping.
     nonisolated static let liveValue = SurfaceManager(
-        createSurface: { _, _, _ in false },
-        destroySurface: { _ in },
-        focus: { _ in false },
-        unfocus: { _ in },
-        recreateAllSurfaces: {}
+        createSurface: unimplemented(
+            "SurfaceManager.createSurface",
+            placeholder: false
+        ),
+        destroySurface: unimplemented("SurfaceManager.destroySurface"),
+        focus: unimplemented("SurfaceManager.focus", placeholder: false),
+        unfocus: unimplemented("SurfaceManager.unfocus"),
+        recreateAllSurfaces: unimplemented("SurfaceManager.recreateAllSurfaces")
     )
     nonisolated static let testValue = SurfaceManager(
-        createSurface: { _, _, _ in true },
-        destroySurface: { _ in },
-        focus: { _ in true },
-        unfocus: { _ in },
-        recreateAllSurfaces: {}
+        createSurface: unimplemented(
+            "SurfaceManager.createSurface",
+            placeholder: false
+        ),
+        destroySurface: unimplemented("SurfaceManager.destroySurface"),
+        focus: unimplemented("SurfaceManager.focus", placeholder: false),
+        unfocus: unimplemented("SurfaceManager.unfocus"),
+        recreateAllSurfaces: unimplemented("SurfaceManager.recreateAllSurfaces")
     )
 }
 
