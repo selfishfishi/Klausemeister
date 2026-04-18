@@ -22,23 +22,13 @@ struct ShimmerText: View {
             let t = timeline.date.timeIntervalSinceReferenceDate
             let sweepProgress = (t / sweepPeriod).truncatingRemainder(dividingBy: 1.0)
             let center = -bandWidth + sweepProgress * (1.0 + 2 * bandWidth)
-            let highlight = interpolatedColor(at: t)
-
-            // Clamp all three stops to [0, 1] so they stay ordered even
-            // while the band enters from or exits past the text edges.
-            let lo = max(0, min(1, center - bandWidth))
-            let mid = max(0, min(1, center))
-            let hi = max(0, min(1, center + bandWidth))
+            let stops = gradientStops(center: center, elapsed: t)
 
             Text(text)
                 .lineLimit(1)
                 .foregroundStyle(
                     .linearGradient(
-                        stops: [
-                            .init(color: baseColor, location: lo),
-                            .init(color: highlight, location: mid),
-                            .init(color: baseColor, location: hi)
-                        ],
+                        stops: stops,
                         startPoint: .leading,
                         endPoint: .trailing
                     )
@@ -46,15 +36,55 @@ struct ShimmerText: View {
         }
     }
 
-    private func interpolatedColor(at elapsed: Double) -> Color {
-        guard !cycleColors.isEmpty else { return baseColor }
-        guard cycleColors.count > 1 else { return cycleColors[0] }
-        let count = Double(cycleColors.count)
+    /// The band spans [center - bandWidth, center + bandWidth]. Inside the
+    /// band we lay out every palette color as a multi-stop gradient and
+    /// rotate them over time, so each sweep reveals the full theme rather
+    /// than a single highlight color.
+    private func gradientStops(center: Double, elapsed: Double) -> [Gradient.Stop] {
+        guard !cycleColors.isEmpty else {
+            return [
+                .init(color: baseColor, location: 0),
+                .init(color: baseColor, location: 1)
+            ]
+        }
+
+        let bandStart = center - bandWidth
+        let bandEnd = center + bandWidth
+        let rotated = rotatedColors(at: elapsed)
+
+        var stops: [Gradient.Stop] = [
+            .init(color: baseColor, location: clamp(bandStart))
+        ]
+
+        if rotated.count == 1 {
+            stops.append(.init(color: rotated[0], location: clamp(center)))
+        } else {
+            let spacing = (bandEnd - bandStart) / Double(rotated.count - 1)
+            for (index, color) in rotated.enumerated() {
+                let location = bandStart + Double(index) * spacing
+                stops.append(.init(color: color, location: clamp(location)))
+            }
+        }
+
+        stops.append(.init(color: baseColor, location: clamp(bandEnd)))
+        return stops
+    }
+
+    private func rotatedColors(at elapsed: Double) -> [Color] {
+        let count = cycleColors.count
+        guard count > 1 else { return cycleColors }
         let raw = (elapsed / colorCyclePeriod).truncatingRemainder(dividingBy: 1)
-        let progress = (raw < 0 ? raw + 1 : raw) * count
-        let index = Int(progress) % cycleColors.count
-        let nextIndex = (index + 1) % cycleColors.count
-        let fraction = progress - Double(index)
-        return cycleColors[index].mix(with: cycleColors[nextIndex], by: fraction)
+        let progress = (raw < 0 ? raw + 1 : raw) * Double(count)
+        let shift = Int(progress) % count
+        let fraction = progress - Double(Int(progress))
+        return (0 ..< count).map { index in
+            let base = (index + shift) % count
+            let next = (base + 1) % count
+            return cycleColors[base].mix(with: cycleColors[next], by: fraction)
+        }
+    }
+
+    private func clamp(_ value: Double) -> Double {
+        max(0, min(1, value))
     }
 }
