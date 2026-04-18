@@ -175,11 +175,12 @@ actor MCPSocketListener {
             )
             // Always re-create the symlink so it tracks the current app
             // bundle (e.g. after rebuilding in Xcode with a new DerivedData
-            // path). Removing first is required because createSymbolicLink
-            // fails if the destination already exists.
-            if fileManager.fileExists(atPath: symlinkURL.path) {
-                try fileManager.removeItem(at: symlinkURL)
-            }
+            // path). Unconditional removal is necessary because
+            // `fileExists(atPath:)` follows symlinks — a dangling symlink
+            // pointing at a stale DerivedData binary would report false,
+            // we'd skip the removal, and `createSymbolicLink` would then
+            // fail with "file already exists".
+            try? fileManager.removeItem(at: symlinkURL)
             try fileManager.createSymbolicLink(at: symlinkURL, withDestinationURL: helperURL)
         } catch {
             logger.warning("Failed to create shim symlink: \(error.localizedDescription)")

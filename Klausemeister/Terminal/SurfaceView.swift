@@ -543,6 +543,18 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
 
     // MARK: - Cleanup
 
+    /// Free the underlying ghostty surface and clear the handle so subsequent
+    /// `deinit` is a no-op. Must be called BEFORE `ghostty_app_free` — the
+    /// app owns state that surfaces reference, and the store's dictionary
+    /// removal alone doesn't trigger deinit while SwiftUI/NSView still
+    /// retains the wrapper.
+    func teardown() {
+        if let surface {
+            ghostty_surface_free(surface)
+            self.surface = nil
+        }
+    }
+
     deinit {
         if !isCursorVisible {
             NSCursor.unhide()
