@@ -90,30 +90,35 @@ struct GitStats: Equatable {
 }
 
 struct Worktree: Equatable, Identifiable {
+    // Field ordering is chosen to minimize padding and keep related fields
+    // on the same cache line. Reference-pointer-width fields (`String`,
+    // optional references) come first; small enums and the `Int` come
+    // after because the compiler can pack them into the tail without
+    // padding them up to pointer-alignment.
     let id: String
     var name: String
-    var sortOrder: Int
     var gitWorktreePath: String
     var repoId: String?
     var repoName: String?
     var currentBranch: String?
-    var tmuxSessionStatus: TmuxSessionStatus = .unknown
-    var meisterStatus: MeisterStatus = .none
-    var claudeStatus: ClaudeSessionState = .offline
     var claudeStatusText: String?
     /// Live narration from `reportActivity`. Wins over the static status label
     /// while fresh; the view treats anything older than ~30s as stale.
     var claudeActivityText: String?
-    var claudeActivityUpdatedAt: Date?
     /// Persistent recap from the meister — set when `reportActivity` is
     /// called with a `"recap: "` prefix. No TTL; persists until the next
     /// recap or session disconnect. Overrides activity/progress in the
     /// marquee so the user sees a summary of what the session has done.
     var recapText: String?
+    var claudeActivityUpdatedAt: Date?
     var gitStats: GitStats?
     var inbox: [LinearIssue] = []
     var processing: LinearIssue?
     var outbox: [LinearIssue] = []
+    var sortOrder: Int
+    var tmuxSessionStatus: TmuxSessionStatus = .unknown
+    var meisterStatus: MeisterStatus = .none
+    var claudeStatus: ClaudeSessionState = .offline
 
     var totalIssueCount: Int {
         inbox.count + (processing != nil ? 1 : 0) + outbox.count
@@ -130,6 +135,25 @@ struct Worktree: Equatable, Identifiable {
         guard meisterStatus == .running else { return false }
         if case .working = claudeStatus { return true }
         return false
+    }
+
+    /// `true` when `issueId` appears in any queue slot of this worktree.
+    /// Replaces the open-coded `inbox.contains || processing?.id == || outbox.contains`
+    /// triple that was duplicated across ~8 reducer handlers.
+    func contains(issueId: String) -> Bool {
+        if processing?.id == issueId { return true }
+        if inbox.contains(where: { $0.id == issueId }) { return true }
+        if outbox.contains(where: { $0.id == issueId }) { return true }
+        return false
+    }
+
+    /// The `LinearIssue` in this worktree matching `issueId`, searching
+    /// across inbox / processing / outbox. Returns `nil` when absent.
+    func issue(for issueId: String) -> LinearIssue? {
+        if let processing, processing.id == issueId { return processing }
+        if let match = inbox.first(where: { $0.id == issueId }) { return match }
+        if let match = outbox.first(where: { $0.id == issueId }) { return match }
+        return nil
     }
 }
 
@@ -735,31 +759,41 @@ struct WorktreeFeature {
                 state.worktrees = IdentifiedArrayOf(uniqueElements: worktreeSnapshots.map { snapshot in
                     let items = queueItemsByWorktree[snapshot.id] ?? []
                     let previous = previousWorktreesByID[snapshot.id]
+
+                    // Single-pass bucket sort: inbox / processing / outbox
+                    // are populated in one walk over `items`. The previous
+                    // implementation did 3 `filter` passes + 2 `sorted`
+                    // calls per worktree.
+                    var inboxItems: [WorktreeQueueItem] = []
+                    var processingItem: WorktreeQueueItem?
+                    var outboxItems: [WorktreeQueueItem] = []
+                    for item in items {
+                        switch item.queuePosition {
+                        case .inbox: inboxItems.append(item)
+                        case .processing: processingItem = item
+                        case .outbox: outboxItems.append(item)
+                        }
+                    }
+                    inboxItems.sort { $0.sortOrder < $1.sortOrder }
+                    outboxItems.sort { $0.sortOrder < $1.sortOrder }
+
                     return Worktree(
                         id: snapshot.id,
                         name: snapshot.name,
-                        sortOrder: snapshot.sortOrder,
                         gitWorktreePath: snapshot.gitWorktreePath,
                         repoId: snapshot.repoId,
                         repoName: snapshot.repoId.flatMap { repoNames[$0] },
                         currentBranch: previous?.currentBranch,
-                        tmuxSessionStatus: previous?.tmuxSessionStatus ?? .unknown,
-                        meisterStatus: previous?.meisterStatus ?? .none,
-                        claudeStatus: previous?.claudeStatus ?? .offline,
                         claudeStatusText: previous?.claudeStatusText,
                         recapText: previous?.recapText,
                         gitStats: previous?.gitStats,
-                        inbox: items
-                            .filter { $0.queuePosition == .inbox }
-                            .sorted { $0.sortOrder < $1.sortOrder }
-                            .compactMap { issuesByLinearId[$0.issueLinearId] },
-                        processing: items
-                            .first { $0.queuePosition == .processing }
-                            .flatMap { issuesByLinearId[$0.issueLinearId] },
-                        outbox: items
-                            .filter { $0.queuePosition == .outbox }
-                            .sorted { $0.sortOrder < $1.sortOrder }
-                            .compactMap { issuesByLinearId[$0.issueLinearId] }
+                        inbox: inboxItems.compactMap { issuesByLinearId[$0.issueLinearId] },
+                        processing: processingItem.flatMap { issuesByLinearId[$0.issueLinearId] },
+                        outbox: outboxItems.compactMap { issuesByLinearId[$0.issueLinearId] },
+                        sortOrder: snapshot.sortOrder,
+                        tmuxSessionStatus: previous?.tmuxSessionStatus ?? .unknown,
+                        meisterStatus: previous?.meisterStatus ?? .none,
+                        claudeStatus: previous?.claudeStatus ?? .offline
                     )
                 })
                 state.worktrees.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -996,11 +1030,11 @@ struct WorktreeFeature {
                 state.worktrees.append(Worktree(
                     id: snapshot.id,
                     name: snapshot.name,
-                    sortOrder: snapshot.sortOrder,
                     gitWorktreePath: snapshot.gitWorktreePath,
                     repoId: snapshot.repoId,
                     repoName: repoName,
                     currentBranch: branch,
+                    sortOrder: snapshot.sortOrder,
                     tmuxSessionStatus: .needsCreation
                 ))
                 state.worktrees.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -1244,10 +1278,7 @@ struct WorktreeFeature {
 
             case let .issueAssignedToWorktree(worktreeId, issue):
                 if let wtIndex = state.worktrees.index(id: worktreeId) {
-                    let alreadyQueued = state.worktrees[wtIndex].inbox.contains { $0.id == issue.id }
-                        || state.worktrees[wtIndex].processing?.id == issue.id
-                        || state.worktrees[wtIndex].outbox.contains { $0.id == issue.id }
-                    if !alreadyQueued {
+                    if !state.worktrees[wtIndex].contains(issueId: issue.id) {
                         state.worktrees[wtIndex].inbox.append(issue)
                     }
                 }
@@ -1381,23 +1412,14 @@ struct WorktreeFeature {
 
             case let .issueDroppedOnInbox(issueId, worktreeId):
                 // Check if issue is already in this worktree
-                if let target = state.worktrees[id: worktreeId] {
-                    let alreadyQueued = target.inbox.contains { $0.id == issueId }
-                        || target.processing?.id == issueId
-                        || target.outbox.contains { $0.id == issueId }
-                    if alreadyQueued { return .none }
+                if state.worktrees[id: worktreeId]?.contains(issueId: issueId) == true {
+                    return .none
                 }
                 // Check if issue is in another worktree — find and remove it first
                 for worktree in state.worktrees where worktree.id != worktreeId {
-                    if worktree.inbox.contains(where: { $0.id == issueId })
-                        || worktree.processing?.id == issueId
-                        || worktree.outbox.contains(where: { $0.id == issueId })
-                    {
+                    if worktree.contains(issueId: issueId) {
                         // Issue is in another worktree; look up and move
-                        if let issue = worktree.inbox.first(where: { $0.id == issueId })
-                            ?? worktree.outbox.first(where: { $0.id == issueId })
-                            ?? (worktree.processing?.id == issueId ? worktree.processing : nil)
-                        {
+                        if let issue = worktree.issue(for: issueId) {
                             state.removeIssueFromWorktree(issueId, worktreeId: worktree.id)
                             if let wtIndex = state.worktrees.index(id: worktreeId) {
                                 state.worktrees[wtIndex].inbox.append(issue)
@@ -1428,10 +1450,7 @@ struct WorktreeFeature {
             case let .issueDroppedOnInboxResolved(worktreeId, issue):
                 // Add to worktree inbox + remove from kanban columns (not DB)
                 if let wtIndex = state.worktrees.index(id: worktreeId) {
-                    let alreadyQueued = state.worktrees[wtIndex].inbox.contains { $0.id == issue.id }
-                        || state.worktrees[wtIndex].processing?.id == issue.id
-                        || state.worktrees[wtIndex].outbox.contains { $0.id == issue.id }
-                    if !alreadyQueued {
+                    if !state.worktrees[wtIndex].contains(issueId: issue.id) {
                         state.worktrees[wtIndex].inbox.append(issue)
                     }
                 }
@@ -1491,21 +1510,16 @@ struct WorktreeFeature {
                 }
 
             case let .issueRemovedByKanbanDrop(issueId):
-                // Find which worktree contains this issue and remove it
-                for worktree in state.worktrees {
-                    let found = worktree.inbox.contains { $0.id == issueId }
-                        || worktree.processing?.id == issueId
-                        || worktree.outbox.contains { $0.id == issueId }
-                    guard found else { continue }
-                    state.removeIssueFromWorktree(issueId, worktreeId: worktree.id)
-                    let worktreeId = worktree.id
-                    return .run { _ in
-                        try await worktreeClient.removeFromQueueByIssueId(issueId, worktreeId)
-                    } catch: { error, _ in
-                        Self.log.warning("Failed to remove queue item for \(issueId): \(error.localizedDescription)")
-                    }
+                // Find which worktree contains this issue and remove it.
+                guard let worktreeId = state.worktreeIdContaining(issueId: issueId) else {
+                    return .none
                 }
-                return .none
+                state.removeIssueFromWorktree(issueId, worktreeId: worktreeId)
+                return .run { _ in
+                    try await worktreeClient.removeFromQueueByIssueId(issueId, worktreeId)
+                } catch: { error, _ in
+                    Self.log.warning("Failed to remove queue item for \(issueId): \(error.localizedDescription)")
+                }
 
             case let .loadFailed(message):
                 state.pendingHellos.removeAll()
@@ -1647,10 +1661,10 @@ struct WorktreeFeature {
                     state.worktrees.append(Worktree(
                         id: snapshot.id,
                         name: snapshot.name,
-                        sortOrder: snapshot.sortOrder,
                         gitWorktreePath: snapshot.gitWorktreePath,
                         repoId: snapshot.repoId,
-                        repoName: repoName
+                        repoName: repoName,
+                        sortOrder: snapshot.sortOrder
                     ))
                 }
                 if !result.inserted.isEmpty {
@@ -1948,10 +1962,7 @@ struct WorktreeFeature {
 
             case let .mcpItemAddedToInboxResolved(worktreeId, issue):
                 if let wtIndex = state.worktrees.index(id: worktreeId) {
-                    let alreadyQueued = state.worktrees[wtIndex].inbox.contains { $0.id == issue.id }
-                        || state.worktrees[wtIndex].processing?.id == issue.id
-                        || state.worktrees[wtIndex].outbox.contains { $0.id == issue.id }
-                    if !alreadyQueued {
+                    if !state.worktrees[wtIndex].contains(issueId: issue.id) {
                         state.worktrees[wtIndex].inbox.append(issue)
                     }
                 }
@@ -1975,6 +1986,16 @@ extension WorktreeFeature.State {
             worktrees[wtIndex].processing = nil
         }
         worktrees[wtIndex].outbox.removeAll { $0.id == issueId }
+    }
+
+    /// Worktree id that currently carries the given issue in any slot,
+    /// or `nil` if the issue isn't on any worktree. Used by drag-and-drop
+    /// handlers that need to locate the source worktree before mutating
+    /// state. O(N) in worktree count; queue-slot membership within each
+    /// worktree is O(inbox|outbox) — centralizing the scan here replaces
+    /// ~4 open-coded copies across the reducer.
+    func worktreeIdContaining(issueId: String) -> String? {
+        worktrees.first(where: { $0.contains(issueId: issueId) })?.id
     }
 
     var assignedWorktreeNames: [String: String] {

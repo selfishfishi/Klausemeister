@@ -130,6 +130,23 @@ struct KanbanIssueCardView: View {
         return MeisterState.allCases.filter { $0 != current }
     }
 
+    /// Worktrees grouped by their `repoId`. Built once per `body` pass so
+    /// the context-menu builder doesn't run `.filter` over `worktrees`
+    /// three times (twice per repo + once for the ungrouped tail) on
+    /// every cell re-render.
+    private var worktreesByRepoId: [String?: [Worktree]] {
+        Dictionary(grouping: worktrees, by: \.repoId)
+    }
+
+    /// Repositories that actually have at least one worktree — the other
+    /// repos would render an empty `Section`. Derived from `worktreesByRepoId`
+    /// so we avoid the `repositories.filter { repo in worktrees.contains {...} }`
+    /// O(N×M) pattern.
+    private var reposWithWorktrees: [Repository] {
+        let byRepo = worktreesByRepoId
+        return repositories.filter { byRepo[$0.id]?.isEmpty == false }
+    }
+
     var body: some View {
         Button {
             onCardTapped?(issue.id)
@@ -149,18 +166,17 @@ struct KanbanIssueCardView: View {
                 }
             }
             if !worktrees.isEmpty {
+                let byRepo = worktreesByRepoId
+                let grouped = reposWithWorktrees
                 Menu("Move to Worktree") {
-                    let grouped = repositories.filter { repo in
-                        worktrees.contains { $0.repoId == repo.id }
-                    }
                     ForEach(grouped) { repo in
                         Section(repo.name) {
-                            ForEach(worktrees.filter { $0.repoId == repo.id }) { worktree in
+                            ForEach(byRepo[repo.id] ?? []) { worktree in
                                 Button(worktree.name) { onAssignToWorktree(issue, worktree.id) }
                             }
                         }
                     }
-                    let ungrouped = worktrees.filter { $0.repoId == nil }
+                    let ungrouped = byRepo[nil] ?? []
                     if !ungrouped.isEmpty {
                         if !grouped.isEmpty { Divider() }
                         ForEach(ungrouped) { worktree in
