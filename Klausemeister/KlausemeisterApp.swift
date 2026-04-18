@@ -34,6 +34,10 @@ struct KlausemeisterApp: App {
                 .onOpenURL { url in
                     store.send(.oauthCallbackReceived(url))
                 }
+                .handlesExternalEvents(
+                    preferring: ["klausemeister"],
+                    allowing: ["klausemeister"]
+                )
                 .preferredColorScheme(selectedTheme.isDark ? .dark : .light)
                 .sheet(isPresented: Binding(
                     get: { store.debugPanel.showPanel },
@@ -47,6 +51,7 @@ struct KlausemeisterApp: App {
                     )
                 }
         }
+        .handlesExternalEvents(matching: ["klausemeister"])
         .defaultSize(width: 900, height: 600)
         .environment(\.themeColors, selectedTheme.colors)
         .onChange(of: selectedTheme) { _, newTheme in
