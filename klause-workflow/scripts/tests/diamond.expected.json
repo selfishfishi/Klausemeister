@@ -1,0 +1,22 @@
+{
+  "plan": [
+    {
+      "worktreeId": "wt-alpha",
+      "worktreeName": "alpha",
+      "items": [
+        { "id": "id-a", "identifier": "KLA-A", "title": "Root", "weight": 1, "level": 0 },
+        { "id": "id-c", "identifier": "KLA-C", "title": "Right", "weight": 1, "level": 1 }
+      ]
+    },
+    {
+      "worktreeId": "wt-beta",
+      "worktreeName": "beta",
+      "items": [
+        { "id": "id-b", "identifier": "KLA-B", "title": "Left", "weight": 1, "level": 1 },
+        { "id": "id-d", "identifier": "KLA-D", "title": "Merge", "weight": 1, "level": 2 }
+      ]
+    }
+  ],
+  "cycles": [],
+  "unscheduled": []
+}

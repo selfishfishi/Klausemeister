@@ -1,0 +1,21 @@
+{
+  "plan": [
+    {
+      "worktreeId": "wt-alpha",
+      "worktreeName": "alpha",
+      "items": [
+        { "id": "id-a", "identifier": "KLA-A", "title": "First", "weight": 1, "level": 0 },
+        { "id": "id-c", "identifier": "KLA-C", "title": "Third", "weight": 1, "level": 2 }
+      ]
+    },
+    {
+      "worktreeId": "wt-beta",
+      "worktreeName": "beta",
+      "items": [
+        { "id": "id-b", "identifier": "KLA-B", "title": "Second", "weight": 1, "level": 1 }
+      ]
+    }
+  ],
+  "cycles": [],
+  "unscheduled": []
+}
