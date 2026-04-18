@@ -37,7 +37,9 @@ final class SurfaceStore {
     }
 
     func destroy(id: String) {
-        records.removeValue(forKey: id)
+        if let record = records.removeValue(forKey: id) {
+            record.view.teardown()
+        }
     }
 
     func surface(for id: String) -> SurfaceView? {
@@ -73,7 +75,15 @@ final class SurfaceStore {
         ghostty_surface_set_focus(surface, false)
     }
 
+    /// Tear down every surface synchronously. MUST run before
+    /// `ghostty_app_free`: libghostty's internal surface tracker holds
+    /// references that become dangling once the app is freed, and
+    /// dictionary removal alone doesn't trigger `SurfaceView.deinit` while
+    /// SwiftUI/NSView hierarchy still retains the view wrapper.
     func destroyAll() {
+        for record in records.values {
+            record.view.teardown()
+        }
         records.removeAll()
     }
 

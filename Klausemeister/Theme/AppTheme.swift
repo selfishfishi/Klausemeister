@@ -23,6 +23,22 @@ enum AppTheme: String, CaseIterable, Codable, Identifiable {
     case catppuccinMacchiato
     case catppuccinMocha
 
+    // Tokyo Night
+    case tokyoNight
+    case tokyoNightStorm
+    case tokyoNightMoon
+    case tokyoNightDay
+
+    // Rose Pine
+    case rosePine
+    case rosePineMoon
+    case rosePineDawn
+
+    // Kanagawa
+    case kanagawaWave
+    case kanagawaDragon
+    case kanagawaLotus
+
     var id: String {
         rawValue
     }
@@ -37,6 +53,12 @@ enum AppTheme: String, CaseIterable, Codable, Identifiable {
             .gruvbox
         case .catppuccinLatte, .catppuccinFrappe, .catppuccinMacchiato, .catppuccinMocha:
             .catppuccin
+        case .tokyoNight, .tokyoNightStorm, .tokyoNightMoon, .tokyoNightDay:
+            .tokyoNight
+        case .rosePine, .rosePineMoon, .rosePineDawn:
+            .rosePine
+        case .kanagawaWave, .kanagawaDragon, .kanagawaLotus:
+            .kanagawa
         }
     }
 
@@ -52,6 +74,16 @@ enum AppTheme: String, CaseIterable, Codable, Identifiable {
         case .catppuccinFrappe: "Frappé"
         case .catppuccinMacchiato: "Macchiato"
         case .catppuccinMocha: "Mocha"
+        case .tokyoNight: "Night"
+        case .tokyoNightStorm: "Storm"
+        case .tokyoNightMoon: "Moon"
+        case .tokyoNightDay: "Day"
+        case .rosePine: "Main"
+        case .rosePineMoon: "Moon"
+        case .rosePineDawn: "Dawn"
+        case .kanagawaWave: "Wave"
+        case .kanagawaDragon: "Dragon"
+        case .kanagawaLotus: "Lotus"
         }
     }
 
@@ -63,18 +95,25 @@ enum AppTheme: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .everforestDarkHard, .everforestDarkMedium, .everforestDarkSoft,
              .gruvboxDarkHard, .gruvboxDarkMedium, .gruvboxDarkSoft,
-             .catppuccinFrappe, .catppuccinMacchiato, .catppuccinMocha:
+             .catppuccinFrappe, .catppuccinMacchiato, .catppuccinMocha,
+             .tokyoNight, .tokyoNightStorm, .tokyoNightMoon,
+             .rosePine, .rosePineMoon,
+             .kanagawaWave, .kanagawaDragon:
             true
         case .everforestLightHard, .everforestLightMedium, .everforestLightSoft,
              .gruvboxLightHard, .gruvboxLightMedium, .gruvboxLightSoft,
-             .catppuccinLatte:
+             .catppuccinLatte,
+             .tokyoNightDay,
+             .rosePineDawn,
+             .kanagawaLotus:
             false
         }
     }
 
     /// Maps legacy `@AppStorage` raw values (pre-multi-family) to the
     /// corresponding Everforest case, so existing users keep their theme.
-    static func legacyMigration(_ stored: String) -> AppTheme? {
+    /// Pure mapping — nonisolated so migration can run off the main actor.
+    nonisolated static func legacyMigration(_ stored: String) -> AppTheme? {
         switch stored {
         case "darkHard": .everforestDarkHard
         case "darkMedium": .everforestDarkMedium
@@ -86,7 +125,9 @@ enum AppTheme: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    static func resolve(stored: String?) -> AppTheme {
+    /// Pure string → theme resolution. Nonisolated so it composes with
+    /// `migrateStoredValue`, which runs outside the main actor.
+    nonisolated static func resolve(stored: String?) -> AppTheme {
         guard let stored else { return .everforestDarkMedium }
         if let direct = AppTheme(rawValue: stored) { return direct }
         if let legacy = legacyMigration(stored) { return legacy }
@@ -118,6 +159,9 @@ enum ThemeFamily: String, CaseIterable, Identifiable {
     case everforest
     case gruvbox
     case catppuccin
+    case tokyoNight
+    case rosePine
+    case kanagawa
 
     var id: String {
         rawValue
@@ -128,6 +172,9 @@ enum ThemeFamily: String, CaseIterable, Identifiable {
         case .everforest: "Everforest"
         case .gruvbox: "Gruvbox"
         case .catppuccin: "Catppuccin"
+        case .tokyoNight: "Tokyo Night"
+        case .rosePine: "Rosé Pine"
+        case .kanagawa: "Kanagawa"
         }
     }
 
@@ -139,6 +186,12 @@ enum ThemeFamily: String, CaseIterable, Identifiable {
             [.gruvboxDarkHard, .gruvboxDarkMedium, .gruvboxDarkSoft]
         case .catppuccin:
             [.catppuccinMocha, .catppuccinMacchiato, .catppuccinFrappe]
+        case .tokyoNight:
+            [.tokyoNight, .tokyoNightStorm, .tokyoNightMoon]
+        case .rosePine:
+            [.rosePine, .rosePineMoon]
+        case .kanagawa:
+            [.kanagawaWave, .kanagawaDragon]
         }
     }
 
@@ -150,6 +203,12 @@ enum ThemeFamily: String, CaseIterable, Identifiable {
             [.gruvboxLightHard, .gruvboxLightMedium, .gruvboxLightSoft]
         case .catppuccin:
             [.catppuccinLatte]
+        case .tokyoNight:
+            [.tokyoNightDay]
+        case .rosePine:
+            [.rosePineDawn]
+        case .kanagawa:
+            [.kanagawaLotus]
         }
     }
 }
@@ -175,6 +234,9 @@ extension AppTheme {
         case .everforest: everforestColors
         case .gruvbox: gruvboxColors
         case .catppuccin: catppuccinColors
+        case .tokyoNight: tokyoNightColors
+        case .rosePine: rosePineColors
+        case .kanagawa: kanagawaColors
         }
     }
 }
