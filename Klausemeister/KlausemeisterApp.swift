@@ -3,7 +3,7 @@ import SwiftUI
 
 @main
 struct KlausemeisterApp: App {
-    @AppStorage("selectedTheme") private var selectedTheme: AppTheme = .darkMedium
+    @AppStorage("selectedTheme") private var selectedTheme: AppTheme = .everforestDarkMedium
 
     let surfaceStore: SurfaceStore
     let store: StoreOf<AppFeature>
@@ -12,9 +12,11 @@ struct KlausemeisterApp: App {
         let surfaceStore = SurfaceStore()
         self.surfaceStore = surfaceStore
 
-        let initialTheme = AppTheme(
-            rawValue: UserDefaults.standard.string(forKey: "selectedTheme") ?? ""
-        ) ?? .darkMedium
+        let initialTheme = AppTheme.resolve(
+            stored: UserDefaults.standard.string(forKey: "selectedTheme")
+        )
+        // Rewrite legacy value so @AppStorage and future reads match.
+        UserDefaults.standard.set(initialTheme.rawValue, forKey: "selectedTheme")
         GhosttyApp.shared.rebuild(theme: initialTheme)
 
         store = Store(initialState: AppFeature.State()) {
@@ -115,28 +117,17 @@ struct KlausemeisterApp: App {
                 .keyboardShortcut(for: .toggleDebugPanel, in: store.keyBindings)
             }
             CommandMenu("Theme") {
-                Section("Dark") {
-                    ForEach([AppTheme.darkHard, .darkMedium, .darkSoft]) { theme in
-                        Button {
-                            selectedTheme = theme
-                        } label: {
-                            if theme == selectedTheme {
-                                Label(theme.displayName, systemImage: "checkmark")
-                            } else {
-                                Text(theme.displayName)
-                            }
-                        }
-                    }
-                }
-                Section("Light") {
-                    ForEach([AppTheme.lightHard, .lightMedium, .lightSoft]) { theme in
-                        Button {
-                            selectedTheme = theme
-                        } label: {
-                            if theme == selectedTheme {
-                                Label(theme.displayName, systemImage: "checkmark")
-                            } else {
-                                Text(theme.displayName)
+                ForEach(ThemeFamily.allCases) { family in
+                    Section(family.displayName) {
+                        ForEach(family.darkVariants + family.lightVariants) { theme in
+                            Button {
+                                selectedTheme = theme
+                            } label: {
+                                if theme == selectedTheme {
+                                    Label(theme.variantName, systemImage: "checkmark")
+                                } else {
+                                    Text(theme.variantName)
+                                }
                             }
                         }
                     }

@@ -1,28 +1,27 @@
 import SwiftUI
 
-private struct ContrastSet {
+private struct EverforestContrast {
     let background: String
     let bg1: String
     let selectionBg: String
 }
 
 extension AppTheme {
-    var colors: ThemeColors {
-        if isDark {
-            darkColors
-        } else {
-            lightColors
-        }
+    var everforestColors: ThemeColors {
+        isDark ? everforestDark : everforestLight
     }
 
-    private var darkColors: ThemeColors {
-        let contrast: ContrastSet = switch self {
-        case .darkHard: ContrastSet(background: "#272E33", bg1: "#2E383C", selectionBg: "#4C3743")
-        case .darkMedium: ContrastSet(background: "#2D353B", bg1: "#343F44", selectionBg: "#543A48")
-        case .darkSoft: ContrastSet(background: "#333C43", bg1: "#3A464C", selectionBg: "#5C3F4F")
-        default: fatalError("Not a dark theme")
+    private var everforestDark: ThemeColors {
+        let contrast: EverforestContrast = switch self {
+        case .everforestDarkHard:
+            EverforestContrast(background: "#272E33", bg1: "#2E383C", selectionBg: "#4C3743")
+        case .everforestDarkMedium:
+            EverforestContrast(background: "#2D353B", bg1: "#343F44", selectionBg: "#543A48")
+        case .everforestDarkSoft:
+            EverforestContrast(background: "#333C43", bg1: "#3A464C", selectionBg: "#5C3F4F")
+        default: fatalError("Not an Everforest dark theme")
         }
-        let pal = darkPalette(bg1: contrast.bg1)
+        let pal = everforestDarkPalette(bg1: contrast.bg1)
         return ThemeColors(
             isDark: true,
             accentColor: Color(hex: 0xA7C080),
@@ -39,14 +38,17 @@ extension AppTheme {
         )
     }
 
-    private var lightColors: ThemeColors {
-        let contrast: ContrastSet = switch self {
-        case .lightHard: ContrastSet(background: "#FFFBEF", bg1: "#F8F5E4", selectionBg: "#F0F2D4")
-        case .lightMedium: ContrastSet(background: "#FDF6E3", bg1: "#F4F0D9", selectionBg: "#EAEDC8")
-        case .lightSoft: ContrastSet(background: "#F3EAD3", bg1: "#EAE4CA", selectionBg: "#E1E4BD")
-        default: fatalError("Not a light theme")
+    private var everforestLight: ThemeColors {
+        let contrast: EverforestContrast = switch self {
+        case .everforestLightHard:
+            EverforestContrast(background: "#FFFBEF", bg1: "#F8F5E4", selectionBg: "#F0F2D4")
+        case .everforestLightMedium:
+            EverforestContrast(background: "#FDF6E3", bg1: "#F4F0D9", selectionBg: "#EAEDC8")
+        case .everforestLightSoft:
+            EverforestContrast(background: "#F3EAD3", bg1: "#EAE4CA", selectionBg: "#E1E4BD")
+        default: fatalError("Not an Everforest light theme")
         }
-        let pal = lightPalette(bg1: contrast.bg1)
+        let pal = everforestLightPalette(bg1: contrast.bg1)
         return ThemeColors(
             isDark: false,
             accentColor: Color(hex: 0x8DA101),
@@ -64,7 +66,7 @@ extension AppTheme {
     }
 }
 
-private func darkPalette(bg1: String) -> [String] {
+private func everforestDarkPalette(bg1: String) -> [String] {
     [
         bg1, // 0  black
         "#E67E80", // 1  red
@@ -85,7 +87,7 @@ private func darkPalette(bg1: String) -> [String] {
     ]
 }
 
-private func lightPalette(bg1: String) -> [String] {
+private func everforestLightPalette(bg1: String) -> [String] {
     [
         bg1, // 0  black
         "#F85552", // 1  red
