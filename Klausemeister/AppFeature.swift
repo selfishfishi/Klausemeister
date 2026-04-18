@@ -226,8 +226,9 @@ struct AppFeature {
             case let .themeChanged(theme):
                 return .run { _ in
                     await MainActor.run {
-                        ghosttyApp.rebuild(theme)
-                        surfaceManager.recreateAllSurfaces()
+                        surfaceManager.rebuildApp {
+                            ghosttyApp.rebuild(theme)
+                        }
                     }
                 }
 
