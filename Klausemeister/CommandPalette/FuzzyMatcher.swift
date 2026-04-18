@@ -12,12 +12,19 @@ nonisolated enum FuzzyMatcher {
     }
 
     static func match(query: String, against target: String) -> Match? {
-        let queryLower = query.lowercased()
-        let targetLower = target.lowercased()
+        match(loweredQuery: query.lowercased(), against: target)
+    }
+
+    /// Variant that accepts an already-lowercased query — lets callers
+    /// that fuzzy-match one query against many targets (e.g.
+    /// `MeisterFeature.visibleColumns`'s per-issue scan) pay the
+    /// `query.lowercased()` cost once instead of twice per target.
+    static func match(loweredQuery queryLower: String, against target: String) -> Match? {
         guard !queryLower.isEmpty else {
             return Match(score: 0, matchedOffsets: [])
         }
 
+        let targetLower = target.lowercased()
         var queryIndex = queryLower.startIndex
         var matchedOffsets: [Int] = []
         var score = 1000
@@ -63,7 +70,7 @@ nonisolated enum FuzzyMatcher {
         guard queryIndex == queryLower.endIndex else { return nil }
 
         // Penalty for longer targets (favor shorter, more precise matches)
-        score -= (target.count - query.count) / 10
+        score -= (target.count - queryLower.count) / 10
 
         return Match(score: score, matchedOffsets: matchedOffsets)
     }

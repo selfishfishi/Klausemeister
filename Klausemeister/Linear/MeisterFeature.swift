@@ -703,6 +703,11 @@ extension MeisterFeature.State {
             return stageFiltered
         }
 
+        // Pre-lower the query once so each per-issue fuzzy-match pass
+        // doesn't re-`lowercased()` it. With ~200 issues × 2 fields per
+        // issue that's ~400 String allocations avoided per keystroke.
+        let loweredQuery = trimmed.lowercased()
+
         return IdentifiedArrayOf(uniqueElements: stageFiltered.map { column in
             var col = column
             col.issues = column.issues.filter { issue in
@@ -712,8 +717,8 @@ extension MeisterFeature.State {
                     if hiddenProjectNames.contains(name) { return false }
                 }
                 if needsSearch,
-                   FuzzyMatcher.match(query: trimmed, against: issue.identifier) == nil,
-                   FuzzyMatcher.match(query: trimmed, against: issue.title) == nil
+                   FuzzyMatcher.match(loweredQuery: loweredQuery, against: issue.identifier) == nil,
+                   FuzzyMatcher.match(loweredQuery: loweredQuery, against: issue.title) == nil
                 { return false }
                 return true
             }
