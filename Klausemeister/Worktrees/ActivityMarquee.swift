@@ -2,9 +2,10 @@
 import SwiftUI
 
 /// Scrolling news-headline ticker shown beneath the processing box.
-/// Text slides in from the left and travels right, then loops. When the
-/// `text` value changes the scroll resets so the new message is
-/// immediately visible before resuming its slide.
+/// Text slides in from the right edge, pauses at the left for `holdDuration`
+/// so it's readable, then continues sliding out to the left before looping.
+/// Classical news-ticker direction — the first character appears first,
+/// matching left-to-right reading.
 struct ActivityMarquee: View {
     let text: String
     var tint: Color = .secondary
@@ -14,27 +15,51 @@ struct ActivityMarquee: View {
     /// How long the text sits fully visible before starting to scroll.
     private let holdDuration: Double = 1.5
 
+    /// Width measured by a background `GeometryReader`. Using a background
+    /// reader instead of a root `GeometryReader` keeps this view's layout
+    /// conventional (intrinsic-height, flex-width) — a root reader reports
+    /// 0 width when the parent has multiple flex-width children with no
+    /// intrinsic-width siblings to anchor the stack, which is the exact
+    /// layout inside `SwimlaneBarRow`.
+    @State private var containerWidth: CGFloat = 0
+
     var body: some View {
-        GeometryReader { proxy in
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
-                let containerWidth = proxy.size.width
-                let elapsed = timeline.date.timeIntervalSinceReferenceDate
-                marqueeContent(elapsed: elapsed, containerWidth: containerWidth)
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+            let elapsed = timeline.date.timeIntervalSinceReferenceDate
+            marqueeContent(elapsed: elapsed, containerWidth: Double(containerWidth))
+        }
+        .frame(maxWidth: .infinity, minHeight: 16, maxHeight: 16, alignment: .leading)
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { containerWidth = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, newWidth in
+                        containerWidth = newWidth
+                    }
             }
         }
-        .frame(height: 16)
         .clipped()
     }
 
     private func marqueeContent(elapsed: Double, containerWidth: Double) -> some View {
         let textWidth = estimateTextWidth(text)
-        let totalTravel = containerWidth + textWidth
-        let scrollDuration = totalTravel / speed
-        let cycleDuration = holdDuration + scrollDuration
+        let slideInDuration = max(0.1, containerWidth / speed)
+        let slideOutDuration = max(0.1, textWidth / speed)
+        let cycleDuration = slideInDuration + holdDuration + slideOutDuration
         let cycleElapsed = elapsed.truncatingRemainder(dividingBy: cycleDuration)
-        let offsetX = cycleElapsed < holdDuration
-            ? 0.0
-            : ((cycleElapsed - holdDuration) / scrollDuration) * totalTravel - textWidth
+        let offsetX: Double
+        if cycleElapsed < slideInDuration {
+            // Phase 1 — slide in from the right edge to the left.
+            let progress = cycleElapsed / slideInDuration
+            offsetX = containerWidth * (1 - progress)
+        } else if cycleElapsed < slideInDuration + holdDuration {
+            // Phase 2 — hold at the left edge so the message can be read.
+            offsetX = 0
+        } else {
+            // Phase 3 — continue scrolling left, exiting off the left edge.
+            let progress = (cycleElapsed - slideInDuration - holdDuration) / slideOutDuration
+            offsetX = -textWidth * progress
+        }
 
         return Text(text)
             .font(.caption2.weight(.medium))
