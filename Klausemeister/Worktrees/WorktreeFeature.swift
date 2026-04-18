@@ -375,7 +375,7 @@ struct WorktreeFeature {
     private func loadExistingBranchesEffect(
         repoId: String, repoPath: String
     ) -> Effect<Action> {
-        .run { [gitClient] send in
+        .run(priority: .utility) { [gitClient] send in
             do {
                 let branches = try await gitClient.listBranches(repoPath)
                 await send(.existingBranchesLoaded(repoId: repoId, branches: branches))
@@ -416,22 +416,30 @@ struct WorktreeFeature {
         _ input: WorktreeStatsInput
     ) -> Effect<Action> {
         guard !input.path.isEmpty else { return .none }
-        return .run { [gitClient] send in
+        return .run(priority: .utility) { [gitClient] send in
             do {
-                let diff = try await gitClient.diffStats(input.path)
-                var ahead = 0
-                if let repoPath = input.repoPath {
+                // `diffStats` depends only on input.path; `resolveDefaultBranch`
+                // depends only on repoPath — run them concurrently. `commitsAhead`
+                // chains after the default branch resolves.
+                async let diffTask = gitClient.diffStats(input.path)
+                async let aheadTask: Int? = {
+                    guard let repoPath = input.repoPath else { return nil }
                     do {
-                        let defaultBranch = try await gitClient.resolveDefaultBranch(repoPath)
-                        ahead = try await gitClient.commitsAhead(input.path, defaultBranch.name)
+                        let defaultBranch = try await gitClient
+                            .resolveDefaultBranch(repoPath)
+                        return try await gitClient
+                            .commitsAhead(input.path, defaultBranch.name)
                     } catch is CancellationError {
                         throw CancellationError()
                     } catch {
                         Self.log.warning(
                             "commitsAhead failed for \(input.id): \(error.localizedDescription)"
                         )
+                        return nil
                     }
-                }
+                }()
+                let diff = try await diffTask
+                let ahead = try await (aheadTask) ?? 0
                 await send(.gitStatsLoadedForWorktree(
                     worktreeId: input.id,
                     stats: GitStats(from: diff, commitsAhead: ahead)
@@ -458,23 +466,37 @@ struct WorktreeFeature {
     private func loadPRInfoEffect(
         worktrees: [WorktreeStatsInput]
     ) -> Effect<Action> {
-        .run { [ghClient] send in
-            var map: [String: GitStats.PRSummary] = [:]
-            for input in worktrees {
-                guard let repoPath = input.repoPath,
-                      let branch = input.branch
-                else { continue }
-                do {
-                    if let info = try await ghClient.prForBranch(repoPath, branch) {
-                        map[input.id] = GitStats.PRSummary(
-                            number: info.number, state: info.state
-                        )
+        .run(priority: .utility) { [ghClient] send in
+            // Fan out PR lookups across worktrees so one slow `gh` call doesn't
+            // block the others — elapsed time collapses from N×RTT to ~max(RTT).
+            let map = await withTaskGroup(
+                of: (String, GitStats.PRSummary?).self,
+                returning: [String: GitStats.PRSummary].self
+            ) { group in
+                for input in worktrees {
+                    guard let repoPath = input.repoPath,
+                          let branch = input.branch
+                    else { continue }
+                    group.addTask { [ghClient] in
+                        do {
+                            if let info = try await ghClient.prForBranch(repoPath, branch) {
+                                return (input.id, GitStats.PRSummary(
+                                    number: info.number, state: info.state
+                                ))
+                            }
+                        } catch {
+                            Self.log.warning(
+                                "PR lookup failed for \(branch) in \(repoPath): \(error.localizedDescription)"
+                            )
+                        }
+                        return (input.id, nil)
                     }
-                } catch {
-                    Self.log.warning(
-                        "PR lookup failed for \(branch) in \(repoPath): \(error.localizedDescription)"
-                    )
                 }
+                var result: [String: GitStats.PRSummary] = [:]
+                for await (id, summary) in group {
+                    if let summary { result[id] = summary }
+                }
+                return result
             }
             await send(.prInfoLoaded(map))
         }
@@ -785,12 +807,24 @@ struct WorktreeFeature {
                 let worktreePaths = state.worktrees.map { (id: $0.id, path: $0.gitWorktreePath) }
                 let worktreeInfo = Self.worktreeStatsInputs(from: state)
                 return .merge(
-                    .run { send in
-                        var branches: [String: String] = [:]
-                        for worktree in worktreePaths where !worktree.path.isEmpty {
-                            if let branch = try? await gitClient.currentBranch(worktree.path) {
-                                branches[worktree.id] = branch
+                    .run(priority: .utility) { [gitClient] send in
+                        // Fan out per-worktree branch lookups into a TaskGroup so
+                        // N worktrees cost ~max(one git call), not the sum.
+                        let branches = await withTaskGroup(
+                            of: (String, String?).self,
+                            returning: [String: String].self
+                        ) { group in
+                            for worktree in worktreePaths where !worktree.path.isEmpty {
+                                group.addTask {
+                                    let branch = try? await gitClient.currentBranch(worktree.path)
+                                    return (worktree.id, branch)
+                                }
                             }
+                            var map: [String: String] = [:]
+                            for await (id, branch) in group {
+                                if let branch { map[id] = branch }
+                            }
+                            return map
                         }
                         await send(.branchesLoaded(branches))
                     },
@@ -798,26 +832,28 @@ struct WorktreeFeature {
                     loadAllGitStatsEffect(from: state),
                     // Initial load of PR info
                     loadPRInfoEffect(worktrees: worktreeInfo),
-                    // FS watchers: one per worktree, debounced 2s, fires per-worktree refresh
+                    // FS watchers: one per worktree, debounced 2s, fires per-worktree
+                    // refresh. `cancelInFlight: true` prevents watcher accumulation
+                    // when `onAppear` re-fires (e.g. swimlane view reappears).
                     .merge(worktreePaths.filter { !$0.path.isEmpty }.map { entry in
-                        Effect<Action>.run { [gitClient] send in
+                        Effect<Action>.run(priority: .utility) { [gitClient] send in
                             for await _ in gitClient.watchForChanges(entry.path) {
                                 await send(.refreshGitStatsForWorktree(worktreeId: entry.id))
                             }
                         }
                         .cancellable(
                             id: CancelID.gitFSWatcher(entry.id),
-                            cancelInFlight: false
+                            cancelInFlight: true
                         )
                     }),
                     // 60s polling for PR info (remote state, no FS signal)
-                    .run { [clock] send in
+                    .run(priority: .utility) { [clock] send in
                         for await _ in clock.timer(interval: .seconds(60)) {
                             await send(.refreshPRInfo)
                         }
                     }
                     .cancellable(id: CancelID.prInfoPoll, cancelInFlight: true),
-                    .run { [claudeStatusClient] send in
+                    .run(priority: .utility) { [claudeStatusClient] send in
                         for await update in claudeStatusClient.stateChanges() {
                             await send(.claudeStatusChanged(
                                 worktreeId: update.worktreeId,
@@ -828,7 +864,7 @@ struct WorktreeFeature {
                     .cancellable(id: CancelID.claudeStatusWatcher, cancelInFlight: true),
                     .send(.syncAllRepos),
                     .send(.reconcileTmuxSessions),
-                    .run { [mcpServerClient] send in
+                    .run(priority: .utility) { [mcpServerClient] send in
                         let results = await mcpServerClient.discoverActiveShims()
                         if !results.isEmpty {
                             await send(.shimsDiscovered(results))
@@ -1592,7 +1628,7 @@ struct WorktreeFeature {
             case let .syncRepo(repoId):
                 guard let repo = state.repositories[id: repoId] else { return .none }
                 let repoPath = repo.path
-                return .run { send in
+                return .run(priority: .utility) { send in
                     let entries = try await gitClient.listWorktrees(repoPath)
                     let filtered = entries.filter { !$0.isMain && !$0.isPrunable }
                     let result = try await worktreeClient.syncWorktreesForRepo(repoId, filtered)
@@ -1638,17 +1674,47 @@ struct WorktreeFeature {
                     return cancelEffects.isEmpty ? .none : .merge(cancelEffects)
                 }
                 var effects: [Effect<Action>] = cancelEffects
-                effects.append(.run { send in
-                    var branches: [String: String] = [:]
-                    for snapshot in inserted {
-                        guard !snapshot.gitWorktreePath.isEmpty else { continue }
-                        if let branch = try? await gitClient.currentBranch(snapshot.gitWorktreePath) {
-                            branches[snapshot.id] = branch
-                            if let identifier = WorktreeConfig.extractIssueIdentifier(fromBranchName: branch),
-                               let issue = try? await databaseClient.fetchImportedIssueByIdentifier(identifier)
-                            {
-                                await send(.issueAssignedToWorktree(worktreeId: snapshot.id, issue: issue))
+                effects.append(.run(priority: .utility) { [gitClient, databaseClient] send in
+                    // Resolve branches for newly-discovered worktrees in parallel;
+                    // auto-link issues off the back of each lookup.
+                    struct Resolved: Sendable {
+                        let id: String
+                        let branch: String
+                        let issue: LinearIssue?
+                    }
+                    let resolved = await withTaskGroup(
+                        of: Resolved?.self,
+                        returning: [Resolved].self
+                    ) { group in
+                        for snapshot in inserted {
+                            guard !snapshot.gitWorktreePath.isEmpty else { continue }
+                            group.addTask {
+                                guard let branch = try? await gitClient.currentBranch(
+                                    snapshot.gitWorktreePath
+                                ) else {
+                                    return nil
+                                }
+                                var issue: LinearIssue?
+                                if let identifier = WorktreeConfig.extractIssueIdentifier(
+                                    fromBranchName: branch
+                                ) {
+                                    issue = try? await databaseClient
+                                        .fetchImportedIssueByIdentifier(identifier)
+                                }
+                                return Resolved(id: snapshot.id, branch: branch, issue: issue)
                             }
+                        }
+                        var acc: [Resolved] = []
+                        for await item in group {
+                            if let item { acc.append(item) }
+                        }
+                        return acc
+                    }
+                    var branches: [String: String] = [:]
+                    for item in resolved {
+                        branches[item.id] = item.branch
+                        if let issue = item.issue {
+                            await send(.issueAssignedToWorktree(worktreeId: item.id, issue: issue))
                         }
                     }
                     if !branches.isEmpty {
@@ -1672,7 +1738,7 @@ struct WorktreeFeature {
             case .reconcileTmuxSessions:
                 let worktreeNames = state.worktrees.map { (id: $0.id, name: $0.name, repoName: $0.repoName) }
                 guard !worktreeNames.isEmpty else { return .none }
-                return .run { send in
+                return .run(priority: .utility) { send in
                     let existing: Set<String>
                     do {
                         existing = try await Set(tmuxClient.listSessions())

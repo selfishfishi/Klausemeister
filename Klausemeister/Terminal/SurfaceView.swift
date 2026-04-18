@@ -14,6 +14,7 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
     private var keyTextAccumulator: [String]?
     private var currentCursor: NSCursor = .iBeam
     private var isCursorVisible = true
+    private var windowWaiters: [UUID: CheckedContinuation<NSWindow?, Never>] = [:]
 
     let metalLayer: CAMetalLayer
 
@@ -114,9 +115,36 @@ final class SurfaceView: NSView, NSTextInputClient, CALayerDelegate {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if let window {
+            let waiters = windowWaiters
+            windowWaiters.removeAll()
+            for (_, cont) in waiters {
+                cont.resume(returning: window)
+            }
+        }
         if window == nil, !isCursorVisible {
             NSCursor.unhide()
             isCursorVisible = true
+        }
+    }
+
+    /// Resolve once this view is attached to a window. Returns immediately if
+    /// already attached, otherwise suspends until `viewDidMoveToWindow` fires.
+    /// Cancellation resumes with `nil` so callers can race a timeout without
+    /// leaking a continuation.
+    func awaitWindow() async -> NSWindow? {
+        if let window { return window }
+        let id = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { cont in
+                windowWaiters[id] = cont
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                if let cont = self?.windowWaiters.removeValue(forKey: id) {
+                    cont.resume(returning: nil)
+                }
+            }
         }
     }
 
