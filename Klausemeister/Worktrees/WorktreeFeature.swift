@@ -216,6 +216,11 @@ struct WorktreeFeature {
 
         /// Which repo sections are collapsed in the swimlane view.
         var collapsedRepoIds: Set<String> = []
+        /// Saved schedules grouped by repo. Populated on `worktreesLoaded` and
+        /// refreshed on any `MCPServerEvent.schedule*` signal. Consumed by
+        /// `RepoScheduleStripView` in the sidebar (KLA-197); the gantt overlay
+        /// (KLA-198) will read the same map for its presentation state.
+        var schedulesByRepoId: [String: [Schedule]] = [:]
         /// Presented create-worktree sheet state, or nil when the sheet is hidden.
         var createSheet: CreateWorktreeSheetState?
         @Presents var alert: AlertState<Action.Alert>?
@@ -328,6 +333,16 @@ struct WorktreeFeature {
         case mcpItemAddedToInbox(worktreeId: String, issueLinearId: String)
         case mcpItemAddedToInboxResolved(worktreeId: String, issue: LinearIssue)
 
+        // Saved schedules (KLA-197)
+        //
+        // Schedule events from the MCP server (`scheduleSaved/Deleted/Run/
+        // ItemStatusChanged`) all funnel into the same refresh effect — none
+        // of those payloads carry a repoId, and the list is small enough that
+        // refetching every known repo is cheaper than tracking reverse maps.
+        case refreshSchedulesRequested
+        case schedulesLoaded(repoId: String, schedules: [Schedule])
+        case scheduleTapped(scheduleId: String)
+
         case queueRowTapped(issueId: String)
 
         case alert(PresentationAction<Alert>)
@@ -351,6 +366,10 @@ struct WorktreeFeature {
             /// Forwarded to MeisterFeature — Linear-only status change from
             /// the swimlane "Move to…" submenu.
             case moveIssueStatusRequested(issueId: String, target: MeisterState)
+            /// Sidebar pill tapped — consumed by `AppFeature` to open the
+            /// schedule gantt overlay. Until KLA-198 lands the overlay, the
+            /// parent absorbs this as a no-op.
+            case scheduleTapped(scheduleId: String)
         }
     }
 
@@ -898,6 +917,7 @@ struct WorktreeFeature {
                     .cancellable(id: CancelID.claudeStatusWatcher, cancelInFlight: true),
                     .send(.syncAllRepos),
                     .send(.reconcileTmuxSessions),
+                    .send(.refreshSchedulesRequested),
                     .run(priority: .utility) { [mcpServerClient] send in
                         let results = await mcpServerClient.discoverActiveShims()
                         if !results.isEmpty {
@@ -1632,6 +1652,38 @@ struct WorktreeFeature {
 
             case let .removeRepoAndKillTmuxConfirmed(repoId):
                 return removeRepoEffect(state: &state, repoId: repoId, killTmux: true)
+
+            // MARK: - Saved schedules (KLA-197)
+
+            case .refreshSchedulesRequested:
+                let repoIds = state.repositories.map(\.id)
+                guard !repoIds.isEmpty else { return .none }
+                return .run(priority: .utility) { [worktreeClient] send in
+                    for repoId in repoIds {
+                        do {
+                            let records = try await worktreeClient.fetchSchedules(repoId)
+                            var schedules: [Schedule] = []
+                            schedules.reserveCapacity(records.count)
+                            for record in records {
+                                let itemRecords = try await worktreeClient.fetchScheduleItems(record.scheduleId)
+                                let items = itemRecords.map(ScheduleItem.init(record:))
+                                schedules.append(Schedule(record: record, items: items))
+                            }
+                            await send(.schedulesLoaded(repoId: repoId, schedules: schedules))
+                        } catch {
+                            Self.log.warning(
+                                "fetchSchedules failed for \(repoId): \(error.localizedDescription)"
+                            )
+                        }
+                    }
+                }
+
+            case let .schedulesLoaded(repoId, schedules):
+                state.schedulesByRepoId[repoId] = schedules
+                return .none
+
+            case let .scheduleTapped(scheduleId):
+                return .send(.delegate(.scheduleTapped(scheduleId: scheduleId)))
 
             // MARK: - Discovery / sync handlers
 

@@ -185,6 +185,12 @@ struct AppFeature {
             case let .worktree(.delegate(.moveIssueStatusRequested(issueId, target))):
                 return .send(.meister(.moveToStatusTapped(issueId: issueId, target: target)))
 
+            case .worktree(.delegate(.scheduleTapped)):
+                // KLA-198 will wire this to open the gantt overlay. The
+                // delegate is still emitted so the MCP/debug path observes
+                // the event; this branch just absorbs it today.
+                return .none
+
             case .worktree:
                 return .none
 
@@ -425,12 +431,19 @@ struct AppFeature {
                         ))),
                         debugEffect
                     )
-                case .scheduleSaved, .scheduleDeleted, .scheduleItemStatusChanged, .scheduleRun:
-                    // KLA-195 lays down the events; the consumers (sidebar
-                    // pills KLA-197, live-progress KLA-199, gantt overlay
-                    // KLA-198) will wire them into `WorktreeFeature` in
-                    // follow-up tickets. For now, the event still lands in
-                    // the debug panel so we can observe it end-to-end.
+                case .scheduleSaved, .scheduleDeleted, .scheduleRun:
+                    // None of these payloads carry a repoId, and the schedule
+                    // list is small — refetch all repos rather than tracking
+                    // reverse maps. Live progress (scheduleItemStatusChanged)
+                    // is KLA-199's job; for now it's ignored by the UI.
+                    return .merge(
+                        .send(.worktree(.refreshSchedulesRequested)),
+                        debugEffect
+                    )
+                case .scheduleItemStatusChanged:
+                    // Live item-status updates land in KLA-199. For now they
+                    // still flow through the debug panel so we can observe
+                    // end-to-end plumbing.
                     return debugEffect
                 }
             }
