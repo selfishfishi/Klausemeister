@@ -432,19 +432,18 @@ struct AppFeature {
                         debugEffect
                     )
                 case .scheduleSaved, .scheduleDeleted, .scheduleRun:
-                    // None of these payloads carry a repoId, and the schedule
-                    // list is small — refetch all repos rather than tracking
-                    // reverse maps. Live progress (scheduleItemStatusChanged)
-                    // is KLA-199's job; for now it's ignored by the UI.
+                    // Refetch all repos — none of these payloads carry repoId.
                     return .merge(
                         .send(.worktree(.refreshSchedulesRequested)),
                         debugEffect
                     )
-                case .scheduleItemStatusChanged:
-                    // Live item-status updates land in KLA-199. For now they
-                    // still flow through the debug panel so we can observe
-                    // end-to-end plumbing.
-                    return debugEffect
+                case let .scheduleItemStatusChanged(scheduleItemId, status):
+                    return .merge(
+                        .send(.worktree(.mcpScheduleItemStatusChanged(
+                            scheduleItemId: scheduleItemId, status: status
+                        ))),
+                        debugEffect
+                    )
                 }
             }
         }

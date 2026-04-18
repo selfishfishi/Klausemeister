@@ -221,6 +221,11 @@ struct WorktreeFeature {
         /// `RepoScheduleStripView` in the sidebar (KLA-197); the gantt overlay
         /// (KLA-198) will read the same map for its presentation state.
         var schedulesByRepoId: [String: [Schedule]] = [:]
+        /// `Schedule.ID`s with an in-flight `runScheduleTapped` effect.
+        var scheduleRunInFlight: Set<String> = []
+        /// Most-recent per-item errors from `runScheduleTapped`, keyed by
+        /// `Schedule.ID`. Consumed by the gantt overlay for toast display.
+        var scheduleRunErrors: [String: [String]] = [:]
         /// Presented create-worktree sheet state, or nil when the sheet is hidden.
         var createSheet: CreateWorktreeSheetState?
         @Presents var alert: AlertState<Action.Alert>?
@@ -342,6 +347,15 @@ struct WorktreeFeature {
         case refreshSchedulesRequested
         case schedulesLoaded(repoId: String, schedules: [Schedule])
         case scheduleTapped(scheduleId: String)
+        /// A `scheduleItemStatusChanged` MCP event arrived — update the
+        /// matching item in `schedulesByRepoId` without a DB re-fetch.
+        case mcpScheduleItemStatusChanged(scheduleItemId: String, status: String)
+        /// The user tapped "Run Schedule" in the gantt overlay (KLA-198).
+        /// Enqueues every planned item into its target worktree inbox.
+        case runScheduleTapped(scheduleId: String)
+        /// Fired when the `runScheduleTapped` effect finishes. `errors` is
+        /// empty on a full clean run; partial failures are listed per-item.
+        case runScheduleCompleted(scheduleId: String, errors: [String])
 
         case queueRowTapped(issueId: String)
 
@@ -383,6 +397,7 @@ struct WorktreeFeature {
         case prInfoPoll
         case claudeStatusWatcher
         case claudeActivityExpiry(String)
+        case runSchedule(String)
     }
 
     /// How long an activity line lives before the reducer wipes it so
@@ -1970,7 +1985,17 @@ struct WorktreeFeature {
                     let issue = state.worktrees[wtIndex].inbox.remove(at: inboxIndex)
                     state.worktrees[wtIndex].processing = issue
                 }
-                return .none
+                let updatedToProcessing = state.updateScheduleStatuses(
+                    matchingIssueLinearId: issueLinearId, to: .inProgress
+                )
+                guard !updatedToProcessing.isEmpty else { return .none }
+                return .run { [worktreeClient] _ in
+                    for id in updatedToProcessing {
+                        try? await worktreeClient.updateScheduleItemStatus(
+                            id, ScheduleItemStatus.inProgress.rawValue
+                        )
+                    }
+                }
 
             case let .mcpItemMovedToOutbox(worktreeId, issueLinearId):
                 guard let wtIndex = state.worktrees.index(id: worktreeId) else {
@@ -1985,7 +2010,17 @@ struct WorktreeFeature {
                     state.worktrees[wtIndex].processing = nil
                     state.worktrees[wtIndex].outbox.append(proc)
                 }
-                return .none
+                let updatedToDone = state.updateScheduleStatuses(
+                    matchingIssueLinearId: issueLinearId, to: .done
+                )
+                guard !updatedToDone.isEmpty else { return .none }
+                return .run { [worktreeClient] _ in
+                    for id in updatedToDone {
+                        try? await worktreeClient.updateScheduleItemStatus(
+                            id, ScheduleItemStatus.done.rawValue
+                        )
+                    }
+                }
 
             case let .mcpItemAddedToInbox(worktreeId, issueLinearId):
                 guard state.worktrees.index(id: worktreeId) != nil else {
@@ -1999,18 +2034,33 @@ struct WorktreeFeature {
                     || state.worktrees[id: worktreeId]?.processing?.id == issueLinearId
                     || state.worktrees[id: worktreeId]?.outbox
                     .contains { $0.id == issueLinearId } == true
+                let updatedToQueued = state.updateScheduleStatuses(
+                    matchingIssueLinearId: issueLinearId, to: .queued
+                )
+                let scheduleWriteEffect: Effect<Action> = updatedToQueued.isEmpty
+                    ? .none
+                    : .run { [worktreeClient] _ in
+                        for id in updatedToQueued {
+                            try? await worktreeClient.updateScheduleItemStatus(
+                                id, ScheduleItemStatus.queued.rawValue
+                            )
+                        }
+                    }
                 if !alreadyPresent {
                     // DB write already happened in the enqueueItem handler —
                     // only fetch the issue record to update in-memory state.
-                    return .run { [databaseClient] send in
-                        if let issue = try await databaseClient.fetchImportedIssue(issueLinearId) {
-                            await send(.mcpItemAddedToInboxResolved(
-                                worktreeId: worktreeId, issue: issue
-                            ))
-                        }
-                    }
+                    return .merge(
+                        .run { [databaseClient] send in
+                            if let issue = try await databaseClient.fetchImportedIssue(issueLinearId) {
+                                await send(.mcpItemAddedToInboxResolved(
+                                    worktreeId: worktreeId, issue: issue
+                                ))
+                            }
+                        },
+                        scheduleWriteEffect
+                    )
                 }
-                return .none
+                return scheduleWriteEffect
 
             case let .mcpItemAddedToInboxResolved(worktreeId, issue):
                 if let wtIndex = state.worktrees.index(id: worktreeId) {
@@ -2019,6 +2069,79 @@ struct WorktreeFeature {
                     }
                 }
                 return .none
+
+            // MARK: - Schedule live-progress (KLA-199)
+
+            case let .mcpScheduleItemStatusChanged(scheduleItemId, statusRaw):
+                // Direct status update from another session via MCP event.
+                // Look up the item by ID and flip its status without refetching
+                // the full schedule from the DB.
+                guard let newStatus = ScheduleItemStatus(rawValue: statusRaw) else { return .none }
+                outer: for repoId in state.schedulesByRepoId.keys {
+                    guard let schedules = state.schedulesByRepoId[repoId] else { continue }
+                    for scheduleIndex in schedules.indices {
+                        if let itemIndex = state.schedulesByRepoId[repoId]![scheduleIndex].items
+                            .firstIndex(where: { $0.id == scheduleItemId })
+                        {
+                            state.schedulesByRepoId[repoId]![scheduleIndex].items[itemIndex].status = newStatus
+                            break outer
+                        }
+                    }
+                }
+                return .none
+
+            case let .runScheduleTapped(scheduleId):
+                // KLA-198: wire ScheduleGanttView.onRunTapped → this action
+                // once the gantt overlay view exists.
+                state.scheduleRunInFlight.insert(scheduleId)
+                state.scheduleRunErrors.removeValue(forKey: scheduleId)
+                return .run { [worktreeClient] send in
+                    guard try await worktreeClient.fetchSchedule(scheduleId) != nil else {
+                        await send(.runScheduleCompleted(
+                            scheduleId: scheduleId, errors: ["Schedule not found"]
+                        ))
+                        return
+                    }
+                    let itemRecords = await (try? worktreeClient.fetchScheduleItems(scheduleId)) ?? []
+                    let validWorktreeIds = await Set(
+                        ((try? worktreeClient.fetchWorktrees()) ?? []).map(\.id)
+                    )
+                    var errors: [String] = []
+                    let queuedStatus = ScheduleItemStatus.queued.rawValue
+
+                    for item in itemRecords {
+                        guard validWorktreeIds.contains(item.worktreeId) else {
+                            errors.append("\(item.issueIdentifier): worktree removed")
+                            continue
+                        }
+                        do {
+                            try await worktreeClient.assignIssueToWorktree(
+                                item.issueLinearId, item.worktreeId
+                            )
+                            try await worktreeClient.updateScheduleItemStatus(
+                                item.scheduleItemId, queuedStatus
+                            )
+                            await send(.mcpItemAddedToInbox(
+                                worktreeId: item.worktreeId,
+                                issueLinearId: item.issueLinearId
+                            ))
+                        } catch {
+                            errors.append("\(item.issueIdentifier): \(error.localizedDescription)")
+                        }
+                    }
+                    let runAt = ISO8601DateFormatter.shared.string(from: Date())
+                    try? await worktreeClient.markScheduleRun(scheduleId, runAt)
+                    await send(.runScheduleCompleted(scheduleId: scheduleId, errors: errors))
+                }
+                .cancellable(id: CancelID.runSchedule(scheduleId))
+
+            case let .runScheduleCompleted(scheduleId, errors):
+                state.scheduleRunInFlight.remove(scheduleId)
+                if !errors.isEmpty {
+                    state.scheduleRunErrors[scheduleId] = errors
+                }
+                // Refresh so `runAt` is visible on the sidebar pill
+                return .send(.refreshSchedulesRequested)
 
             case .delegate:
                 return .none
@@ -2031,6 +2154,29 @@ struct WorktreeFeature {
 // MARK: - State Helpers
 
 extension WorktreeFeature.State {
+    /// Scan every loaded schedule for items whose `issueLinearId` matches and
+    /// update their status to `newStatus`. Returns the `scheduleItemId`s that
+    /// were mutated so callers can fire a fire-and-forget DB write.
+    @discardableResult
+    mutating func updateScheduleStatuses(
+        matchingIssueLinearId issueLinearId: String,
+        to newStatus: ScheduleItemStatus
+    ) -> [String] {
+        var updatedIds: [String] = []
+        for repoId in schedulesByRepoId.keys {
+            guard let schedules = schedulesByRepoId[repoId] else { continue }
+            for scheduleIndex in schedules.indices {
+                for itemIndex in schedulesByRepoId[repoId]![scheduleIndex].items.indices
+                    where schedulesByRepoId[repoId]![scheduleIndex].items[itemIndex].issueLinearId == issueLinearId
+                {
+                    schedulesByRepoId[repoId]![scheduleIndex].items[itemIndex].status = newStatus
+                    updatedIds.append(schedulesByRepoId[repoId]![scheduleIndex].items[itemIndex].id)
+                }
+            }
+        }
+        return updatedIds
+    }
+
     mutating func removeIssueFromWorktree(_ issueId: String, worktreeId: String) {
         guard let wtIndex = worktrees.index(id: worktreeId) else { return }
         worktrees[wtIndex].inbox.removeAll { $0.id == issueId }
