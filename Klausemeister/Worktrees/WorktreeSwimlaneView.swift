@@ -174,6 +174,12 @@ struct WorktreeSwimlaneView: View {
             onRemove: {
                 store.send(.removeWorktreeTapped(worktreeId: worktree.id))
             },
+            onClearInbox: {
+                store.send(.clearInboxTapped(worktreeId: worktree.id))
+            },
+            onClearOutbox: {
+                store.send(.clearOutboxTapped(worktreeId: worktree.id))
+            },
             onMarkComplete: {
                 store.send(.markAsCompleteTapped(worktreeId: worktree.id))
             },

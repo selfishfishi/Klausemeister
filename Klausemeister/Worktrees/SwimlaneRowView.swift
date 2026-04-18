@@ -9,6 +9,8 @@ struct SwimlaneRowView: View {
     let tint: Color
     let onDelete: () -> Void
     let onRemove: () -> Void
+    var onClearInbox: (() -> Void)?
+    var onClearOutbox: (() -> Void)?
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
     var onDropToInbox: ((_ issueId: String) -> Void)?
@@ -125,6 +127,21 @@ struct SwimlaneRowView: View {
 
     private var ellipsisMenu: some View {
         Menu {
+            if let onClearInbox {
+                Button { onClearInbox() } label: {
+                    Label("Clear inbox", systemImage: "tray")
+                }
+                .disabled(worktree.inbox.isEmpty)
+            }
+            if let onClearOutbox {
+                Button { onClearOutbox() } label: {
+                    Label("Clear outbox", systemImage: "tray.and.arrow.up")
+                }
+                .disabled(worktree.outbox.isEmpty)
+            }
+            if onClearInbox != nil || onClearOutbox != nil {
+                Divider()
+            }
             Button(role: .destructive) { onDelete() } label: {
                 Label("Delete worktree", systemImage: "trash")
             }
