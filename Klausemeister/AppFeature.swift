@@ -224,11 +224,16 @@ struct AppFeature {
                 return .none
 
             case let .themeChanged(theme):
+                // libghostty requires: destroy surfaces → free app → new app
+                // → restore surfaces. Sequencing lives here (in the reducer)
+                // so the ordering is visible at the call site, not hidden
+                // behind a callback parameter.
                 return .run { _ in
                     await MainActor.run {
-                        surfaceManager.rebuildApp {
-                            ghosttyApp.rebuild(theme)
-                        }
+                        let snapshots = surfaceManager.captureSurfaces()
+                        surfaceManager.destroyAllSurfaces()
+                        ghosttyApp.rebuild(theme)
+                        surfaceManager.restoreSurfaces(snapshots)
                     }
                 }
 

@@ -3,7 +3,7 @@ import SwiftUI
 
 @main
 struct KlausemeisterApp: App {
-    @AppStorage("selectedTheme") private var selectedTheme: AppTheme = .everforestDarkMedium
+    @AppStorage(AppTheme.storageKey) private var selectedTheme: AppTheme = .everforestDarkMedium
 
     let surfaceStore: SurfaceStore
     let store: StoreOf<AppFeature>
@@ -13,14 +13,13 @@ struct KlausemeisterApp: App {
         self.surfaceStore = surfaceStore
 
         // Rewrite any legacy `selectedTheme` value to the current raw so
-        // `@AppStorage` and future reads match the new theme families.
+        // `@AppStorage` sees a matching value on its first read. Routed
+        // through `UserDefaultsClient.liveValue` so the migration is unit-
+        // testable without reaching into `UserDefaults.standard` directly.
         // The actual initial `ghostty` rebuild is primed by
         // `TerminalContainerView.task` via `.initialThemeSeeded(_:)`, which
         // goes through `@Dependency(\.ghosttyApp)` instead of the singleton.
-        let resolved = AppTheme.resolve(
-            stored: UserDefaults.standard.string(forKey: "selectedTheme")
-        )
-        UserDefaults.standard.set(resolved.rawValue, forKey: "selectedTheme")
+        AppTheme.migrateStoredValue(using: .liveValue)
 
         store = Store(initialState: AppFeature.State()) {
             AppFeature()
