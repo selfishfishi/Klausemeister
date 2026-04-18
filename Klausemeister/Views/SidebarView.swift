@@ -147,8 +147,10 @@ struct SidebarWorktreeRow: View {
                     if let stats = worktree.gitStats, !stats.isEmpty {
                         GitStatsLineView(stats: stats)
                     }
-                    if let statusText = sidebarStatusText {
-                        Text(statusText)
+                    if let narration = sidebarNarrationText {
+                        ActivityMarquee(text: narration)
+                    } else if let toolName = sidebarToolName {
+                        Text(toolName)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -196,13 +198,20 @@ struct SidebarWorktreeRow: View {
         }
     }
 
-    /// Best-available status text for the sidebar. Priority:
+    /// Long-form narration shown as a scrolling marquee. Priority:
     /// 1. `reportActivity` — live narration (60s TTL)
     /// 2. `reportProgress` — step-boundary label (cleared on idle)
-    /// 3. `last_tool` — hook-written tool name
-    private var sidebarStatusText: String? {
+    /// Returns nil when only the bare tool name is available — those use
+    /// the static `sidebarToolName` fallback below.
+    private var sidebarNarrationText: String? {
         if let text = worktree.claudeActivityText, !text.isEmpty { return text }
         if let text = worktree.claudeStatusText, !text.isEmpty { return text }
+        return nil
+    }
+
+    /// Hook-written tool name (e.g. "Bash", "Grep") — short enough to render
+    /// as plain truncated text rather than a marquee.
+    private var sidebarToolName: String? {
         if case let .working(tool) = worktree.claudeStatus,
            let tool, !tool.isEmpty
         {
