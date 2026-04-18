@@ -17,7 +17,17 @@ Check the current state by calling `getProductState`. If `state.kanban` is not `
 
 ### 1. Read the ticket
 
-Fetch the Linear issue details (title, description, labels, project) using the issue identifier from `getProductState`.
+Fetch the Linear issue details (title, description, labels, project, `relations.blockedBy`) using the issue identifier from `getProductState`. Call `get_issue` with `includeRelations: true`.
+
+### 1b. Check blockers
+
+Inspect `relations.blockedBy`:
+
+- If empty, proceed.
+- If any blocker's `statusType` is not `completed` or `canceled`, **refuse to define**. Report:
+  > `<identifier>` is blocked by `<blocker1-id>` (`<blocker1-title>`), `<blocker2-id>` … which are not done yet. Not defining. Defining a blocked ticket risks burning cycles on a spec whose assumptions change once the blocker lands — pause here, finish the blocker first, or skip this ticket.
+
+  Then stop. Do not assess, do not label, do not transition.
 
 ### 2. Assess in one pass
 

@@ -18,13 +18,25 @@ Check by calling `getProductState`:
 
 ## Behavior
 
-### 1. Transition to In Progress
+### 1. Check blockers
+
+Call Linear's `get_issue` with `id: <identifier>` and `includeRelations: true`. Inspect `relations.blockedBy`:
+
+- If empty, proceed.
+- If any blocker's `statusType` is not `completed` or `canceled`, **refuse to execute**. Report:
+  > `<identifier>` is blocked by `<blocker1-id>` (`<blocker1-title>`), `<blocker2-id>` … which are not done yet. Not executing. Either unblock the dependency or skip this ticket (use `completeItem(item.id, item.linearState)` per the meister loop §4).
+
+  Then stop. Do not `reportProgress`, do not `transition`, do not fetch the complexity label.
+
+This complements the same check in `/klause-pull` — it catches tickets that slipped into Processing before a blocker was added, or tickets in `In Review` picked up mid-loop.
+
+### 2. Transition to In Progress
 
 Call `reportProgress(issueLinearId, "klause-execute — transitioning to In Progress")`.
 
 Call `transition(command: "execute")`. This validates the state machine and updates the Linear issue status.
 
-### 2. Read the complexity label
+### 3. Read the complexity label
 
 Call `reportActivity("klause-execute — reading complexity label")`. Fetch the Linear issue and check its labels for a complexity label (`simple`, `medium`, or `complex`). These are stamped by `/klause-define`.
 
@@ -38,7 +50,7 @@ Then stop. Do not transition, do not begin work.
 
 The `--force-medium` escape hatch is the only supported way to skip labeling. Do not silently default.
 
-### 3. Execute based on complexity
+### 4. Execute based on complexity
 
 | Label | Strategy |
 |---|---|
@@ -50,11 +62,12 @@ The `--force-medium` escape hatch is the only supported way to skip labeling. Do
 
 Call `reportProgress` with the routing decision so the Meister UI reflects it, e.g. `reportProgress(issueLinearId, "klause-execute — KLA-200 labeled complex → feature-dev")`.
 
-### 4. Report completion
+### 5. Report completion
 
 After execution finishes, confirm to the user that the work is done and the ticket is In Progress.
 
 ## Error handling
 
+- If the blocker check refuses execution — see step 1. Ticket state unchanged.
 - If `transition("execute")` fails — report the error. The message includes valid commands for the current state.
 - If `/feature-dev:feature-dev` is not available (for complex tickets) — fall back to plan-then-execute and tell the user.
