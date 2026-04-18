@@ -30,7 +30,7 @@ enum WorkflowStateResolver {
             where: { $0.displayName.lowercased() == needle }
         ) {
             if let mappings = try? await stateMappingClient.fetchForTeam(teamId),
-               let mapped = mappings.first(where: { $0.meisterState == meisterState.rawValue })
+               let mapped = mappings.first(where: { $0.meisterState == meisterState })
             {
                 return mapped.linearStateId
             }

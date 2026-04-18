@@ -16,8 +16,8 @@ private let teamINF = LinearTeam(
     colorIndex: 2, isEnabled: false, isHiddenFromBoard: false
 )
 
-private let persistedKLA = LinearTeamRecord(from: teamKLA)
-private let persistedMOB = LinearTeamRecord(from: teamMOB)
+private let persistedKLA = teamKLA
+private let persistedMOB = teamMOB
 
 // MARK: - Loading Tests
 
@@ -119,7 +119,7 @@ private let persistedMOB = LinearTeamRecord(from: teamMOB)
     state.loadingStatus = .loaded
 
     var deletedTeamIds: [String] = []
-    var savedRecords: [LinearTeamRecord] = []
+    var savedRecords: [LinearTeam] = []
 
     let store = TestStore(initialState: state) {
         TeamSettingsFeature()
@@ -209,7 +209,7 @@ private let persistedMOB = LinearTeamRecord(from: teamMOB)
     state.originalFilterLabels = ["team-kla": "klause"]
     state.loadingStatus = .loaded
 
-    var savedRecords: [LinearTeamRecord] = []
+    var savedRecords: [LinearTeam] = []
 
     let store = TestStore(initialState: state) {
         TeamSettingsFeature()

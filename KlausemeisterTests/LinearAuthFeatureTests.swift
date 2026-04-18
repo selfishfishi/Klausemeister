@@ -77,7 +77,6 @@ private let testTeams = [
 
 @Test func `existing token on appear — teams already persisted`() async {
     let tokenData = Data("existing_token".utf8)
-    let teamRecords = testTeams.map { LinearTeamRecord(from: $0) }
 
     let store = TestStore(initialState: LinearAuthFeature.State()) {
         LinearAuthFeature()
@@ -87,7 +86,7 @@ private let testTeams = [
             return nil
         }
         $0.linearAPIClient.me = { testUser }
-        $0.databaseClient.fetchTeams = { teamRecords }
+        $0.databaseClient.fetchTeams = { testTeams }
     }
 
     await store.send(.onAppear) {

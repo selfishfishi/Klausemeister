@@ -55,9 +55,9 @@ enum ToolHandlers {
 
         // Move to processing first; rollback Linear status update is not feasible,
         // so we order so the local move happens before the (less reliable) network call.
-        try await worktreeClient.moveToProcessingByIssueId(issue.linearId, worktreeId)
+        try await worktreeClient.moveToProcessingByIssueId(issue.id, worktreeId)
         eventContinuation.yield(.itemMovedToProcessing(
-            worktreeId: worktreeId, issueLinearId: issue.linearId
+            worktreeId: worktreeId, issueLinearId: issue.id
         ))
 
         // Best-effort Linear status update — log on failure but do not fail the tool,
@@ -66,12 +66,12 @@ enum ToolHandlers {
             teamId: issue.teamId,
             stateName: "In Progress"
         ) {
-            try? await linearAPIClient.updateIssueStatus(issue.linearId, inProgressId)
+            try? await linearAPIClient.updateIssueStatus(issue.id, inProgressId)
         }
 
         let payload = ItemPayload(
             queueItemId: inboxItem.id,
-            issueLinearId: issue.linearId,
+            issueLinearId: issue.id,
             identifier: issue.identifier,
             title: issue.title,
             statusName: issue.status,
@@ -203,11 +203,10 @@ enum ToolHandlers {
             return .failure("No item available for \(commandName)")
         }
 
-        guard let issueRecord = try await databaseClient.fetchImportedIssue(target.issueLinearId) else {
+        guard let issue = try await databaseClient.fetchImportedIssue(target.issueLinearId) else {
             return .failure("Imported issue \(target.issueLinearId) not found in local cache")
         }
 
-        let issue = LinearIssue(from: issueRecord)
         guard let kanban = issue.meisterState else {
             return .failure("Issue status '\(issue.status)' does not map to a known workflow state")
         }
@@ -216,7 +215,6 @@ enum ToolHandlers {
         guard let newState = currentState.applying(command) else {
             // Idempotent: already at the result state of this command — treat as no-op success
             if currentState.isResultOf(command) {
-                let issue = LinearIssue(from: issueRecord)
                 let payload = makePayload(state: currentState, issue: issue)
                 return try .success(Self.encodeJSON(["state": payload]))
             }
@@ -231,7 +229,7 @@ enum ToolHandlers {
             from: currentState,
             to: newState,
             issueLinearId: target.issueLinearId,
-            teamId: issueRecord.teamId,
+            teamId: issue.teamId,
             worktreeId: worktreeId
         )
 
@@ -300,9 +298,9 @@ enum ToolHandlers {
     /// inbox item. For all other commands (or `nil` for read), targets the
     /// processing item with fallback to the first inbox item.
     private static func resolveTargetItem(
-        from items: [WorktreeQueueItemRecord],
+        from items: [WorktreeQueueItem],
         for command: WorkflowCommand?
-    ) -> WorktreeQueueItemRecord? {
+    ) -> WorktreeQueueItem? {
         if command == .pull {
             return items
                 .filter { $0.queuePosition == .inbox }
@@ -332,13 +330,12 @@ enum ToolHandlers {
     /// Fetch an issue record, derive the product state, and return it as a
     /// JSON result. Shared by `getProductState`.
     private static func buildProductStateResult(
-        item: WorktreeQueueItemRecord,
+        item: WorktreeQueueItem,
         databaseClient: DatabaseClient
     ) async throws -> ToolResult {
-        guard let issueRecord = try await databaseClient.fetchImportedIssue(item.issueLinearId) else {
+        guard let issue = try await databaseClient.fetchImportedIssue(item.issueLinearId) else {
             return .failure("Imported issue \(item.issueLinearId) not found in local cache")
         }
-        let issue = LinearIssue(from: issueRecord)
         guard let kanban = issue.meisterState else {
             return .failure("Issue status '\(issue.status)' does not map to a known workflow state")
         }
@@ -353,10 +350,10 @@ enum ToolHandlers {
     static func listWorktrees() async throws -> ToolResult {
         @Dependency(\.worktreeClient) var worktreeClient
 
-        let worktreeRecords = try await worktreeClient.fetchWorktrees()
+        let worktrees = try await worktreeClient.fetchWorktrees()
         var entries: [WorktreeEntry] = []
-        for record in worktreeRecords {
-            let items = try await worktreeClient.fetchQueueItems(record.worktreeId)
+        for snapshot in worktrees {
+            let items = try await worktreeClient.fetchQueueItems(snapshot.id)
             let inboxItems = items
                 .filter { $0.queuePosition == .inbox }
                 .sorted { $0.sortOrder < $1.sortOrder }
@@ -364,10 +361,10 @@ enum ToolHandlers {
             let processingItem = items.first { $0.queuePosition == .processing }
             let outboxCount = items.count(where: { $0.queuePosition == .outbox })
             entries.append(WorktreeEntry(
-                worktreeId: record.worktreeId,
-                name: record.name,
-                repoId: record.repoId,
-                gitWorktreePath: record.gitWorktreePath,
+                worktreeId: snapshot.id,
+                name: snapshot.name,
+                repoId: snapshot.repoId,
+                gitWorktreePath: snapshot.gitWorktreePath,
                 inboxCount: inboxItems.count,
                 inboxItems: inboxItems,
                 processingIssueLinearId: processingItem?.issueLinearId,
@@ -397,16 +394,16 @@ enum ToolHandlers {
         // Resolve to the canonical UUID — accept either UUID or identifier on input.
         let resolvedIssueId: String
         if let issue = try await databaseClient.fetchImportedIssue(issueLinearId) {
-            resolvedIssueId = issue.linearId
+            resolvedIssueId = issue.id
         } else if let issue = try await databaseClient.fetchImportedIssueByIdentifier(issueLinearId) {
-            resolvedIssueId = issue.linearId
+            resolvedIssueId = issue.id
         } else {
             return .failure("Issue \(issueLinearId) not found in local cache — import it first")
         }
 
         // Verify the worktree exists.
         let worktrees = try await worktreeClient.fetchWorktrees()
-        guard worktrees.contains(where: { $0.worktreeId == targetWorktreeId }) else {
+        guard worktrees.contains(where: { $0.id == targetWorktreeId }) else {
             return .failure("Worktree \(targetWorktreeId) not found")
         }
 

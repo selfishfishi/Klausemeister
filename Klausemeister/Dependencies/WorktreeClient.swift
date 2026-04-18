@@ -20,21 +20,20 @@ import GRDB
 /// callers never need to worry about GRDB locking. Throwing closures
 /// surface GRDB / filesystem errors unchanged; reducers must `catch`.
 ///
-/// KLA-60 note: several closures still expose raw `*Record` types
-/// (`RepositoryRecord`, `WorktreeRecord`, `WorktreeQueueItemRecord`).
-/// Reducers convert to domain types at the effect boundary today; a
-/// follow-up will push the conversion down into the live value.
+/// All fetch/create closures return domain types — no GRDB `*Record`
+/// types cross the dependency boundary. Reads map internally inside
+/// `liveValue` so reducers never see persistence shapes.
 struct WorktreeClient {
     // MARK: - Repository CRUD
 
-    var fetchRepositories: @Sendable () async throws -> [RepositoryRecord]
-    var addRepository: @Sendable (_ name: String, _ path: String) async throws -> RepositoryRecord
+    var fetchRepositories: @Sendable () async throws -> [Repository]
+    var addRepository: @Sendable (_ name: String, _ path: String) async throws -> Repository
     var removeRepository: @Sendable (_ repoId: String) async throws -> Void
 
     // MARK: - Worktree CRUD
 
-    var fetchWorktrees: @Sendable () async throws -> [WorktreeRecord]
-    var createWorktree: @Sendable (_ name: String, _ gitWorktreePath: String, _ repoId: String) async throws -> WorktreeRecord
+    var fetchWorktrees: @Sendable () async throws -> [WorktreesLoadedWorktree]
+    var createWorktree: @Sendable (_ name: String, _ gitWorktreePath: String, _ repoId: String) async throws -> WorktreesLoadedWorktree
     var deleteWorktree: @Sendable (_ worktreeId: String) async throws -> Void
     var renameWorktree: @Sendable (_ worktreeId: String, _ newName: String) async throws -> Void
     var updateWorktreeOrder: @Sendable (_ orderedIds: [String]) async throws -> Void
@@ -42,7 +41,7 @@ struct WorktreeClient {
 
     // MARK: - Queue Management
 
-    var fetchQueueItems: @Sendable (_ worktreeId: String) async throws -> [WorktreeQueueItemRecord]
+    var fetchQueueItems: @Sendable (_ worktreeId: String) async throws -> [WorktreeQueueItem]
     var assignIssueToWorktree: @Sendable (_ issueLinearId: String, _ worktreeId: String) async throws -> Void
     var moveToOutbox: @Sendable (_ queueItemId: String) async throws -> Void
     var removeFromQueue: @Sendable (_ queueItemId: String) async throws -> Void
@@ -64,7 +63,7 @@ struct WorktreeClient {
     ) async throws -> SyncResult
 
     struct SyncResult: Equatable {
-        let inserted: [WorktreeRecord]
+        let inserted: [WorktreesLoadedWorktree]
         let deletedWorktreeIds: [String]
     }
 }
@@ -79,7 +78,9 @@ extension WorktreeClient: DependencyKey {
         return WorktreeClient(
             fetchRepositories: {
                 try await dbQueue.read { db in
-                    try RepositoryRecord.order(Column("sortOrder").asc).fetchAll(db)
+                    try RepositoryRecord.order(Column("sortOrder").asc)
+                        .fetchAll(db)
+                        .map(Repository.init(from:))
                 }
             },
 
@@ -94,7 +95,7 @@ extension WorktreeClient: DependencyKey {
                         sortOrder: maxSort + 1
                     )
                     try record.save(db)
-                    return record
+                    return Repository(from: record)
                 }
             },
 
@@ -114,7 +115,9 @@ extension WorktreeClient: DependencyKey {
 
             fetchWorktrees: {
                 try await dbQueue.read { db in
-                    try WorktreeRecord.order(Column("sortOrder").asc).fetchAll(db)
+                    try WorktreeRecord.order(Column("sortOrder").asc)
+                        .fetchAll(db)
+                        .map(WorktreesLoadedWorktree.init(from:))
                 }
             },
 
@@ -130,7 +133,7 @@ extension WorktreeClient: DependencyKey {
                         repoId: repoId
                     )
                     try record.save(db)
-                    return record
+                    return WorktreesLoadedWorktree(from: record)
                 }
             },
 
@@ -175,6 +178,7 @@ extension WorktreeClient: DependencyKey {
                         .filter(Column("worktreeId") == worktreeId)
                         .order(Column("queuePosition").asc, Column("sortOrder").asc)
                         .fetchAll(db)
+                        .map(WorktreeQueueItem.init(from:))
                 }
             },
 
@@ -324,7 +328,7 @@ extension WorktreeClient: DependencyKey {
                     }
 
                     // Insert new records (on disk, not in DB, not ignored)
-                    var inserted: [WorktreeRecord] = []
+                    var inserted: [WorktreesLoadedWorktree] = []
                     var maxSort = try Int.fetchOne(db, sql: "SELECT MAX(sortOrder) FROM worktrees") ?? -1
                     for entry in secondaryEntries
                         where existingByPath[entry.path] == nil && !ignoredPaths.contains(entry.path)
@@ -340,7 +344,7 @@ extension WorktreeClient: DependencyKey {
                             repoId: repoId
                         )
                         try record.save(db)
-                        inserted.append(record)
+                        inserted.append(WorktreesLoadedWorktree(from: record))
                     }
 
                     return SyncResult(inserted: inserted, deletedWorktreeIds: deletedIds)
