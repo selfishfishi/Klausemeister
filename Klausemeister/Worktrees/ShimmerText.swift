@@ -1,31 +1,35 @@
 import SwiftUI
 
-/// Text with a bright band that sweeps left-to-right on a loop. The
-/// band shows a single highlight color at any moment; that color
-/// morphs continuously through the theme palette over time. Used on
-/// the sidebar worktree name while the meister is actively working.
+/// Text whose color gradually cycles through the theme palette, with
+/// a sheen band sweeping left-to-right on a loop. The sheen is always
+/// a lighter variant of whatever the text color is at that instant —
+/// the shimmer is the text itself brightening, not a different color.
+/// Used on the sidebar worktree name while the meister is actively
+/// working.
 struct ShimmerText: View {
     let text: String
-    /// The palette colors the highlight morphs through.
+    /// Colors the text gradually morphs between over time.
     let cycleColors: [Color]
-    /// Base text color shown outside the bright band.
+    /// Fallback text color when `cycleColors` is empty.
     let baseColor: Color
 
-    /// Seconds for one full sweep across the text.
+    /// Seconds for one full sheen sweep across the text.
     var sweepPeriod: Double = 1.8
-    /// Seconds for one full cycle through all palette colors. Longer
-    /// periods make the per-sweep color feel steadier while still
-    /// visibly morphing across consecutive sweeps.
+    /// Seconds for one full cycle through the palette.
     var colorCyclePeriod: Double = 18.0
-    /// Width of the bright band as a fraction of the text (0→1).
+    /// Width of the sheen band as a fraction of the text (0→1).
     var bandWidth: Double = 0.25
+    /// How much white to mix into the base to build the sheen color.
+    var highlightBoost: Double = 0.45
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            let sweepProgress = (t / sweepPeriod).truncatingRemainder(dividingBy: 1.0)
+            let elapsed = timeline.date.timeIntervalSinceReferenceDate
+            let sweepProgress = (elapsed / sweepPeriod).truncatingRemainder(dividingBy: 1.0)
             let center = -bandWidth + sweepProgress * (1.0 + 2 * bandWidth)
-            let highlight = interpolatedColor(at: t)
+
+            let currentBase = morphedColor(at: elapsed)
+            let highlight = currentBase.mix(with: .white, by: highlightBoost)
 
             let leftStop = clamp(center - bandWidth)
             let midStop = clamp(center)
@@ -36,9 +40,9 @@ struct ShimmerText: View {
                 .foregroundStyle(
                     .linearGradient(
                         stops: [
-                            .init(color: baseColor, location: leftStop),
+                            .init(color: currentBase, location: leftStop),
                             .init(color: highlight, location: midStop),
-                            .init(color: baseColor, location: rightStop)
+                            .init(color: currentBase, location: rightStop)
                         ],
                         startPoint: .leading,
                         endPoint: .trailing
@@ -47,7 +51,7 @@ struct ShimmerText: View {
         }
     }
 
-    private func interpolatedColor(at elapsed: Double) -> Color {
+    private func morphedColor(at elapsed: Double) -> Color {
         guard !cycleColors.isEmpty else { return baseColor }
         guard cycleColors.count > 1 else { return cycleColors[0] }
         let count = Double(cycleColors.count)
