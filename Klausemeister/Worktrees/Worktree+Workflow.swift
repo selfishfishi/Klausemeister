@@ -11,7 +11,7 @@ extension Worktree {
     /// The command the meister will run next given this worktree's queue
     /// state. Prefers the processing item, falls back to the front inbox
     /// item, and is `nil` when neither resolves to a canonical stage.
-    nonisolated var nextWorkflowCommand: WorkflowCommand? {
+    var nextWorkflowCommand: WorkflowCommand? {
         if let processing, let kanban = processing.meisterState {
             return ProductState(kanban: kanban, queue: .processing).nextCommand
         }
@@ -24,7 +24,7 @@ extension Worktree {
     /// Workflow commands that are currently valid for the processing issue.
     /// Empty when nothing is processing or when the issue has no canonical
     /// stage mapping.
-    nonisolated var validCommandsForActive: [WorkflowCommand] {
+    var validCommandsForActive: [WorkflowCommand] {
         guard let processing, let kanban = processing.meisterState else { return [] }
         return ProductState(kanban: kanban, queue: .processing).validCommands
     }
@@ -33,7 +33,7 @@ extension Worktree {
 /// Target stages offered by the "Move to…" context menu on the active
 /// issue. Excludes the issue's current stage so it never offers a no-op.
 extension LinearIssue {
-    nonisolated var availableTargetStates: [MeisterState] {
+    var availableTargetStates: [MeisterState] {
         MeisterState.allCases.filter { $0 != meisterState }
     }
 }
