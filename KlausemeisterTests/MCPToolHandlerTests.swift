@@ -100,6 +100,7 @@ private let processingItem = WorktreeQueueItem(
             #expect(wid == worktreeId)
             return [inboxItem]
         }
+        $0.worktreeClient.fetchScheduleItemsByIssueLinearIds = { _ in [] }
         $0.worktreeClient.moveToProcessingByIssueId = { issueId, wid in
             movedToProcessing = (issueId, wid)
         }
@@ -155,6 +156,7 @@ private let processingItem = WorktreeQueueItem(
     let (_, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
     let result = try await withDependencies {
         $0.worktreeClient.fetchQueueItems = { _ in [inboxItem] }
+        $0.worktreeClient.fetchScheduleItemsByIssueLinearIds = { _ in [] }
         $0.databaseClient.fetchImportedIssue = { _ in nil }
     } operation: {
         try await ToolHandlers.getNextItem(
@@ -165,6 +167,181 @@ private let processingItem = WorktreeQueueItem(
 
     #expect(result.isError)
     #expect(result.text.contains("not found in local cache"))
+}
+
+// MARK: - getNextItem · dependency-aware (KLA-200)
+
+private func scheduleItem(
+    id: String = UUID().uuidString,
+    scheduleId: String = "sched-1",
+    worktreeId: String = worktreeId,
+    issueLinearId: String,
+    issueIdentifier: String,
+    blockedByIssueLinearIds: [String] = [],
+    status: ScheduleItemStatus
+) -> ScheduleItemRecord {
+    let blockers = (try? JSONEncoder().encode(blockedByIssueLinearIds))
+        .flatMap { String(bytes: $0, encoding: .utf8) } ?? "[]"
+    return ScheduleItemRecord(
+        scheduleItemId: id,
+        scheduleId: scheduleId,
+        worktreeId: worktreeId,
+        issueLinearId: issueLinearId,
+        issueIdentifier: issueIdentifier,
+        issueTitle: "fixture",
+        position: 0,
+        weight: 1,
+        blockedByIssueLinearIds: blockers,
+        status: status.rawValue
+    )
+}
+
+@Test func `getNextItem skips blocked candidate and claims the unblocked sibling`() async throws {
+    let blockedInbox = WorktreeQueueItem(
+        id: "qi-A", worktreeId: worktreeId,
+        issueLinearId: "issue-A", queuePosition: .inbox, sortOrder: 0
+    )
+    let unblockedInbox = WorktreeQueueItem(
+        id: "qi-B", worktreeId: worktreeId,
+        issueLinearId: "issue-B", queuePosition: .inbox, sortOrder: 1
+    )
+    let issueB = LinearIssue(
+        id: "issue-B", identifier: "KLA-B",
+        title: "second",
+        status: "Todo", statusId: "state-todo", statusType: "unstarted",
+        teamId: teamId, projectName: "Klause", labels: [],
+        description: nil, url: "https://linear.app/x/KLA-B", updatedAt: "2026-04-18"
+    )
+    var claimed: String?
+    let (_, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
+
+    let result = try await withDependencies {
+        $0.worktreeClient.fetchQueueItems = { _ in [blockedInbox, unblockedInbox] }
+        $0.worktreeClient.fetchScheduleItemsByIssueLinearIds = { ids in
+            // First call: candidates. Only issue-A is in a schedule.
+            if Set(ids) == Set(["issue-A", "issue-B"]) {
+                return [scheduleItem(
+                    issueLinearId: "issue-A",
+                    issueIdentifier: "KLA-A",
+                    blockedByIssueLinearIds: ["issue-C"],
+                    status: .queued
+                )]
+            }
+            // Second call: blocker lookup. issue-C is still queued → blocking.
+            if Set(ids) == Set(["issue-C"]) {
+                return [scheduleItem(
+                    issueLinearId: "issue-C",
+                    issueIdentifier: "KLA-C",
+                    status: .queued
+                )]
+            }
+            return []
+        }
+        $0.worktreeClient.moveToProcessingByIssueId = { issueId, _ in
+            claimed = issueId
+        }
+        $0.databaseClient.fetchImportedIssue = { id in
+            id == issueB.id ? issueB : nil
+        }
+        $0.databaseClient.fetchWorkflowStates = { [] }
+        $0.stateMappingClient.fetchForTeam = { _ in [] }
+        $0.linearAPIClient.updateIssueStatus = { _, _ in }
+    } operation: {
+        try await ToolHandlers.getNextItem(
+            worktreeId: worktreeId,
+            eventContinuation: continuation
+        )
+    }
+
+    #expect(!result.isError)
+    #expect(claimed == "issue-B")
+    #expect(result.text.contains("\"identifier\":\"KLA-B\""))
+}
+
+@Test func `getNextItem returns all-blocked when every candidate waits on a dep`() async throws {
+    let pendingInbox = WorktreeQueueItem(
+        id: "qi-A", worktreeId: worktreeId,
+        issueLinearId: "issue-A", queuePosition: .inbox, sortOrder: 0
+    )
+    let (_, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
+
+    let result = try await withDependencies {
+        $0.worktreeClient.fetchQueueItems = { _ in [pendingInbox] }
+        $0.worktreeClient.fetchScheduleItemsByIssueLinearIds = { ids in
+            if ids == ["issue-A"] {
+                return [scheduleItem(
+                    issueLinearId: "issue-A",
+                    issueIdentifier: "KLA-A",
+                    blockedByIssueLinearIds: ["issue-C"],
+                    status: .queued
+                )]
+            }
+            if Set(ids) == Set(["issue-C"]) {
+                return [scheduleItem(
+                    issueLinearId: "issue-C",
+                    issueIdentifier: "KLA-C",
+                    status: .queued
+                )]
+            }
+            return []
+        }
+    } operation: {
+        try await ToolHandlers.getNextItem(
+            worktreeId: worktreeId,
+            eventContinuation: continuation
+        )
+    }
+
+    #expect(!result.isError)
+    #expect(result.text.contains("\"reason\":\"all-blocked\""))
+    #expect(result.text.contains("\"blockedBy\":[\"KLA-C\"]"))
+    #expect(result.text.contains("\"item\":null"))
+}
+
+@Test func `getNextItem claims candidate whose blockers are all done`() async throws {
+    let inbox = WorktreeQueueItem(
+        id: "qi-A", worktreeId: worktreeId,
+        issueLinearId: issue.id, queuePosition: .inbox, sortOrder: 0
+    )
+    var claimed: String?
+    let (_, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
+
+    let result = try await withDependencies {
+        $0.worktreeClient.fetchQueueItems = { _ in [inbox] }
+        $0.worktreeClient.fetchScheduleItemsByIssueLinearIds = { ids in
+            if ids == [issue.id] {
+                return [scheduleItem(
+                    issueLinearId: issue.id,
+                    issueIdentifier: issue.identifier,
+                    blockedByIssueLinearIds: ["issue-C"],
+                    status: .queued
+                )]
+            }
+            if Set(ids) == Set(["issue-C"]) {
+                return [scheduleItem(
+                    issueLinearId: "issue-C",
+                    issueIdentifier: "KLA-C",
+                    status: .done
+                )]
+            }
+            return []
+        }
+        $0.worktreeClient.moveToProcessingByIssueId = { issueId, _ in
+            claimed = issueId
+        }
+        $0.databaseClient.fetchImportedIssue = { _ in issue }
+        $0.databaseClient.fetchWorkflowStates = { [] }
+        $0.stateMappingClient.fetchForTeam = { _ in [] }
+        $0.linearAPIClient.updateIssueStatus = { _, _ in }
+    } operation: {
+        try await ToolHandlers.getNextItem(
+            worktreeId: worktreeId,
+            eventContinuation: continuation
+        )
+    }
+
+    #expect(!result.isError)
+    #expect(claimed == issue.id)
 }
 
 // MARK: - completeItem

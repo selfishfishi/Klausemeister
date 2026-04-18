@@ -116,15 +116,22 @@ When the user says **"move on to the next"**, **"next one"**, or similar:
 
 This is not a real slash command — it is a phrase the user says in normal conversation. Recognize it and act, don't wait for a literal `/next`.
 
-## 6. When the inbox is empty
+## 6. When the inbox is empty or all-blocked
 
-Call `reportProgress(null, "idle — inbox empty")` and stop pulling. Wait for one of:
+`getNextItem` distinguishes two idle shapes:
+
+- **Empty** — `{ "item": null }` — nothing is queued.
+  → `reportProgress(null, "idle — inbox empty")`
+- **All blocked** — `{ "item": null, "reason": "all-blocked", "blockedItems": [{ "issueLinearId": …, "blockedBy": ["KLA-195", …] }, …] }` — at least one inbox item is waiting on a schedule dependency that isn't `done` yet.
+  → `reportProgress(null, "idle — waiting on <blocker identifiers>")` — list the union of `blockedBy` identifiers across `blockedItems` (deduped) so the UI shows exactly which upstream work is gating this worktree.
+
+Then stop pulling. Wait for one of:
 
 - The user giving direct instructions (treat as a normal Claude Code session)
 - The user saying "check again" or similar → call `getNextItem` once more
 - The user explicitly asking for status → call `getStatus(KLAUSE_WORKTREE_ID)`
 
-Do not busy-loop on `getNextItem`. Idle is a valid state.
+Do not busy-loop on `getNextItem`. Idle is a valid state. In the all-blocked case, the plan-ahead is that the blocker's worktree will eventually flip its schedule_item to `done`, at which point a fresh `getNextItem` call will succeed.
 
 ## 7. Things you must not do
 

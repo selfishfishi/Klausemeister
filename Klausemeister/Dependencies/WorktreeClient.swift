@@ -1,4 +1,5 @@
 // Klausemeister/Dependencies/WorktreeClient.swift
+// swiftlint:disable file_length
 import Dependencies
 import Foundation
 import GRDB
@@ -80,6 +81,13 @@ struct WorktreeClient {
     var fetchSchedules: @Sendable (_ repoId: String) async throws -> [ScheduleRecord]
     var fetchSchedule: @Sendable (_ scheduleId: String) async throws -> ScheduleRecord?
     var fetchScheduleItems: @Sendable (_ scheduleId: String) async throws -> [ScheduleItemRecord]
+    /// Cross-schedule lookup by issue id. Returns every `schedule_item` row
+    /// whose `issueLinearId` is in the input set, across all schedules. Used
+    /// by `getNextItem` (KLA-200) to skip inbox items whose blockers aren't
+    /// yet `done`. Backed by the `idx_schedule_items_issue_linear_id` index.
+    var fetchScheduleItemsByIssueLinearIds: @Sendable (
+        _ issueLinearIds: [String]
+    ) async throws -> [ScheduleItemRecord]
     /// Single-transaction write: replaces any existing items for the same
     /// `scheduleId` and upserts the schedule row. Keeps the on-disk view
     /// consistent — a partial write would leave orphans behind.
@@ -407,6 +415,18 @@ extension WorktreeClient: DependencyKey {
                 }
             },
 
+            fetchScheduleItemsByIssueLinearIds: { issueLinearIds in
+                guard !issueLinearIds.isEmpty else { return [] }
+                return try await dbQueue.read { db in
+                    // `issueLinearIds` is app-supplied, never user input, so
+                    // interpolation via `IN ?` is safe here. GRDB binds the
+                    // array as individual parameters.
+                    try ScheduleItemRecord
+                        .filter(issueLinearIds.contains(Column("issueLinearId")))
+                        .fetchAll(db)
+                }
+            },
+
             saveSchedule: { schedule, items in
                 try await dbQueue.write { db in
                     // Single transaction: upsert the schedule row, then
@@ -475,6 +495,9 @@ extension WorktreeClient: DependencyKey {
         fetchSchedules: unimplemented("WorktreeClient.fetchSchedules"),
         fetchSchedule: unimplemented("WorktreeClient.fetchSchedule"),
         fetchScheduleItems: unimplemented("WorktreeClient.fetchScheduleItems"),
+        fetchScheduleItemsByIssueLinearIds: unimplemented(
+            "WorktreeClient.fetchScheduleItemsByIssueLinearIds"
+        ),
         saveSchedule: unimplemented("WorktreeClient.saveSchedule"),
         deleteSchedule: unimplemented("WorktreeClient.deleteSchedule"),
         updateScheduleItemStatus: unimplemented("WorktreeClient.updateScheduleItemStatus"),
