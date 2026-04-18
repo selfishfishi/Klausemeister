@@ -338,7 +338,6 @@ struct SwimlaneBarRow: View {
                 .keyboardShortcut(for: .returnIssueToMeister, in: bindings)
         }
     }
-
 }
 
 private extension SwimlaneBarRow {

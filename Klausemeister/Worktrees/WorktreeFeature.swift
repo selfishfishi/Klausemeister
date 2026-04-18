@@ -202,6 +202,8 @@ struct WorktreeFeature {
         case issueAssignedToWorktree(worktreeId: String, issue: LinearIssue)
         case markAsCompleteTapped(worktreeId: String)
         case issueReturnedToMeister(issueId: String, worktreeId: String)
+        case clearInboxTapped(worktreeId: String)
+        case clearOutboxTapped(worktreeId: String)
         case issueMovedToProcessing(queueItemId: String, issueId: String, worktreeId: String)
         case issueMovedToOutbox(queueItemId: String, issueId: String, worktreeId: String)
         case queueReordered(worktreeId: String, queuePosition: QueuePosition, itemIds: [String])
@@ -1258,6 +1260,22 @@ struct WorktreeFeature {
                         issueId: issueId, worktreeId: worktreeId, issue: issue
                     ))
                 }
+
+            case let .clearInboxTapped(worktreeId):
+                guard let worktree = state.worktrees[id: worktreeId] else { return .none }
+                let issueIds = worktree.inbox.map(\.id)
+                guard !issueIds.isEmpty else { return .none }
+                return .merge(issueIds.map { id in
+                    .send(.issueReturnedToMeister(issueId: id, worktreeId: worktreeId))
+                })
+
+            case let .clearOutboxTapped(worktreeId):
+                guard let worktree = state.worktrees[id: worktreeId] else { return .none }
+                let issueIds = worktree.outbox.map(\.id)
+                guard !issueIds.isEmpty else { return .none }
+                return .merge(issueIds.map { id in
+                    .send(.issueReturnedToMeister(issueId: id, worktreeId: worktreeId))
+                })
 
             case let .queueReordered(worktreeId, queuePosition, itemIds):
                 return .run { _ in
