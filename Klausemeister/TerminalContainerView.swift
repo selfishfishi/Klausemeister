@@ -10,7 +10,7 @@ struct TerminalContainerView: View {
     @State private var didSeedInspectorPref = false
     @State private var didPrimeInitialTheme = false
     @AppStorage("inspectorOpen") private var inspectorOpenPref: Bool = false
-    @AppStorage("selectedTheme") private var selectedTheme: AppTheme = .everforestDarkMedium
+    @AppStorage(AppTheme.storageKey) private var selectedTheme: AppTheme = .everforestDarkMedium
 
     var body: some View {
         ZStack {

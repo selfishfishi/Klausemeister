@@ -92,6 +92,26 @@ enum AppTheme: String, CaseIterable, Codable, Identifiable {
         if let legacy = legacyMigration(stored) { return legacy }
         return .everforestDarkMedium
     }
+
+    /// `@AppStorage` key used for the persisted theme selection.
+    nonisolated static let storageKey = "selectedTheme"
+
+    /// Read the persisted raw value, migrate it to the current namespace
+    /// if it's a legacy string, and write the migrated rawValue back so
+    /// `@AppStorage` sees a matching value on its first read. Returns the
+    /// effective theme for the session. Takes `UserDefaultsClient` so the
+    /// migration is testable without touching `UserDefaults.standard`.
+    @discardableResult
+    nonisolated static func migrateStoredValue(
+        using client: UserDefaultsClient
+    ) -> AppTheme {
+        let stored = client.string(storageKey)
+        let resolved = resolve(stored: stored)
+        if stored != resolved.rawValue {
+            client.setString(resolved.rawValue, storageKey)
+        }
+        return resolved
+    }
 }
 
 enum ThemeFamily: String, CaseIterable, Identifiable {
