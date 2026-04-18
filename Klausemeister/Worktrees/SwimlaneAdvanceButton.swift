@@ -33,7 +33,8 @@ struct SwimlaneAdvanceButton: View {
                 } else if isBlocked {
                     BlockedGlowView(
                         cycleColors: themeCycleColors,
-                        label: nextCommand.verbLabel
+                        label: nextCommand.verbLabel,
+                        paused: !isBlocked
                     )
                     .help(tooltip)
                 } else {
@@ -169,6 +170,11 @@ private struct WorkingProgressPill: View {
 private struct BlockedGlowView: View {
     let cycleColors: [Color]
     let label: String
+    /// When `true`, the timeline stops ticking entirely. Normally the
+    /// view is only mounted while the meister is blocked, but we still
+    /// want a hard pause so briefly-kept-alive instances during
+    /// transitions don't keep burning CPU.
+    var paused: Bool = false
 
     @Environment(\.swimlaneAnimating) private var isAnimating
 
@@ -207,12 +213,12 @@ private struct BlockedGlowView: View {
 
             // Centred question mark, lit by the same rotating gradient so the
             // comet head appears to trace through the glyph as it passes.
-            rotatingGlyph(rotationDegrees: rotationDegrees, headColor: headColor)
+            BlockedGlyphLayer(rotationDegrees: rotationDegrees, headColor: headColor)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .overlay(
-            rotatingTrail(rotationDegrees: rotationDegrees, headColor: headColor)
+            BlockedTrailLayer(rotationDegrees: rotationDegrees, headColor: headColor)
         )
     }
 
@@ -227,19 +233,22 @@ private struct BlockedGlowView: View {
         let fraction = progress - Double(index)
         return cycleColors[index].mix(with: cycleColors[nextIndex], by: fraction)
     }
+}
 
-    @ViewBuilder
-    private func rotatingGlyph(rotationDegrees: Double, headColor: Color) -> some View {
-        let stops: [Gradient.Stop] = [
-            .init(color: headColor.opacity(0.35), location: 0.00),
-            .init(color: headColor.opacity(0.35), location: 0.55),
-            .init(color: headColor.opacity(0.65), location: 0.75),
-            .init(color: headColor, location: 0.92),
-            .init(color: Color.white, location: 1.00)
-        ]
+/// Rotating gradient masked by the `?` glyph. Stops only change when
+/// `headColor` changes (every ~6s) so we cache the array with
+/// `@State` + `.onChange(of: headColor)` rather than rebuilding it per
+/// 30fps tick.
+private struct BlockedGlyphLayer: View {
+    let rotationDegrees: Double
+    let headColor: Color
 
+    @State private var stops: [Gradient.Stop] = []
+
+    var body: some View {
+        let gradient = Gradient(stops: stops.isEmpty ? Self.makeStops(for: headColor) : stops)
         AngularGradient(
-            gradient: Gradient(stops: stops),
+            gradient: gradient,
             center: .center,
             angle: .degrees(rotationDegrees)
         )
@@ -249,24 +258,39 @@ private struct BlockedGlowView: View {
         )
         .shadow(color: headColor.opacity(0.9), radius: 3)
         .blendMode(.plusLighter)
+        .onAppear { stops = Self.makeStops(for: headColor) }
+        .onChange(of: headColor) { _, newColor in
+            stops = Self.makeStops(for: newColor)
+        }
     }
 
-    @ViewBuilder
-    private func rotatingTrail(rotationDegrees: Double, headColor: Color) -> some View {
-        let stops: [Gradient.Stop] = [
-            .init(color: .clear, location: 0.00),
-            .init(color: .clear, location: 0.50),
-            .init(color: headColor.opacity(0.25), location: 0.68),
-            .init(color: headColor.opacity(0.70), location: 0.82),
-            .init(color: headColor, location: 0.94),
+    private static func makeStops(for headColor: Color) -> [Gradient.Stop] {
+        [
+            .init(color: headColor.opacity(0.35), location: 0.00),
+            .init(color: headColor.opacity(0.35), location: 0.55),
+            .init(color: headColor.opacity(0.65), location: 0.75),
+            .init(color: headColor, location: 0.92),
             .init(color: Color.white, location: 1.00)
         ]
+    }
+}
 
+/// Rotating capsule trail (blurred + crisp layers). Same caching
+/// pattern as `BlockedGlyphLayer` — stops rebuild only when `headColor`
+/// changes, not per frame.
+private struct BlockedTrailLayer: View {
+    let rotationDegrees: Double
+    let headColor: Color
+
+    @State private var stops: [Gradient.Stop] = []
+
+    var body: some View {
+        let gradient = Gradient(stops: stops.isEmpty ? Self.makeStops(for: headColor) : stops)
         ZStack {
             Capsule()
                 .stroke(
                     AngularGradient(
-                        gradient: Gradient(stops: stops),
+                        gradient: gradient,
                         center: .center,
                         angle: .degrees(rotationDegrees)
                     ),
@@ -277,7 +301,7 @@ private struct BlockedGlowView: View {
             Capsule()
                 .stroke(
                     AngularGradient(
-                        gradient: Gradient(stops: stops),
+                        gradient: gradient,
                         center: .center,
                         angle: .degrees(rotationDegrees)
                     ),
@@ -287,5 +311,20 @@ private struct BlockedGlowView: View {
         }
         .blendMode(.plusLighter)
         .allowsHitTesting(false)
+        .onAppear { stops = Self.makeStops(for: headColor) }
+        .onChange(of: headColor) { _, newColor in
+            stops = Self.makeStops(for: newColor)
+        }
+    }
+
+    private static func makeStops(for headColor: Color) -> [Gradient.Stop] {
+        [
+            .init(color: .clear, location: 0.00),
+            .init(color: .clear, location: 0.50),
+            .init(color: headColor.opacity(0.25), location: 0.68),
+            .init(color: headColor.opacity(0.70), location: 0.82),
+            .init(color: headColor, location: 0.94),
+            .init(color: Color.white, location: 1.00)
+        ]
     }
 }

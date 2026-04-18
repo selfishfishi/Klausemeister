@@ -90,25 +90,46 @@ extension GitClient: DependencyKey {
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
 
+            // Shared state serialized on `collector`. `continuation` is
+            // stashed so onCancel can resume it if the drain never runs.
+            let collector = DispatchQueue(label: "com.klausemeister.git-pipe")
+            final class ShellState: @unchecked Sendable {
+                var released = false
+                var resumed = false
+                var continuation: CheckedContinuation<String, Error>?
+            }
+            let state = ShellState()
+
+            @Sendable func releaseLimiterOnce() {
+                dispatchPrecondition(condition: .onQueue(collector))
+                guard !state.released else { return }
+                state.released = true
+                Task { await subprocessLimiter.release() }
+            }
+
+            @Sendable func clearHandlers() {
+                dispatchPrecondition(condition: .onQueue(collector))
+                stdoutPipe.fileHandleForReading.readabilityHandler = nil
+                stderrPipe.fileHandleForReading.readabilityHandler = nil
+            }
+
             return try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation { continuation in
-                    // Serialize data accumulation and the finish check on a
-                    // lightweight serial queue — no thread is parked here.
-                    let collector = DispatchQueue(label: "com.klausemeister.git-pipe")
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
                     var outputData = Data()
                     var errorData = Data()
                     var stdoutDone = false
                     var stderrDone = false
                     var processDone = false
-                    var resumed = false
+
+                    collector.async { state.continuation = continuation }
 
                     func tryFinish() {
                         dispatchPrecondition(condition: .onQueue(collector))
-                        guard stdoutDone, stderrDone, processDone, !resumed else { return }
-                        resumed = true
-                        stdoutPipe.fileHandleForReading.readabilityHandler = nil
-                        stderrPipe.fileHandleForReading.readabilityHandler = nil
-                        Task { await subprocessLimiter.release() }
+                        guard stdoutDone, stderrDone, processDone, !state.resumed else { return }
+                        state.resumed = true
+                        state.continuation = nil
+                        clearHandlers()
+                        releaseLimiterOnce()
 
                         let output = String(data: outputData, encoding: .utf8)?
                             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -133,7 +154,6 @@ extension GitClient: DependencyKey {
                         continuation.resume(returning: output)
                     }
 
-                    // Drain stdout as data arrives — no thread blocked.
                     stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
                         let data = handle.availableData
                         collector.async {
@@ -147,7 +167,6 @@ extension GitClient: DependencyKey {
                         }
                     }
 
-                    // Drain stderr as data arrives.
                     stderrPipe.fileHandleForReading.readabilityHandler = { handle in
                         let data = handle.availableData
                         collector.async {
@@ -171,16 +190,32 @@ extension GitClient: DependencyKey {
                     do {
                         try process.run()
                     } catch {
+                        // run() failed: no callbacks fire, so clean up here.
                         collector.async {
-                            guard !resumed else { return }
-                            resumed = true
-                            Task { await subprocessLimiter.release() }
+                            guard !state.resumed else { return }
+                            state.resumed = true
+                            state.continuation = nil
+                            clearHandlers()
+                            releaseLimiterOnce()
                             continuation.resume(throwing: error)
                         }
                     }
                 }
             } onCancel: {
                 if process.isRunning { process.terminate() }
+                // Force-finish if the drain never completes, so the Pipe,
+                // DispatchQueue, Data buffers, and limiter slot don't leak.
+                collector.async {
+                    guard !state.resumed, let continuation = state.continuation else {
+                        releaseLimiterOnce()
+                        return
+                    }
+                    state.resumed = true
+                    state.continuation = nil
+                    clearHandlers()
+                    releaseLimiterOnce()
+                    continuation.resume(throwing: CancellationError())
+                }
             }
         }
 
@@ -420,42 +455,7 @@ extension GitClient: DependencyKey {
     )
 }
 
-// MARK: - Porcelain parser
-
-nonisolated private func parseWorktreeListPorcelain(_ output: String) -> [GitClient.WorktreeListEntry] {
-    var entries: [GitClient.WorktreeListEntry] = []
-    let blocks = output.components(separatedBy: "\n\n")
-    var isFirst = true
-    for block in blocks {
-        let lines = block.split(separator: "\n").map(String.init)
-        var path: String?
-        var branch: String?
-        var isLocked = false
-        var isPrunable = false
-        for line in lines {
-            if line.hasPrefix("worktree ") {
-                path = String(line.dropFirst("worktree ".count))
-            } else if line.hasPrefix("branch refs/heads/") {
-                branch = String(line.dropFirst("branch refs/heads/".count))
-            } else if line == "locked" || line.hasPrefix("locked ") {
-                isLocked = true
-            } else if line == "prunable" || line.hasPrefix("prunable ") {
-                isPrunable = true
-            }
-        }
-        if let path {
-            entries.append(GitClient.WorktreeListEntry(
-                path: path,
-                branch: branch,
-                isMain: isFirst,
-                isLocked: isLocked,
-                isPrunable: isPrunable
-            ))
-            isFirst = false
-        }
-    }
-    return entries
-}
+// Porcelain parser lives in GitPorcelainParser.swift.
 
 extension DependencyValues {
     var gitClient: GitClient {

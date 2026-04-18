@@ -551,11 +551,15 @@ struct MeisterFeature {
         from issues: [LinearIssue],
         mappings: StateMappingTable = [:]
     ) -> IdentifiedArrayOf<KanbanColumn> {
-        var bucketed: [MeisterState: [LinearIssue]] = [:]
+        // Pre-populate every stage key so the first `append` per bucket
+        // doesn't trigger a COW copy from the `[default: []]` fast path.
+        var bucketed: [MeisterState: [LinearIssue]] = Dictionary(
+            uniqueKeysWithValues: MeisterState.allCases.map { ($0, [LinearIssue]()) }
+        )
         for issue in issues {
             let mapped = mappings[issue.teamId]?[issue.statusId]
             guard let state = mapped ?? issue.meisterState else { continue }
-            bucketed[state, default: []].append(issue)
+            bucketed[state]?.append(issue)
         }
         let columns = MeisterState.allCases.map { state in
             KanbanColumn(id: state, issues: bucketed[state] ?? [])
@@ -728,9 +732,18 @@ extension MeisterFeature.State {
 
     /// All distinct project names across currently loaded issues.
     /// Uses `""` for issues with no project (displayed as "(No project)" in UI).
+    /// Single-pass dedup with `Set` build inline (avoids the extra
+    /// `flatMap` + `map` + `Array(Set(...))` allocation chain that showed
+    /// up in profiling as hot on every `MeisterView` render).
     var allProjectNames: [String] {
-        let names = columns.flatMap(\.issues).map { $0.projectName ?? LinearIssue.noProjectName }
-        return Array(Set(names)).sorted()
+        var seen: Set<String> = []
+        seen.reserveCapacity(32)
+        for column in columns {
+            for issue in column.issues {
+                seen.insert(issue.projectName ?? LinearIssue.noProjectName)
+            }
+        }
+        return seen.sorted()
     }
 
     /// Teams keyed by id for the kanban team-badge lookup. Empty when

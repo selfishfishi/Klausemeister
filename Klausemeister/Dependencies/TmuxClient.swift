@@ -75,22 +75,37 @@ extension TmuxClient: DependencyKey {
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
 
+            // Shared state serialized on `collector`. `continuation` is
+            // stashed so onCancel can resume it if the drain never runs.
+            let collector = DispatchQueue(label: "com.klausemeister.tmux-pipe")
+            final class ShellState: @unchecked Sendable {
+                var resumed = false
+                var continuation: CheckedContinuation<String, Error>?
+            }
+            let state = ShellState()
+
+            @Sendable func clearHandlers() {
+                dispatchPrecondition(condition: .onQueue(collector))
+                stdoutPipe.fileHandleForReading.readabilityHandler = nil
+                stderrPipe.fileHandleForReading.readabilityHandler = nil
+            }
+
             return try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation { continuation in
-                    let collector = DispatchQueue(label: "com.klausemeister.tmux-pipe")
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
                     var outputData = Data()
                     var errorData = Data()
                     var stdoutDone = false
                     var stderrDone = false
                     var processDone = false
-                    var resumed = false
+
+                    collector.async { state.continuation = continuation }
 
                     func tryFinish() {
                         dispatchPrecondition(condition: .onQueue(collector))
-                        guard stdoutDone, stderrDone, processDone, !resumed else { return }
-                        resumed = true
-                        stdoutPipe.fileHandleForReading.readabilityHandler = nil
-                        stderrPipe.fileHandleForReading.readabilityHandler = nil
+                        guard stdoutDone, stderrDone, processDone, !state.resumed else { return }
+                        state.resumed = true
+                        state.continuation = nil
+                        clearHandlers()
 
                         let output = String(data: outputData, encoding: .utf8)?
                             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -149,15 +164,27 @@ extension TmuxClient: DependencyKey {
                     do {
                         try process.run()
                     } catch {
+                        // run() failed: no callbacks fire, so clean up here.
                         collector.async {
-                            guard !resumed else { return }
-                            resumed = true
+                            guard !state.resumed else { return }
+                            state.resumed = true
+                            state.continuation = nil
+                            clearHandlers()
                             continuation.resume(throwing: error)
                         }
                     }
                 }
             } onCancel: {
                 if process.isRunning { process.terminate() }
+                // Force-finish if the drain never completes, so the Pipe,
+                // DispatchQueue, and Data buffers don't leak.
+                collector.async {
+                    guard !state.resumed, let continuation = state.continuation else { return }
+                    state.resumed = true
+                    state.continuation = nil
+                    clearHandlers()
+                    continuation.resume(throwing: CancellationError())
+                }
             }
         }
 

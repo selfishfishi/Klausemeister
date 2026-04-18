@@ -229,6 +229,9 @@ struct SwimlaneRowView: View {
 struct SwimlaneWorkingCometOverlay: View {
     let cycleColors: [Color]
     let phaseOffset: Double
+    /// When `true`, the 30fps timeline stops ticking entirely so the
+    /// comet doesn't burn CPU on rows that aren't currently working.
+    var paused: Bool = false
     var cornerRadius: CGFloat = swimlaneGlassCornerRadius
 
     @Environment(\.swimlaneAnimating) private var isAnimating
@@ -249,7 +252,11 @@ struct SwimlaneWorkingCometOverlay: View {
             let rotationDegrees = (elapsed / rotationPeriod)
                 .truncatingRemainder(dividingBy: 1) * 360
             let headColor = interpolatedColor(at: elapsed)
-            rotatingTrail(rotationDegrees: rotationDegrees, headColor: headColor)
+            CometTrailLayer(
+                rotationDegrees: rotationDegrees,
+                headColor: headColor,
+                cornerRadius: cornerRadius
+            )
         }
     }
 
@@ -268,23 +275,26 @@ struct SwimlaneWorkingCometOverlay: View {
         let fraction = progress - Double(index)
         return cycleColors[index].mix(with: cycleColors[nextIndex], by: fraction)
     }
+}
 
-    @ViewBuilder
-    private func rotatingTrail(rotationDegrees: Double, headColor: Color) -> some View {
-        let stops: [Gradient.Stop] = [
-            .init(color: .clear, location: 0.00),
-            .init(color: .clear, location: 0.50),
-            .init(color: headColor.opacity(0.25), location: 0.68),
-            .init(color: headColor.opacity(0.70), location: 0.82),
-            .init(color: headColor, location: 0.94),
-            .init(color: Color.white, location: 1.00)
-        ]
+/// Rotating-trail layer for the comet overlay. Builds the
+/// `[Gradient.Stop]` array once per `headColor` change (roughly every
+/// ~6s as the palette interpolates) instead of per 30fps frame. Cached
+/// via `@State` + `.onChange(of: headColor)`.
+private struct CometTrailLayer: View {
+    let rotationDegrees: Double
+    let headColor: Color
+    let cornerRadius: CGFloat
 
+    @State private var stops: [Gradient.Stop] = []
+
+    var body: some View {
+        let gradient = Gradient(stops: stops.isEmpty ? Self.makeStops(for: headColor) : stops)
         ZStack {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .stroke(
                     AngularGradient(
-                        gradient: Gradient(stops: stops),
+                        gradient: gradient,
                         center: .center,
                         angle: .degrees(rotationDegrees)
                     ),
@@ -295,7 +305,7 @@ struct SwimlaneWorkingCometOverlay: View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .stroke(
                     AngularGradient(
-                        gradient: Gradient(stops: stops),
+                        gradient: gradient,
                         center: .center,
                         angle: .degrees(rotationDegrees)
                     ),
@@ -305,6 +315,21 @@ struct SwimlaneWorkingCometOverlay: View {
         }
         .blendMode(.plusLighter)
         .allowsHitTesting(false)
+        .onAppear { stops = Self.makeStops(for: headColor) }
+        .onChange(of: headColor) { _, newColor in
+            stops = Self.makeStops(for: newColor)
+        }
+    }
+
+    private static func makeStops(for headColor: Color) -> [Gradient.Stop] {
+        [
+            .init(color: .clear, location: 0.00),
+            .init(color: .clear, location: 0.50),
+            .init(color: headColor.opacity(0.25), location: 0.68),
+            .init(color: headColor.opacity(0.70), location: 0.82),
+            .init(color: headColor, location: 0.94),
+            .init(color: Color.white, location: 1.00)
+        ]
     }
 }
 

@@ -38,6 +38,14 @@ enum MeisterState: String, CaseIterable, Hashable, Identifiable {
 // MARK: - Default Mapping Heuristic
 
 extension MeisterState {
+    /// Precomputed lookup table mapping `displayName.lowercased()` to the canonical state.
+    /// Avoids per-call `String.lowercased()` allocations in `defaultMapping`, which runs
+    /// hundreds of times per sync.
+    nonisolated private static let byDisplayNameLower: [String: MeisterState] = Dictionary(uniqueKeysWithValues: allCases.map { (
+        $0.displayName.lowercased(),
+        $0
+    ) })
+
     /// Computes the default MeisterState for a Linear workflow state using
     /// the two-tier heuristic: name match first, then type fallback.
     ///
@@ -50,8 +58,7 @@ extension MeisterState {
     /// Core heuristic shared between seeding and the `LinearIssue.meisterState`
     /// computed property.
     nonisolated static func defaultMapping(name: String, statusType: String) -> MeisterState? {
-        let needle = name.lowercased()
-        for state in MeisterState.allCases where state.displayName.lowercased() == needle {
+        if let state = byDisplayNameLower[name.lowercased()] {
             return state
         }
         switch statusType {
