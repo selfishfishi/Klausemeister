@@ -84,6 +84,14 @@ echo '<input JSON>' | python3 klause-workflow/scripts/schedule.py
 
 The script path is relative to the repo root. Parse the JSON output.
 
+The algorithm distributes tickets across worktrees in **topological waves**
+(see [KLA-201](https://linear.app/selfishfish/issue/KLA-201/schedule-algorithm-topo-wave-parallel-distribution-cross-worktree-deps-allowed))
+— cross-worktree dependencies are allowed, and each item in the plan carries
+its `level: int` (wave index, 0 = no in-set blockers). Runtime safety is
+provided by [KLA-200](https://linear.app/selfishfish/issue/KLA-200/schedule-dependency-aware-getnextitem-skip-blocked-inbox-items):
+`getNextItem` skips inbox items whose blockers aren't done yet, so a meister
+never claims an item whose dependency is still in flight on a different worktree.
+
 ## Step 4: Present the plan
 
 If there are **cycles**, report them prominently:

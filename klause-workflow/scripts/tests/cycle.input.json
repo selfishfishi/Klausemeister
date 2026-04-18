@@ -1,0 +1,9 @@
+{
+  "tickets": [
+    { "id": "id-a", "identifier": "KLA-A", "title": "A needs B", "weight": 1, "blockedBy": ["id-b"] },
+    { "id": "id-b", "identifier": "KLA-B", "title": "B needs A", "weight": 1, "blockedBy": ["id-a"] }
+  ],
+  "worktrees": [
+    { "worktreeId": "wt-alpha", "name": "alpha", "currentLoad": 0 }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "plan": [],
+  "cycles": [
+    ["KLA-A", "KLA-B"]
+  ],
+  "unscheduled": [
+    { "id": "id-a", "identifier": "KLA-A", "title": "A needs B", "reason": "part of dependency cycle" },
+    { "id": "id-b", "identifier": "KLA-B", "title": "B needs A", "reason": "part of dependency cycle" }
+  ]
+}
