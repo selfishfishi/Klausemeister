@@ -66,6 +66,38 @@ struct WorktreeClient {
         let inserted: [WorktreesLoadedWorktree]
         let deletedWorktreeIds: [String]
     }
+
+    // MARK: - Saved schedules (KLA-195)
+
+    //
+    // Foundation for the saved-schedules feature. These still return raw
+    // `*Record` types — KLA-60 (migrate WorktreeClient off records) covers
+    // the broader refactor and is tracked separately so this ticket stays
+    // small. Domain-type callers (KLA-197 sidebar pills, KLA-198 gantt
+    // overlay) map `*Record → Schedule` / `ScheduleItem` at the reducer
+    // boundary.
+
+    var fetchSchedules: @Sendable (_ repoId: String) async throws -> [ScheduleRecord]
+    var fetchSchedule: @Sendable (_ scheduleId: String) async throws -> ScheduleRecord?
+    var fetchScheduleItems: @Sendable (_ scheduleId: String) async throws -> [ScheduleItemRecord]
+    /// Single-transaction write: replaces any existing items for the same
+    /// `scheduleId` and upserts the schedule row. Keeps the on-disk view
+    /// consistent — a partial write would leave orphans behind.
+    var saveSchedule: @Sendable (
+        _ schedule: ScheduleRecord,
+        _ items: [ScheduleItemRecord]
+    ) async throws -> Void
+    var deleteSchedule: @Sendable (_ scheduleId: String) async throws -> Void
+    var updateScheduleItemStatus: @Sendable (
+        _ scheduleItemId: String,
+        _ status: String
+    ) async throws -> Void
+    /// Stamps `runAt` on the schedule row. Called by `runSchedule` after
+    /// the items have been enqueued so the UI knows the schedule has fired.
+    var markScheduleRun: @Sendable (
+        _ scheduleId: String,
+        _ runAt: String
+    ) async throws -> Void
 }
 
 // MARK: - Live & Test values
@@ -349,6 +381,72 @@ extension WorktreeClient: DependencyKey {
 
                     return SyncResult(inserted: inserted, deletedWorktreeIds: deletedIds)
                 }
+            },
+
+            fetchSchedules: { repoId in
+                try await dbQueue.read { db in
+                    try ScheduleRecord
+                        .filter(Column("repoId") == repoId)
+                        .order(Column("createdAt").desc)
+                        .fetchAll(db)
+                }
+            },
+
+            fetchSchedule: { scheduleId in
+                try await dbQueue.read { db in
+                    try ScheduleRecord.fetchOne(db, key: scheduleId)
+                }
+            },
+
+            fetchScheduleItems: { scheduleId in
+                try await dbQueue.read { db in
+                    try ScheduleItemRecord
+                        .filter(Column("scheduleId") == scheduleId)
+                        .order(Column("worktreeId"), Column("position").asc)
+                        .fetchAll(db)
+                }
+            },
+
+            saveSchedule: { schedule, items in
+                try await dbQueue.write { db in
+                    // Single transaction: upsert the schedule row, then
+                    // replace its items wholesale. Items are replaced, not
+                    // merged, because a schedule's composition is considered
+                    // atomic — callers regenerate the full plan on each save.
+                    try schedule.save(db)
+                    try db.execute(
+                        sql: "DELETE FROM schedule_items WHERE scheduleId = ?",
+                        arguments: [schedule.scheduleId]
+                    )
+                    for item in items {
+                        try item.insert(db)
+                    }
+                }
+            },
+
+            deleteSchedule: { scheduleId in
+                try await dbQueue.write { db in
+                    _ = try ScheduleRecord.deleteOne(db, key: scheduleId)
+                    // FK ON DELETE CASCADE handles `schedule_items`.
+                }
+            },
+
+            updateScheduleItemStatus: { scheduleItemId, status in
+                try await dbQueue.write { db in
+                    try db.execute(
+                        sql: "UPDATE schedule_items SET status = ? WHERE scheduleItemId = ?",
+                        arguments: [status, scheduleItemId]
+                    )
+                }
+            },
+
+            markScheduleRun: { scheduleId, runAt in
+                try await dbQueue.write { db in
+                    try db.execute(
+                        sql: "UPDATE schedules SET runAt = ? WHERE scheduleId = ?",
+                        arguments: [runAt, scheduleId]
+                    )
+                }
             }
         )
     }()
@@ -373,7 +471,14 @@ extension WorktreeClient: DependencyKey {
         moveToProcessingByIssueId: unimplemented("WorktreeClient.moveToProcessingByIssueId"),
         moveToOutboxByIssueId: unimplemented("WorktreeClient.moveToOutboxByIssueId"),
         removeFromQueueByIssueId: unimplemented("WorktreeClient.removeFromQueueByIssueId"),
-        syncWorktreesForRepo: unimplemented("WorktreeClient.syncWorktreesForRepo")
+        syncWorktreesForRepo: unimplemented("WorktreeClient.syncWorktreesForRepo"),
+        fetchSchedules: unimplemented("WorktreeClient.fetchSchedules"),
+        fetchSchedule: unimplemented("WorktreeClient.fetchSchedule"),
+        fetchScheduleItems: unimplemented("WorktreeClient.fetchScheduleItems"),
+        saveSchedule: unimplemented("WorktreeClient.saveSchedule"),
+        deleteSchedule: unimplemented("WorktreeClient.deleteSchedule"),
+        updateScheduleItemStatus: unimplemented("WorktreeClient.updateScheduleItemStatus"),
+        markScheduleRun: unimplemented("WorktreeClient.markScheduleRun")
     )
 }
 

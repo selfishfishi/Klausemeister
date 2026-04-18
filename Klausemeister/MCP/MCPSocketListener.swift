@@ -481,6 +481,45 @@ extension MCPSocketListener {
                     targetWorktreeId: targetWorktreeId,
                     eventContinuation: eventContinuation
                 )
+            case "saveSchedule":
+                do {
+                    let input = try decodeArguments(
+                        ToolHandlers.SaveScheduleInput.self,
+                        from: arguments
+                    )
+                    result = try await ToolHandlers.saveSchedule(
+                        input: input,
+                        eventContinuation: eventContinuation
+                    )
+                } catch {
+                    return errorResult("saveSchedule: invalid input — \(error.localizedDescription)")
+                }
+            case "listSchedules":
+                guard let repoId = arguments?["repoId"]?.stringValue else {
+                    return errorResult("listSchedules requires repoId")
+                }
+                result = try await ToolHandlers.listSchedules(repoId: repoId)
+            case "getSchedule":
+                guard let scheduleId = arguments?["scheduleId"]?.stringValue else {
+                    return errorResult("getSchedule requires scheduleId")
+                }
+                result = try await ToolHandlers.getSchedule(scheduleId: scheduleId)
+            case "deleteSchedule":
+                guard let scheduleId = arguments?["scheduleId"]?.stringValue else {
+                    return errorResult("deleteSchedule requires scheduleId")
+                }
+                result = try await ToolHandlers.deleteSchedule(
+                    scheduleId: scheduleId,
+                    eventContinuation: eventContinuation
+                )
+            case "runSchedule":
+                guard let scheduleId = arguments?["scheduleId"]?.stringValue else {
+                    return errorResult("runSchedule requires scheduleId")
+                }
+                result = try await ToolHandlers.runSchedule(
+                    scheduleId: scheduleId,
+                    eventContinuation: eventContinuation
+                )
             default:
                 return errorResult("Unknown tool: \(name)")
             }
@@ -498,6 +537,20 @@ extension MCPSocketListener {
 
     fileprivate static func errorResult(_ message: String) -> CallTool.Result {
         CallTool.Result(content: [.text(text: message, annotations: nil, _meta: nil)], isError: true)
+    }
+
+    /// Decode a typed input struct from the MCP `[String: Value]` argument
+    /// dictionary by round-tripping through JSON. Used for tools like
+    /// `saveSchedule` whose input has a nested array; the `.stringValue` /
+    /// `.intValue` accessors on individual `Value` entries aren't ergonomic
+    /// for deep shapes.
+    fileprivate static func decodeArguments<T: Decodable>(
+        _: T.Type,
+        from arguments: [String: Value]?
+    ) throws -> T {
+        let value: Value = arguments.map(Value.object) ?? .object([:])
+        let data = try JSONEncoder().encode(value)
+        return try JSONDecoder().decode(T.self, from: data)
     }
 }
 
@@ -640,6 +693,121 @@ private enum ToolCatalog {
                     ])
                 ]),
                 "required": .array([.string("command")]),
+                "additionalProperties": .bool(false)
+            ])
+        ),
+
+        // MARK: - Saved schedules (KLA-195)
+
+        Tool(
+            name: "saveSchedule",
+            // swiftlint:disable:next line_length
+            description: "Persist a named schedule: a set of issues assigned to worktrees with per-worktree ordering. The schedule is saved in the 'planned' state — no queue mutation happens until runSchedule fires. Returns the new scheduleId.",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "repoId": .object([
+                        "type": .string("string"),
+                        "description": .string("Repository this schedule belongs to")
+                    ]),
+                    "name": .object([
+                        "type": .string("string"),
+                        "description": .string("Human-readable schedule name (shown in sidebar pill and gantt overlay)")
+                    ]),
+                    "linearProjectId": .object([
+                        "type": .string("string"),
+                        "description": .string("Optional Linear project id the schedule was derived from")
+                    ]),
+                    "items": .object([
+                        "type": .string("array"),
+                        "description": .string("Scheduled items: issues assigned to worktrees with ordering + dependency metadata"),
+                        "items": .object([
+                            "type": .string("object"),
+                            "properties": .object([
+                                "worktreeId": .object(["type": .string("string")]),
+                                "issueLinearId": .object(["type": .string("string")]),
+                                "issueIdentifier": .object(["type": .string("string")]),
+                                "issueTitle": .object(["type": .string("string")]),
+                                "position": .object(["type": .string("integer")]),
+                                "weight": .object(["type": .string("integer")]),
+                                "blockedByIssueLinearIds": .object([
+                                    "type": .string("array"),
+                                    "items": .object(["type": .string("string")])
+                                ])
+                            ]),
+                            "required": .array([
+                                .string("worktreeId"), .string("issueLinearId"),
+                                .string("issueIdentifier"), .string("issueTitle"),
+                                .string("position"), .string("weight"),
+                                .string("blockedByIssueLinearIds")
+                            ])
+                        ])
+                    ])
+                ]),
+                "required": .array([.string("repoId"), .string("name"), .string("items")]),
+                "additionalProperties": .bool(false)
+            ])
+        ),
+        Tool(
+            name: "listSchedules",
+            // swiftlint:disable:next line_length
+            description: "Return a summary of every schedule for a repo, newest-first. Each entry has scheduleId, name, createdAt, runAt, totalItems, doneItems. Use getSchedule for the full item list.",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "repoId": .object([
+                        "type": .string("string"),
+                        "description": .string("Repository id")
+                    ])
+                ]),
+                "required": .array([.string("repoId")]),
+                "additionalProperties": .bool(false)
+            ])
+        ),
+        Tool(
+            name: "getSchedule",
+            description: "Return a schedule by id, including every item with its worktree, position, weight, block list, and status.",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "scheduleId": .object([
+                        "type": .string("string"),
+                        "description": .string("Schedule UUID returned by saveSchedule / listSchedules")
+                    ])
+                ]),
+                "required": .array([.string("scheduleId")]),
+                "additionalProperties": .bool(false)
+            ])
+        ),
+        Tool(
+            name: "deleteSchedule",
+            // swiftlint:disable:next line_length
+            description: "Delete a schedule and all its items. Does not affect worktree queue items that were already enqueued from a prior runSchedule — those remain in their worktrees.",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "scheduleId": .object([
+                        "type": .string("string"),
+                        "description": .string("Schedule UUID to delete")
+                    ])
+                ]),
+                "required": .array([.string("scheduleId")]),
+                "additionalProperties": .bool(false)
+            ])
+        ),
+        Tool(
+            name: "runSchedule",
+            // swiftlint:disable:next line_length
+            description: "Enqueue every item in plan order into its assigned worktree inbox, flip each item's status to queued, and stamp runAt on the schedule. Per-item failures (e.g. worktree deleted between save and run) surface in the results array without aborting the run.",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "scheduleId": .object([
+                        "type": .string("string"),
+                        "description": .string("Schedule UUID to run")
+                    ])
+                ]),
+                "required": .array([.string("scheduleId")]),
                 "additionalProperties": .bool(false)
             ])
         )

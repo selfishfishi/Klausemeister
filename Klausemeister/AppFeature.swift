@@ -425,6 +425,13 @@ struct AppFeature {
                         ))),
                         debugEffect
                     )
+                case .scheduleSaved, .scheduleDeleted, .scheduleItemStatusChanged, .scheduleRun:
+                    // KLA-195 lays down the events; the consumers (sidebar
+                    // pills KLA-197, live-progress KLA-199, gantt overlay
+                    // KLA-198) will wire them into `WorktreeFeature` in
+                    // follow-up tickets. For now, the event still lands in
+                    // the debug panel so we can observe it end-to-end.
+                    return debugEffect
                 }
             }
         }
