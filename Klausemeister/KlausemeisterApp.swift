@@ -12,12 +12,15 @@ struct KlausemeisterApp: App {
         let surfaceStore = SurfaceStore()
         self.surfaceStore = surfaceStore
 
-        let initialTheme = AppTheme.resolve(
+        // Rewrite any legacy `selectedTheme` value to the current raw so
+        // `@AppStorage` and future reads match the new theme families.
+        // The actual initial `ghostty` rebuild is primed by
+        // `TerminalContainerView.task` via `.initialThemeSeeded(_:)`, which
+        // goes through `@Dependency(\.ghosttyApp)` instead of the singleton.
+        let resolved = AppTheme.resolve(
             stored: UserDefaults.standard.string(forKey: "selectedTheme")
         )
-        // Rewrite legacy value so @AppStorage and future reads match.
-        UserDefaults.standard.set(initialTheme.rawValue, forKey: "selectedTheme")
-        GhosttyApp.shared.rebuild(theme: initialTheme)
+        UserDefaults.standard.set(resolved.rawValue, forKey: "selectedTheme")
 
         store = Store(initialState: AppFeature.State()) {
             AppFeature()

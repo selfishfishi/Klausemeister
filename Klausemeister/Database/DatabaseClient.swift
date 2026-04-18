@@ -3,6 +3,29 @@ import Dependencies
 import Foundation
 import GRDB
 
+/// Persistence wrapper for every table this app owns except repositories /
+/// worktrees / queue (those live in `WorktreeClient`) and team↔state
+/// mappings (which live in `StateMappingClient`). Holds the single
+/// `DatabaseQueue` shared with every other persistence client.
+///
+/// Closures fall into four concerns:
+///
+/// - **Imported issues** — Linear issues cached locally for the kanban.
+///   `batchSaveImportedIssues` is used by sync; `updateIssueFromLinear`
+///   and `updateIssueStatus` by live edits.
+/// - **Workflow states / teams** — Linear metadata that backs the per-
+///   team state mapping editor and the team filter UI.
+/// - **Command history** — powers the command palette's "recent".
+/// - **Hidden projects / orphaned issues** — persistent board filters
+///   and sync bookkeeping.
+///
+/// `liveValue` performs the schema migration at first access via
+/// `DatabaseMigrations.registerAll`; a failure to migrate `fatalError`s
+/// because the app cannot start with a broken database.
+///
+/// KLA-60 note: the public closure API still returns raw `*Record`
+/// types. Reducers convert to domain types at the effect boundary;
+/// collapsing that conversion into the live value is a follow-up.
 struct DatabaseClient {
     var getDbQueue: @Sendable () -> DatabaseQueue
     var fetchImportedIssues: @Sendable () async throws -> [ImportedIssueRecord]

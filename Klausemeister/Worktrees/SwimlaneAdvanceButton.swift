@@ -79,17 +79,11 @@ struct SwimlaneAdvanceButton: View {
         }
     }
 
-    /// The command the meister will run on `/klause-next` given the worktree's
-    /// current queue state. Prefers the processing item; falls back to the
-    /// front inbox item. Nil when both are empty.
+    /// The command the meister will run on `/klause-next`. Delegates to
+    /// `Worktree.nextWorkflowCommand` so workflow logic stays in the
+    /// domain layer and the view remains a pure presentation component.
     private var nextCommand: WorkflowCommand? {
-        if let processing = worktree.processing, let kanban = processing.meisterState {
-            return ProductState(kanban: kanban, queue: .processing).nextCommand
-        }
-        if let front = worktree.inbox.first, let kanban = front.meisterState {
-            return ProductState(kanban: kanban, queue: .inbox).nextCommand
-        }
-        return nil
+        worktree.nextWorkflowCommand
     }
 
     /// Whether the Advance button should be enabled, plus a contextual

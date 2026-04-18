@@ -128,12 +128,13 @@ extension MeisterClient {
 }
 
 extension MeisterClient: DependencyKey {
-    /// No-op stub. The real client is injected via `withDependencies` at
-    /// `KlausemeisterApp.init` using `.live(tmux:)`, mirroring how
-    /// `SurfaceManager` is composed.
+    /// The real instance is built via `.live(tmux:)` and injected through
+    /// `withDependencies` at `Store` creation. Accessing the default means
+    /// the override never ran — fail loudly via `unimplemented(...)` so
+    /// the bug surfaces instead of silently no-oping.
     nonisolated static let liveValue = MeisterClient(
-        ensureRunning: { _, _, _ in },
-        teardown: { _ in }
+        ensureRunning: unimplemented("MeisterClient.ensureRunning"),
+        teardown: unimplemented("MeisterClient.teardown")
     )
 
     nonisolated static let testValue = MeisterClient(

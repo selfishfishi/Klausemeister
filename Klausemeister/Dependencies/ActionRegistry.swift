@@ -16,7 +16,10 @@ extension ActionRegistry: DependencyKey {
         }
     )
     nonisolated static let testValue = ActionRegistry(
-        resolvedBindings: { [:] }
+        resolvedBindings: unimplemented(
+            "ActionRegistry.resolvedBindings",
+            placeholder: [:]
+        )
     )
 }
 

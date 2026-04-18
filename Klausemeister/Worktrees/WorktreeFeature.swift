@@ -9,6 +9,54 @@ struct Repository: Equatable, Identifiable {
     var name: String
     var path: String
     var sortOrder: Int
+
+    nonisolated init(id: String, name: String, path: String, sortOrder: Int) {
+        self.id = id
+        self.name = name
+        self.path = path
+        self.sortOrder = sortOrder
+    }
+
+    nonisolated init(from record: RepositoryRecord) {
+        self.init(id: record.repoId, name: record.name, path: record.path, sortOrder: record.sortOrder)
+    }
+}
+
+/// Persistence-plane snapshot of a worktree: the columns GRDB knows
+/// about. Runtime fields (`tmuxSessionStatus`, `meisterStatus`, git
+/// stats, etc.) are filled in by `WorktreeFeature` when it merges the
+/// snapshot with previously-loaded state. Carries the load across the
+/// dependency boundary without dragging `WorktreeRecord` above it.
+struct WorktreesLoadedWorktree: Equatable, Identifiable {
+    let id: String
+    let name: String
+    let sortOrder: Int
+    let gitWorktreePath: String
+    let repoId: String?
+
+    nonisolated init(
+        id: String,
+        name: String,
+        sortOrder: Int,
+        gitWorktreePath: String,
+        repoId: String?
+    ) {
+        self.id = id
+        self.name = name
+        self.sortOrder = sortOrder
+        self.gitWorktreePath = gitWorktreePath
+        self.repoId = repoId
+    }
+
+    nonisolated init(from record: WorktreeRecord) {
+        self.init(
+            id: record.worktreeId,
+            name: record.name,
+            sortOrder: record.sortOrder,
+            gitWorktreePath: record.gitWorktreePath,
+            repoId: record.repoId
+        )
+    }
 }
 
 struct GitStats: Equatable {
@@ -130,10 +178,9 @@ struct WorktreeFeature {
         var isCreatingWorktree: Bool = false
         var selectedWorktreeId: String?
         /// Whether the board overlay (inbox/processing/outbox columns) is
-        /// showing on top of the terminal. Persisted to UserDefaults.
-        var showBoardOverlay: Bool = UserDefaults.standard.bool(
-            forKey: WorktreeFeature.showBoardOverlayUserDefaultsKey
-        )
+        /// showing on top of the terminal. Persisted via
+        /// `@Dependency(\.userDefaultsClient)`; hydrated on `.onAppear`.
+        var showBoardOverlay: Bool = false
 
         /// Hello events that arrived before worktrees were loaded from DB.
         /// Replayed once `worktreesLoaded` populates the worktree array.
@@ -173,13 +220,13 @@ struct WorktreeFeature {
         /// cross-feature move stays in one place.
         case moveIssueStatusRequested(issueId: String, target: MeisterState)
         case worktreesLoaded(
-            repositories: [RepositoryRecord],
-            worktrees: [WorktreeRecord],
-            queueItems: [WorktreeQueueItemRecord],
-            issues: [ImportedIssueRecord]
+            repositories: [Repository],
+            worktrees: [WorktreesLoadedWorktree],
+            queueItems: [WorktreeQueueItem],
+            issues: [LinearIssue]
         )
         case createWorktreeTapped(repoId: String, name: String)
-        case worktreeCreated(TaskResult<WorktreeRecord>)
+        case worktreeCreated(TaskResult<WorktreesLoadedWorktree>)
         case createSheetShown(prefilledRepoId: String?)
         case createSheetDismissed
         case createSheetRepoChanged(repoId: String)
@@ -195,6 +242,7 @@ struct WorktreeFeature {
         case removeWorktreeConfirmed(worktreeId: String)
         case worktreeSelected(String?)
         case boardOverlayToggled
+        case boardOverlayHydrated(Bool)
         case repoCollapseToggled(repoId: String)
         case renameWorktreeTapped(worktreeId: String, newName: String)
         case worktreeRenamed(worktreeId: String, newName: String)
@@ -228,8 +276,9 @@ struct WorktreeFeature {
         case refreshGitStats
         case refreshPRInfo
         case refreshWorktreeInfo
+        case addRepoFolderTapped
         case addRepoFolderSelected(URL)
-        case repoAdded(TaskResult<RepositoryRecord>)
+        case repoAdded(TaskResult<Repository>)
         case removeRepoTapped(repoId: String)
         case removeRepoConfirmed(repoId: String)
         case removeRepoAndKillTmuxConfirmed(repoId: String)
@@ -317,6 +366,8 @@ struct WorktreeFeature {
     @Dependency(\.mcpServerClient) var mcpServerClient
     @Dependency(\.claudeStatusClient) var claudeStatusClient
     @Dependency(\.date) var date
+    @Dependency(\.userDefaultsClient) var userDefaultsClient
+    @Dependency(\.folderPickerClient) var folderPickerClient
 
     /// Effect that loads the set of local branches for the given repo into the
     /// Create sheet's collision-check cache. Shared by `createSheetShown` and
@@ -602,36 +653,46 @@ struct WorktreeFeature {
                 return .none
 
             case .onAppear:
-                return .run { send in
-                    let repos = try await worktreeClient.fetchRepositories()
-                    let worktrees = try await worktreeClient.fetchWorktrees()
-                    var allQueueItems: [WorktreeQueueItemRecord] = []
-                    for worktree in worktrees {
-                        let items = try await worktreeClient.fetchQueueItems(worktree.worktreeId)
-                        allQueueItems.append(contentsOf: items)
+                return .merge(
+                    .run { [userDefaultsClient] send in
+                        let persisted = userDefaultsClient.bool(
+                            Self.showBoardOverlayUserDefaultsKey
+                        )
+                        await send(.boardOverlayHydrated(persisted))
+                    },
+                    .run { send in
+                        let repoRecords = try await worktreeClient.fetchRepositories()
+                        let worktreeRecords = try await worktreeClient.fetchWorktrees()
+                        var allQueueItems: [WorktreeQueueItem] = []
+                        for record in worktreeRecords {
+                            let items = try await worktreeClient.fetchQueueItems(record.worktreeId)
+                            allQueueItems.append(contentsOf: items.map(WorktreeQueueItem.init(from:)))
+                        }
+                        let issueRecords = try await databaseClient.fetchImportedIssues()
+                        await send(.worktreesLoaded(
+                            repositories: repoRecords.map(Repository.init(from:)),
+                            worktrees: worktreeRecords.map(WorktreesLoadedWorktree.init(from:)),
+                            queueItems: allQueueItems,
+                            issues: issueRecords.map(LinearIssue.init(from:))
+                        ))
+                    } catch: { error, send in
+                        await send(.loadFailed(error.localizedDescription))
                     }
-                    let issues = try await databaseClient.fetchImportedIssues()
-                    await send(.worktreesLoaded(
-                        repositories: repos,
-                        worktrees: worktrees,
-                        queueItems: allQueueItems,
-                        issues: issues
-                    ))
-                } catch: { error, send in
-                    await send(.loadFailed(error.localizedDescription))
-                }
-                .cancellable(id: CancelID.load, cancelInFlight: true)
+                    .cancellable(id: CancelID.load, cancelInFlight: true)
+                )
 
-            case let .worktreesLoaded(repoRecords, worktreeRecords, queueItems, issueRecords):
-                state.repositories = IdentifiedArrayOf(uniqueElements: repoRecords.map { record in
-                    Repository(id: record.repoId, name: record.name, path: record.path, sortOrder: record.sortOrder)
-                })
+            case let .boardOverlayHydrated(persisted):
+                state.showBoardOverlay = persisted
+                return .none
+
+            case let .worktreesLoaded(repositories, worktreeSnapshots, queueItems, issues):
+                state.repositories = IdentifiedArrayOf(uniqueElements: repositories)
 
                 let issuesByLinearId = Dictionary(
-                    uniqueKeysWithValues: issueRecords.map { ($0.linearId, LinearIssue(from: $0)) }
+                    uniqueKeysWithValues: issues.map { ($0.id, $0) }
                 )
                 let queueItemsByWorktree = Dictionary(grouping: queueItems, by: \.worktreeId)
-                let repoNames = Dictionary(uniqueKeysWithValues: repoRecords.map { ($0.repoId, $0.name) })
+                let repoNames = Dictionary(uniqueKeysWithValues: repositories.map { ($0.id, $0.name) })
 
                 let orphanedItems = queueItems.filter { issuesByLinearId[$0.issueLinearId] == nil }
                 if !orphanedItems.isEmpty {
@@ -645,20 +706,20 @@ struct WorktreeFeature {
                 // the previous worktrees list so a re-fired onAppear doesn't
                 // flash stale-looking "empty" rows before the background
                 // refreshes catch back up. Only DB-sourced fields come from
-                // the fresh record.
+                // the fresh snapshot.
                 let previousWorktreesByID = Dictionary(
                     uniqueKeysWithValues: state.worktrees.map { ($0.id, $0) }
                 )
-                state.worktrees = IdentifiedArrayOf(uniqueElements: worktreeRecords.map { record in
-                    let items = queueItemsByWorktree[record.worktreeId] ?? []
-                    let previous = previousWorktreesByID[record.worktreeId]
+                state.worktrees = IdentifiedArrayOf(uniqueElements: worktreeSnapshots.map { snapshot in
+                    let items = queueItemsByWorktree[snapshot.id] ?? []
+                    let previous = previousWorktreesByID[snapshot.id]
                     return Worktree(
-                        id: record.worktreeId,
-                        name: record.name,
-                        sortOrder: record.sortOrder,
-                        gitWorktreePath: record.gitWorktreePath,
-                        repoId: record.repoId,
-                        repoName: record.repoId.flatMap { repoNames[$0] },
+                        id: snapshot.id,
+                        name: snapshot.name,
+                        sortOrder: snapshot.sortOrder,
+                        gitWorktreePath: snapshot.gitWorktreePath,
+                        repoId: snapshot.repoId,
+                        repoName: snapshot.repoId.flatMap { repoNames[$0] },
                         currentBranch: previous?.currentBranch,
                         tmuxSessionStatus: previous?.tmuxSessionStatus ?? .unknown,
                         meisterStatus: previous?.meisterStatus ?? .none,
@@ -841,9 +902,9 @@ struct WorktreeFeature {
                 guard !sanitized.isEmpty else { return .none }
                 state.isCreatingWorktree = true
                 let repoPath = repo.path
-                return .run { send in
-                    let basePath = UserDefaults.standard.string(
-                        forKey: WorktreeConfig.userDefaultsBasePathKey
+                return .run { [userDefaultsClient] send in
+                    let basePath = userDefaultsClient.string(
+                        WorktreeConfig.userDefaultsBasePathKey
                     ) ?? WorktreeConfig.defaultBasePath
                     let worktreePath = WorktreeConfig.worktreePath(
                         basePath: basePath, repoRoot: repoPath, name: sanitized
@@ -872,7 +933,7 @@ struct WorktreeFeature {
                             let record = try await worktreeClient.createWorktree(
                                 sanitized, worktreePath, repoId
                             )
-                            await send(.worktreeCreated(.success(record)))
+                            await send(.worktreeCreated(.success(WorktreesLoadedWorktree(from: record))))
                         } catch {
                             do {
                                 try await gitClient.removeWorktree(repoPath, worktreePath)
@@ -892,16 +953,16 @@ struct WorktreeFeature {
                     }
                 }
 
-            case let .worktreeCreated(.success(record)):
+            case let .worktreeCreated(.success(snapshot)):
                 state.isCreatingWorktree = false
-                let repoName = record.repoId.flatMap { id in state.repositories[id: id]?.name }
-                let branch = WorktreeConfig.branchName(fromIdentifier: record.name)
+                let repoName = snapshot.repoId.flatMap { id in state.repositories[id: id]?.name }
+                let branch = WorktreeConfig.branchName(fromIdentifier: snapshot.name)
                 state.worktrees.append(Worktree(
-                    id: record.worktreeId,
-                    name: record.name,
-                    sortOrder: record.sortOrder,
-                    gitWorktreePath: record.gitWorktreePath,
-                    repoId: record.repoId,
+                    id: snapshot.id,
+                    name: snapshot.name,
+                    sortOrder: snapshot.sortOrder,
+                    gitWorktreePath: snapshot.gitWorktreePath,
+                    repoId: snapshot.repoId,
                     repoName: repoName,
                     currentBranch: branch,
                     tmuxSessionStatus: .needsCreation
@@ -1047,10 +1108,8 @@ struct WorktreeFeature {
 
             case .boardOverlayToggled:
                 state.showBoardOverlay.toggle()
-                return .run { [show = state.showBoardOverlay] _ in
-                    UserDefaults.standard.set(
-                        show, forKey: Self.showBoardOverlayUserDefaultsKey
-                    )
+                return .run { [show = state.showBoardOverlay, userDefaultsClient] _ in
+                    userDefaultsClient.setBool(show, Self.showBoardOverlayUserDefaultsKey)
                 }
 
             case let .repoCollapseToggled(repoId):
@@ -1450,24 +1509,28 @@ struct WorktreeFeature {
                 }
                 return .send(.delegate(.errorOccurred(message: "Failed to return issue to Meister.")))
 
+            case .addRepoFolderTapped:
+                return .run { [folderPickerClient] send in
+                    guard let url = await folderPickerClient.pickFolder(
+                        "Select a git repository folder",
+                        "Add Repository"
+                    ) else { return }
+                    await send(.addRepoFolderSelected(url))
+                }
+
             case let .addRepoFolderSelected(url):
                 return .run { send in
                     await send(.repoAdded(TaskResult {
                         let repoRoot = try await gitClient.repositoryRoot(url.path)
                         let name = URL(fileURLWithPath: repoRoot).lastPathComponent
-                        return try await worktreeClient.addRepository(name, repoRoot)
+                        let record = try await worktreeClient.addRepository(name, repoRoot)
+                        return Repository(from: record)
                     }))
                 }
 
-            case let .repoAdded(.success(record)):
-                let repo = Repository(
-                    id: record.repoId,
-                    name: record.name,
-                    path: record.path,
-                    sortOrder: record.sortOrder
-                )
+            case let .repoAdded(.success(repo)):
                 state.repositories.append(repo)
-                return .send(.syncRepo(repoId: record.repoId))
+                return .send(.syncRepo(repoId: repo.id))
 
             case .repoAdded(.failure):
                 state.alert = AlertState {

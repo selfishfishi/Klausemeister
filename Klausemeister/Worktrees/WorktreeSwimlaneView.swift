@@ -1,4 +1,3 @@
-import AppKit
 import ComposableArchitecture
 import SwiftUI
 
@@ -47,7 +46,7 @@ struct WorktreeSwimlaneView: View {
                     .controlSize(.small)
             }
             Button {
-                openRepoFolderPicker()
+                store.send(.addRepoFolderTapped)
             } label: {
                 Label("Add Repo", systemImage: "folder.badge.plus")
                     .font(.body)
@@ -208,19 +207,5 @@ struct WorktreeSwimlaneView: View {
                 store.send(.moveIssueStatusRequested(issueId: issueId, target: target))
             }
         )
-    }
-
-    private func openRepoFolderPicker() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.message = "Select a git repository folder"
-        panel.prompt = "Add Repository"
-        panel.begin { response in
-            if response == .OK, let url = panel.url {
-                store.send(.addRepoFolderSelected(url))
-            }
-        }
     }
 }

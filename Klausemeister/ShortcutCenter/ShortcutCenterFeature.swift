@@ -33,21 +33,6 @@ struct ShortcutCenterFeature {
             let command: AppCommand
         }
 
-        var filteredRows: [BindingRow] {
-            let query = filterQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-            guard !query.isEmpty else { return Array(rows) }
-            return rows.filter { row in
-                row.command.displayName.lowercased().contains(query)
-                    || (row.currentBinding?.displayString.lowercased().contains(query) ?? false)
-                    || row.command.category.rawValue.lowercased().contains(query)
-            }
-        }
-
-        var hasConflicts: Bool {
-            rows.contains { $0.hasConflict }
-        }
-
         init(keyBindings: [AppCommand: KeyBinding]) {
             rows = IdentifiedArrayOf(uniqueElements: AppCommand.allCases.map { command in
                 BindingRow(
@@ -203,5 +188,24 @@ struct ShortcutCenterFeature {
             overrides[row.command] = row.currentBinding // nil if cleared
         }
         return overrides
+    }
+}
+
+// MARK: - Derived State
+
+extension ShortcutCenterFeature.State {
+    var filteredRows: [BindingRow] {
+        let query = filterQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !query.isEmpty else { return Array(rows) }
+        return rows.filter { row in
+            row.command.displayName.lowercased().contains(query)
+                || (row.currentBinding?.displayString.lowercased().contains(query) ?? false)
+                || row.command.category.rawValue.lowercased().contains(query)
+        }
+    }
+
+    var hasConflicts: Bool {
+        rows.contains(where: \.hasConflict)
     }
 }
