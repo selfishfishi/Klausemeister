@@ -170,11 +170,20 @@ private struct BlockedGlowView: View {
     let cycleColors: [Color]
     let label: String
 
+    @Environment(\.swimlaneAnimating) private var isAnimating
+
     private let rotationPeriod: Double = 1.5
     private let colorCyclePeriod: Double = 6.0
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+        // 30 Hz matches `SwimlaneWorkingCometOverlay`; indistinguishable
+        // from 60 Hz at this rotation speed and halves the per-frame cost.
+        // `isAnimating` folds in both panel visibility and window focus —
+        // see `WorktreeSwimlaneView`.
+        TimelineView(.animation(
+            minimumInterval: 1.0 / 30.0,
+            paused: !isAnimating
+        )) { timeline in
             animatedBody(time: timeline.date)
         }
     }

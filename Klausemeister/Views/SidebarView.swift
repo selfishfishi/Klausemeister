@@ -33,8 +33,7 @@ struct SidebarView: View {
                 ForEach(store.worktree.repositories) { repo in
                     sidebarRepoSection(repo: repo)
                 }
-                let ungrouped = store.worktree.worktrees.filter { $0.repoId == nil }
-                ForEach(ungrouped) { worktree in
+                ForEach(store.worktree.ungroupedWorktrees) { worktree in
                     sidebarWorktreeRow(worktree)
                 }
             } header: {
@@ -68,10 +67,9 @@ struct SidebarView: View {
             get: { !store.worktree.collapsedRepoIds.contains(repo.id) },
             set: { _ in store.send(.worktree(.repoCollapseToggled(repoId: repo.id))) }
         )
-        let repoWorktrees = store.worktree.worktrees.filter { $0.repoId == repo.id }
 
         return DisclosureGroup(isExpanded: isExpanded) {
-            ForEach(repoWorktrees) { worktree in
+            ForEach(store.worktree.worktreesByRepo[repo.id] ?? []) { worktree in
                 sidebarWorktreeRow(worktree)
             }
         } label: {
@@ -91,10 +89,14 @@ struct SidebarView: View {
                 store.send(.worktree(.removeWorktreeTapped(worktreeId: worktree.id)))
             }
         )
+        // `SidebarWorktreeRow: Equatable` — SwiftUI short-circuits body
+        // when the worktree value and `isSelected` are unchanged, so a
+        // status change on one row doesn't re-render every other row.
+        .equatable()
     }
 }
 
-struct SidebarWorktreeRow: View {
+struct SidebarWorktreeRow: View, Equatable {
     let worktree: Worktree
     let isSelected: Bool
     let onSelect: () -> Void
@@ -104,11 +106,12 @@ struct SidebarWorktreeRow: View {
     @Environment(\.keyBindings) private var bindings
     @State private var isHovering = false
 
-    private var shimmerPaletteColors: [Color] {
-        [1, 2, 3, 4, 5, 6].compactMap { idx in
-            guard idx < themeColors.palette.count else { return nil }
-            return Color(hexString: themeColors.palette[idx])
-        }
+    /// Equality ignores the action closures — they're captured anew on every
+    /// parent body evaluation, so including them would defeat short-circuiting.
+    /// `isSelected` + the full `worktree` value cover every observable input
+    /// that affects rendering.
+    static func == (lhs: SidebarWorktreeRow, rhs: SidebarWorktreeRow) -> Bool {
+        lhs.worktree == rhs.worktree && lhs.isSelected == rhs.isSelected
     }
 
     var body: some View {
@@ -122,9 +125,14 @@ struct SidebarWorktreeRow: View {
                 )
                 VStack(alignment: .leading, spacing: 3) {
                     if worktree.isMeisterWorking {
+                        // Reuse the pre-computed swimlane row tints rather
+                        // than recomputing a parallel palette on every body
+                        // evaluation. Same palette (indices 1–6) with
+                        // duplicates removed — which actually makes the
+                        // colour morph smoother.
                         ShimmerText(
                             text: worktree.name,
-                            cycleColors: shimmerPaletteColors,
+                            cycleColors: themeColors.swimlaneRowTints,
                             baseColor: themeColors.accentColor,
                             phaseSeed: worktree.id
                         )
