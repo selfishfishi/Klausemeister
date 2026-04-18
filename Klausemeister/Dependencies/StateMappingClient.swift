@@ -83,11 +83,17 @@ extension StateMappingClient: DependencyKey {
                 }
             },
             saveMappingTable: { mappings, workflowStatesByTeam in
+                // Build a [teamId: [stateId: name]] lookup once instead of doing
+                // an O(N) `.first { $0.id == ... }` scan inside the nested loop.
+                let nameLookup: [String: [String: String]] = workflowStatesByTeam
+                    .mapValues { states in
+                        Dictionary(uniqueKeysWithValues: states.map { ($0.id, $0.name) })
+                    }
                 var records: [StateMappingRecord] = []
                 for (teamId, stateMap) in mappings {
+                    let teamNames = nameLookup[teamId]
                     for (linearStateId, meisterState) in stateMap {
-                        let name = workflowStatesByTeam[teamId]?
-                            .first { $0.id == linearStateId }?.name ?? ""
+                        let name = teamNames?[linearStateId] ?? ""
                         records.append(StateMappingRecord(
                             teamId: teamId,
                             linearStateId: linearStateId,
@@ -98,15 +104,11 @@ extension StateMappingClient: DependencyKey {
                 }
                 let finalRecords = records
                 try await dbQueue.write { db in
-                    // Delete existing mappings for affected teams, then insert fresh
-                    for teamId in mappings.keys {
-                        try db.execute(
-                            sql: "DELETE FROM team_state_mappings WHERE teamId = ?",
-                            arguments: [teamId]
-                        )
-                    }
+                    // Upsert on the (teamId, linearStateId) composite primary key —
+                    // INSERT OR REPLACE supersedes the old DELETE-affected-teams +
+                    // re-insert pattern.
                     for record in finalRecords {
-                        try record.insert(db)
+                        try record.insert(db, onConflict: .replace)
                     }
                 }
             },

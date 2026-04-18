@@ -350,17 +350,23 @@ enum ToolHandlers {
     static func listWorktrees() async throws -> ToolResult {
         @Dependency(\.worktreeClient) var worktreeClient
 
-        let worktrees = try await worktreeClient.fetchWorktrees()
-        var entries: [WorktreeEntry] = []
-        for snapshot in worktrees {
-            let items = try await worktreeClient.fetchQueueItems(snapshot.id)
-            let inboxItems = items
+        // Single batch fetch instead of one read per worktree — avoids
+        // N sequential round-trips through the shared DatabaseQueue.
+        async let worktreesTask = worktreeClient.fetchWorktrees()
+        async let itemsTask = worktreeClient.fetchAllQueueItems()
+        let worktrees = try await worktreesTask
+        let items = try await itemsTask
+        let itemsByWorktree = Dictionary(grouping: items, by: \.worktreeId)
+
+        let entries: [WorktreeEntry] = worktrees.map { snapshot in
+            let wtItems = itemsByWorktree[snapshot.id] ?? []
+            let inboxItems = wtItems
                 .filter { $0.queuePosition == .inbox }
                 .sorted { $0.sortOrder < $1.sortOrder }
                 .map { InboxEntry(issueLinearId: $0.issueLinearId, sortOrder: $0.sortOrder) }
-            let processingItem = items.first { $0.queuePosition == .processing }
-            let outboxCount = items.count(where: { $0.queuePosition == .outbox })
-            entries.append(WorktreeEntry(
+            let processingItem = wtItems.first { $0.queuePosition == .processing }
+            let outboxCount = wtItems.count(where: { $0.queuePosition == .outbox })
+            return WorktreeEntry(
                 worktreeId: snapshot.id,
                 name: snapshot.name,
                 repoId: snapshot.repoId,
@@ -369,7 +375,7 @@ enum ToolHandlers {
                 inboxItems: inboxItems,
                 processingIssueLinearId: processingItem?.issueLinearId,
                 outboxCount: outboxCount
-            ))
+            )
         }
         return try .success(Self.encodeJSON(["worktrees": entries]))
     }

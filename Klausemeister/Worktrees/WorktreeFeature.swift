@@ -455,27 +455,43 @@ struct WorktreeFeature {
 
     /// Loads PR info for every worktree that has a branch. Triggered by a 60s
     /// polling timer since PR status is remote state with no local signal.
+    /// Fans out with a `TaskGroup` so per-worktree `gh` subprocess calls run
+    /// in parallel (capped upstream by `SubprocessLimiter`) — mirroring the
+    /// pattern used by `performSync`. The previous serial loop scaled O(N)
+    /// with worktree count and burned ~4 s of wall time every minute.
     private func loadPRInfoEffect(
         worktrees: [WorktreeStatsInput]
     ) -> Effect<Action> {
         .run { [ghClient] send in
-            var map: [String: GitStats.PRSummary] = [:]
-            for input in worktrees {
-                guard let repoPath = input.repoPath,
-                      let branch = input.branch
-                else { continue }
-                do {
-                    if let info = try await ghClient.prForBranch(repoPath, branch) {
-                        map[input.id] = GitStats.PRSummary(
-                            number: info.number, state: info.state
-                        )
+            let results = await withTaskGroup(
+                of: (String, GitStats.PRSummary?).self
+            ) { group -> [(String, GitStats.PRSummary)] in
+                for input in worktrees {
+                    guard let repoPath = input.repoPath,
+                          let branch = input.branch
+                    else { continue }
+                    group.addTask {
+                        do {
+                            if let info = try await ghClient.prForBranch(repoPath, branch) {
+                                return (input.id, GitStats.PRSummary(
+                                    number: info.number, state: info.state
+                                ))
+                            }
+                        } catch {
+                            Self.log.warning(
+                                "PR lookup failed for \(branch) in \(repoPath): \(error.localizedDescription)"
+                            )
+                        }
+                        return (input.id, nil)
                     }
-                } catch {
-                    Self.log.warning(
-                        "PR lookup failed for \(branch) in \(repoPath): \(error.localizedDescription)"
-                    )
                 }
+                var collected: [(String, GitStats.PRSummary)] = []
+                for await (id, summary) in group {
+                    if let summary { collected.append((id, summary)) }
+                }
+                return collected
             }
+            let map = Dictionary(uniqueKeysWithValues: results)
             await send(.prInfoLoaded(map))
         }
     }
@@ -663,11 +679,9 @@ struct WorktreeFeature {
                     .run { send in
                         let repos = try await worktreeClient.fetchRepositories()
                         let worktrees = try await worktreeClient.fetchWorktrees()
-                        var allQueueItems: [WorktreeQueueItem] = []
-                        for snapshot in worktrees {
-                            let items = try await worktreeClient.fetchQueueItems(snapshot.id)
-                            allQueueItems.append(contentsOf: items)
-                        }
+                        // Single-query fetch of all queue items; the
+                        // `worktreesLoaded` handler groups them by worktreeId.
+                        let allQueueItems = try await worktreeClient.fetchAllQueueItems()
                         let issues = try await databaseClient.fetchImportedIssues()
                         await send(.worktreesLoaded(
                             repositories: repos,
@@ -1911,15 +1925,23 @@ extension WorktreeFeature.State {
         worktrees[wtIndex].outbox.removeAll { $0.id == issueId }
     }
 
+    /// Issue-id → worktree-name lookup. Read from `MeisterTabView.body` on
+    /// every render, so we stream IDs in a single pass instead of building
+    /// two intermediate arrays per worktree (`inbox.map + processing + outbox.map`
+    /// followed by `flatMap`).
     var assignedWorktreeNames: [String: String] {
-        Dictionary(
-            worktrees.flatMap { worktree in
-                let allIssueIds = worktree.inbox.map(\.id)
-                    + (worktree.processing.map { [$0.id] } ?? [])
-                    + worktree.outbox.map(\.id)
-                return allIssueIds.map { ($0, worktree.name) }
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
+        var result: [String: String] = [:]
+        for worktree in worktrees {
+            for issue in worktree.inbox where result[issue.id] == nil {
+                result[issue.id] = worktree.name
+            }
+            if let processing = worktree.processing, result[processing.id] == nil {
+                result[processing.id] = worktree.name
+            }
+            for issue in worktree.outbox where result[issue.id] == nil {
+                result[issue.id] = worktree.name
+            }
+        }
+        return result
     }
 }

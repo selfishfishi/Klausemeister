@@ -167,9 +167,14 @@ extension DatabaseClient: DependencyKey {
             },
             saveWorkflowStates: { states, fetchedAt in
                 try await dbQueue.write { db in
+                    // Authoritative replacement: prune stale rows first so
+                    // workflow states that were removed upstream don't linger.
+                    // Then upsert. The whole block is one transaction; for the
+                    // typical ~50-row state set this is not a measurable cost.
                     try db.execute(sql: "DELETE FROM linear_workflow_states")
                     for state in states {
-                        try LinearWorkflowStateRecord(from: state, fetchedAt: fetchedAt).save(db)
+                        try LinearWorkflowStateRecord(from: state, fetchedAt: fetchedAt)
+                            .insert(db, onConflict: .replace)
                     }
                 }
             },
@@ -180,9 +185,12 @@ extension DatabaseClient: DependencyKey {
             },
             saveTeams: { teams in
                 try await dbQueue.write { db in
+                    // Authoritative replacement: prune teams removed upstream
+                    // before upserting. `TeamSettingsFeature` relies on this
+                    // semantic when the user toggles a team off and re-saves.
                     try db.execute(sql: "DELETE FROM linear_teams")
                     for team in teams {
-                        try LinearTeamRecord(from: team).save(db)
+                        try LinearTeamRecord(from: team).insert(db, onConflict: .replace)
                     }
                 }
             },

@@ -24,7 +24,13 @@ struct ActivityMarquee: View {
     @State private var containerWidth: CGFloat = 0
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+        // Pause when there's nothing to scroll or we haven't measured the
+        // container yet. Otherwise every marquee in the list keeps ticking
+        // at 30fps even when its row is idle, which compounds quickly.
+        TimelineView(.animation(
+            minimumInterval: 1.0 / 30.0,
+            paused: text.isEmpty || containerWidth == 0
+        )) { timeline in
             let elapsed = timeline.date.timeIntervalSinceReferenceDate
             marqueeContent(elapsed: elapsed, containerWidth: Double(containerWidth))
         }
