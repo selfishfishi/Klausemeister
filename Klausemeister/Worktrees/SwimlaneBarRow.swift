@@ -262,8 +262,7 @@ struct SwimlaneBarRow: View {
     }
 
     private func activeBox(_ issue: LinearIssue) -> some View {
-        let productState = issue.meisterState.map { ProductState(kanban: $0, queue: .processing) }
-        let validCommands = productState?.validCommands ?? []
+        let validCommands = worktree.validCommandsForActive
 
         return HStack(spacing: 10) {
             Text(issue.identifier)
@@ -321,7 +320,7 @@ struct SwimlaneBarRow: View {
         }
         if let onMoveIssueStatus {
             Menu("Move to…") {
-                ForEach(MeisterState.allCases.filter { $0 != issue.meisterState }) { target in
+                ForEach(issue.availableTargetStates) { target in
                     Button(target.displayName) {
                         onMoveIssueStatus(issue.id, target)
                     }

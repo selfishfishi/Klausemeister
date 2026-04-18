@@ -3,6 +3,24 @@ import Dependencies
 import Foundation
 import OSLog
 
+/// GraphQL boundary for Linear. All closures expect the access token to
+/// be available in `KeychainClient` under `LinearConfig.keychainService`
+/// / `LinearConfig.accessTokenAccount` — missing tokens throw
+/// `OAuthError.unauthorized`, which callers should treat as "user needs
+/// to reconnect".
+///
+/// Pagination and rate-limit handling:
+///
+/// - Issue fetches (`fetchLabeledIssues`, `fetchAllTeamIssues`) paginate
+///   internally with a hard cap of 20 × 50 = 1,000 rows per call to
+///   avoid unbounded walks and Linear's complexity-score limits.
+/// - HTTP 429 surfaces as `LinearAPIError.rateLimited`; a 401 surfaces
+///   as `OAuthError.unauthorized`. GraphQL-level `errors[]` arrays on an
+///   HTTP 200 surface as `LinearAPIError.graphQLErrors`.
+///
+/// JSON decoding happens off the cooperative thread pool via
+/// `Task.detached(priority: .userInitiated)` — Linear's payloads can be
+/// large on first sync and decoding on the main pool would stall the UI.
 struct LinearAPIClient {
     // swiftlint:disable:next identifier_name
     var me: @Sendable () async throws -> LinearUser

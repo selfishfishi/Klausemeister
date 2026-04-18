@@ -1,0 +1,39 @@
+// Klausemeister/Worktrees/Worktree+Workflow.swift
+import Foundation
+
+/// Workflow affordances derived from a `Worktree`'s current queue state.
+///
+/// Centralising these here keeps `SwimlaneBarRow` / `SwimlaneAdvanceButton`
+/// as thin presentation components (R14): they take plain values produced
+/// by this extension instead of building `ProductState` instances in the
+/// view body.
+extension Worktree {
+    /// The command the meister will run next given this worktree's queue
+    /// state. Prefers the processing item, falls back to the front inbox
+    /// item, and is `nil` when neither resolves to a canonical stage.
+    nonisolated var nextWorkflowCommand: WorkflowCommand? {
+        if let processing, let kanban = processing.meisterState {
+            return ProductState(kanban: kanban, queue: .processing).nextCommand
+        }
+        if let front = inbox.first, let kanban = front.meisterState {
+            return ProductState(kanban: kanban, queue: .inbox).nextCommand
+        }
+        return nil
+    }
+
+    /// Workflow commands that are currently valid for the processing issue.
+    /// Empty when nothing is processing or when the issue has no canonical
+    /// stage mapping.
+    nonisolated var validCommandsForActive: [WorkflowCommand] {
+        guard let processing, let kanban = processing.meisterState else { return [] }
+        return ProductState(kanban: kanban, queue: .processing).validCommands
+    }
+}
+
+/// Target stages offered by the "Move to…" context menu on the active
+/// issue. Excludes the issue's current stage so it never offers a no-op.
+extension LinearIssue {
+    nonisolated var availableTargetStates: [MeisterState] {
+        MeisterState.allCases.filter { $0 != meisterState }
+    }
+}

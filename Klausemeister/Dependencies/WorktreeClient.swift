@@ -3,6 +3,27 @@ import Dependencies
 import Foundation
 import GRDB
 
+/// Persistence wrapper for the `repositories`, `worktrees`, and
+/// `worktree_queue_items` tables. Shares `DatabaseClient`'s GRDB queue
+/// (see `liveValue`). Closures are grouped by concern:
+///
+/// - **Repository CRUD** — register / remove top-level repos from disk.
+/// - **Worktree CRUD** — create / rename / reorder / delete worktrees.
+/// - **Queue management** — move an issue between inbox / processing /
+///   outbox slots; reorder within a slot.
+/// - **Drag-and-drop convenience** — issue-ID-based variants of the
+///   queue operations that look up the queue-item-id internally.
+/// - **Discovery / sync** — reconcile the DB's worktree rows against
+///   what `git worktree list` reports on disk.
+///
+/// All writes are serialized through the shared `DatabaseQueue`, so
+/// callers never need to worry about GRDB locking. Throwing closures
+/// surface GRDB / filesystem errors unchanged; reducers must `catch`.
+///
+/// KLA-60 note: several closures still expose raw `*Record` types
+/// (`RepositoryRecord`, `WorktreeRecord`, `WorktreeQueueItemRecord`).
+/// Reducers convert to domain types at the effect boundary today; a
+/// follow-up will push the conversion down into the live value.
 struct WorktreeClient {
     // MARK: - Repository CRUD
 
