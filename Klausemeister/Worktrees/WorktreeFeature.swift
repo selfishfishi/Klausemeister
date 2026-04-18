@@ -130,10 +130,9 @@ struct WorktreeFeature {
         var isCreatingWorktree: Bool = false
         var selectedWorktreeId: String?
         /// Whether the board overlay (inbox/processing/outbox columns) is
-        /// showing on top of the terminal. Persisted to UserDefaults.
-        var showBoardOverlay: Bool = UserDefaults.standard.bool(
-            forKey: WorktreeFeature.showBoardOverlayUserDefaultsKey
-        )
+        /// showing on top of the terminal. Persisted via
+        /// `@Dependency(\.userDefaultsClient)`; hydrated on `.onAppear`.
+        var showBoardOverlay: Bool = false
 
         /// Hello events that arrived before worktrees were loaded from DB.
         /// Replayed once `worktreesLoaded` populates the worktree array.
@@ -195,6 +194,7 @@ struct WorktreeFeature {
         case removeWorktreeConfirmed(worktreeId: String)
         case worktreeSelected(String?)
         case boardOverlayToggled
+        case boardOverlayHydrated(Bool)
         case repoCollapseToggled(repoId: String)
         case renameWorktreeTapped(worktreeId: String, newName: String)
         case worktreeRenamed(worktreeId: String, newName: String)
@@ -228,6 +228,7 @@ struct WorktreeFeature {
         case refreshGitStats
         case refreshPRInfo
         case refreshWorktreeInfo
+        case addRepoFolderTapped
         case addRepoFolderSelected(URL)
         case repoAdded(TaskResult<RepositoryRecord>)
         case removeRepoTapped(repoId: String)
@@ -317,6 +318,8 @@ struct WorktreeFeature {
     @Dependency(\.mcpServerClient) var mcpServerClient
     @Dependency(\.claudeStatusClient) var claudeStatusClient
     @Dependency(\.date) var date
+    @Dependency(\.userDefaultsClient) var userDefaultsClient
+    @Dependency(\.folderPickerClient) var folderPickerClient
 
     /// Effect that loads the set of local branches for the given repo into the
     /// Create sheet's collision-check cache. Shared by `createSheetShown` and
@@ -602,25 +605,37 @@ struct WorktreeFeature {
                 return .none
 
             case .onAppear:
-                return .run { send in
-                    let repos = try await worktreeClient.fetchRepositories()
-                    let worktrees = try await worktreeClient.fetchWorktrees()
-                    var allQueueItems: [WorktreeQueueItemRecord] = []
-                    for worktree in worktrees {
-                        let items = try await worktreeClient.fetchQueueItems(worktree.worktreeId)
-                        allQueueItems.append(contentsOf: items)
+                return .merge(
+                    .run { [userDefaultsClient] send in
+                        let persisted = userDefaultsClient.bool(
+                            Self.showBoardOverlayUserDefaultsKey
+                        )
+                        await send(.boardOverlayHydrated(persisted))
+                    },
+                    .run { send in
+                        let repos = try await worktreeClient.fetchRepositories()
+                        let worktrees = try await worktreeClient.fetchWorktrees()
+                        var allQueueItems: [WorktreeQueueItemRecord] = []
+                        for worktree in worktrees {
+                            let items = try await worktreeClient.fetchQueueItems(worktree.worktreeId)
+                            allQueueItems.append(contentsOf: items)
+                        }
+                        let issues = try await databaseClient.fetchImportedIssues()
+                        await send(.worktreesLoaded(
+                            repositories: repos,
+                            worktrees: worktrees,
+                            queueItems: allQueueItems,
+                            issues: issues
+                        ))
+                    } catch: { error, send in
+                        await send(.loadFailed(error.localizedDescription))
                     }
-                    let issues = try await databaseClient.fetchImportedIssues()
-                    await send(.worktreesLoaded(
-                        repositories: repos,
-                        worktrees: worktrees,
-                        queueItems: allQueueItems,
-                        issues: issues
-                    ))
-                } catch: { error, send in
-                    await send(.loadFailed(error.localizedDescription))
-                }
-                .cancellable(id: CancelID.load, cancelInFlight: true)
+                    .cancellable(id: CancelID.load, cancelInFlight: true)
+                )
+
+            case let .boardOverlayHydrated(persisted):
+                state.showBoardOverlay = persisted
+                return .none
 
             case let .worktreesLoaded(repoRecords, worktreeRecords, queueItems, issueRecords):
                 state.repositories = IdentifiedArrayOf(uniqueElements: repoRecords.map { record in
@@ -841,9 +856,9 @@ struct WorktreeFeature {
                 guard !sanitized.isEmpty else { return .none }
                 state.isCreatingWorktree = true
                 let repoPath = repo.path
-                return .run { send in
-                    let basePath = UserDefaults.standard.string(
-                        forKey: WorktreeConfig.userDefaultsBasePathKey
+                return .run { [userDefaultsClient] send in
+                    let basePath = userDefaultsClient.string(
+                        WorktreeConfig.userDefaultsBasePathKey
                     ) ?? WorktreeConfig.defaultBasePath
                     let worktreePath = WorktreeConfig.worktreePath(
                         basePath: basePath, repoRoot: repoPath, name: sanitized
@@ -1047,10 +1062,8 @@ struct WorktreeFeature {
 
             case .boardOverlayToggled:
                 state.showBoardOverlay.toggle()
-                return .run { [show = state.showBoardOverlay] _ in
-                    UserDefaults.standard.set(
-                        show, forKey: Self.showBoardOverlayUserDefaultsKey
-                    )
+                return .run { [show = state.showBoardOverlay, userDefaultsClient] _ in
+                    userDefaultsClient.setBool(show, Self.showBoardOverlayUserDefaultsKey)
                 }
 
             case let .repoCollapseToggled(repoId):
@@ -1449,6 +1462,15 @@ struct WorktreeFeature {
                     state.worktrees[wtIndex].inbox.append(issue)
                 }
                 return .send(.delegate(.errorOccurred(message: "Failed to return issue to Meister.")))
+
+            case .addRepoFolderTapped:
+                return .run { [folderPickerClient] send in
+                    guard let url = await folderPickerClient.pickFolder(
+                        "Select a git repository folder",
+                        "Add Repository"
+                    ) else { return }
+                    await send(.addRepoFolderSelected(url))
+                }
 
             case let .addRepoFolderSelected(url):
                 return .run { send in
