@@ -68,6 +68,7 @@ struct DebugPanelFeature {
         }
     }
 
+    // swiftlint:disable:next cyclomatic_complexity
     private static func describe(_ event: MCPServerEvent) -> String {
         switch event {
         case let .errorOccurred(message):
@@ -86,6 +87,14 @@ struct DebugPanelFeature {
             "Item → outbox [\(worktreeId.prefix(8))]: \(issueLinearId)"
         case let .itemAddedToInbox(worktreeId, issueLinearId):
             "Item → inbox [\(worktreeId.prefix(8))]: \(issueLinearId)"
+        case let .scheduleSaved(scheduleId):
+            "Schedule saved [\(scheduleId.prefix(8))]"
+        case let .scheduleDeleted(scheduleId):
+            "Schedule deleted [\(scheduleId.prefix(8))]"
+        case let .scheduleItemStatusChanged(scheduleItemId, status):
+            "Schedule item → \(status) [\(scheduleItemId.prefix(8))]"
+        case let .scheduleRun(scheduleId):
+            "Schedule run [\(scheduleId.prefix(8))]"
         }
     }
 }

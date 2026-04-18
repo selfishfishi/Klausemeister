@@ -153,5 +153,46 @@ enum DatabaseMigrations {
                 t.drop(column: "ingestionStrategy")
             }
         }
+
+        migrator.registerMigration("v14-schedules") { db in
+            try db.create(table: "schedules") { t in
+                t.column("scheduleId", .text).primaryKey()
+                t.column("repoId", .text).notNull()
+                    .references("repositories", column: "repoId", onDelete: .cascade)
+                t.column("name", .text).notNull()
+                t.column("linearProjectId", .text)
+                t.column("createdAt", .text).notNull()
+                t.column("runAt", .text)
+            }
+
+            try db.create(table: "schedule_items") { t in
+                t.column("scheduleItemId", .text).primaryKey()
+                t.column("scheduleId", .text).notNull()
+                    .references("schedules", column: "scheduleId", onDelete: .cascade)
+                t.column("worktreeId", .text).notNull()
+                    .references("worktrees", column: "worktreeId", onDelete: .cascade)
+                t.column("issueLinearId", .text).notNull()
+                    .references("imported_issues", column: "linearId", onDelete: .cascade)
+                t.column("issueIdentifier", .text).notNull()
+                t.column("issueTitle", .text).notNull()
+                t.column("position", .integer).notNull().defaults(to: 0)
+                t.column("weight", .integer).notNull().defaults(to: 0)
+                t.column("blockedByIssueLinearIds", .text).notNull().defaults(to: "[]")
+                t.column("status", .text).notNull().defaults(to: "planned")
+            }
+
+            // Ordered render of a schedule's items, per worktree.
+            try db.create(
+                index: "idx_schedule_items_schedule_worktree_position",
+                on: "schedule_items",
+                columns: ["scheduleId", "worktreeId", "position"]
+            )
+            // Live-progress lookup: which schedule_items reference this issue.
+            try db.create(
+                index: "idx_schedule_items_issue_linear_id",
+                on: "schedule_items",
+                columns: ["issueLinearId"]
+            )
+        }
     }
 }

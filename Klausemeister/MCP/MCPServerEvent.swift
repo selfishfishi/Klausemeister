@@ -46,4 +46,23 @@ enum MCPServerEvent: Equatable {
     /// `enqueueItem`). `WorktreeFeature` uses this to sync its
     /// in-memory state with the DB mutation.
     case itemAddedToInbox(worktreeId: String, issueLinearId: String)
+
+    /// A new schedule was persisted via the `saveSchedule` MCP tool.
+    /// Consumed by `WorktreeFeature` (KLA-197) to refresh the sidebar
+    /// pills under the repo header.
+    case scheduleSaved(scheduleId: String)
+
+    /// An existing schedule was removed via `deleteSchedule`. Consumed
+    /// by `WorktreeFeature` (KLA-197) to drop the pill.
+    case scheduleDeleted(scheduleId: String)
+
+    /// A single schedule-item transitioned between `planned` / `queued` /
+    /// `inProgress` / `done`. Consumed by the gantt overlay (KLA-198/199)
+    /// to drive live per-cell state.
+    case scheduleItemStatusChanged(scheduleItemId: String, status: String)
+
+    /// A schedule was executed via `runSchedule` — every item has been
+    /// enqueued into its worktree's inbox and the schedule's `runAt`
+    /// column is now populated.
+    case scheduleRun(scheduleId: String)
 }
