@@ -9,6 +9,54 @@ struct Repository: Equatable, Identifiable {
     var name: String
     var path: String
     var sortOrder: Int
+
+    nonisolated init(id: String, name: String, path: String, sortOrder: Int) {
+        self.id = id
+        self.name = name
+        self.path = path
+        self.sortOrder = sortOrder
+    }
+
+    nonisolated init(from record: RepositoryRecord) {
+        self.init(id: record.repoId, name: record.name, path: record.path, sortOrder: record.sortOrder)
+    }
+}
+
+/// Persistence-plane snapshot of a worktree: the columns GRDB knows
+/// about. Runtime fields (`tmuxSessionStatus`, `meisterStatus`, git
+/// stats, etc.) are filled in by `WorktreeFeature` when it merges the
+/// snapshot with previously-loaded state. Carries the load across the
+/// dependency boundary without dragging `WorktreeRecord` above it.
+struct WorktreesLoadedWorktree: Equatable, Identifiable {
+    let id: String
+    let name: String
+    let sortOrder: Int
+    let gitWorktreePath: String
+    let repoId: String?
+
+    nonisolated init(
+        id: String,
+        name: String,
+        sortOrder: Int,
+        gitWorktreePath: String,
+        repoId: String?
+    ) {
+        self.id = id
+        self.name = name
+        self.sortOrder = sortOrder
+        self.gitWorktreePath = gitWorktreePath
+        self.repoId = repoId
+    }
+
+    nonisolated init(from record: WorktreeRecord) {
+        self.init(
+            id: record.worktreeId,
+            name: record.name,
+            sortOrder: record.sortOrder,
+            gitWorktreePath: record.gitWorktreePath,
+            repoId: record.repoId
+        )
+    }
 }
 
 struct GitStats: Equatable {
@@ -172,13 +220,13 @@ struct WorktreeFeature {
         /// cross-feature move stays in one place.
         case moveIssueStatusRequested(issueId: String, target: MeisterState)
         case worktreesLoaded(
-            repositories: [RepositoryRecord],
-            worktrees: [WorktreeRecord],
-            queueItems: [WorktreeQueueItemRecord],
-            issues: [ImportedIssueRecord]
+            repositories: [Repository],
+            worktrees: [WorktreesLoadedWorktree],
+            queueItems: [WorktreeQueueItem],
+            issues: [LinearIssue]
         )
         case createWorktreeTapped(repoId: String, name: String)
-        case worktreeCreated(TaskResult<WorktreeRecord>)
+        case worktreeCreated(TaskResult<WorktreesLoadedWorktree>)
         case createSheetShown(prefilledRepoId: String?)
         case createSheetDismissed
         case createSheetRepoChanged(repoId: String)
@@ -230,7 +278,7 @@ struct WorktreeFeature {
         case refreshWorktreeInfo
         case addRepoFolderTapped
         case addRepoFolderSelected(URL)
-        case repoAdded(TaskResult<RepositoryRecord>)
+        case repoAdded(TaskResult<Repository>)
         case removeRepoTapped(repoId: String)
         case removeRepoConfirmed(repoId: String)
         case removeRepoAndKillTmuxConfirmed(repoId: String)
@@ -613,19 +661,19 @@ struct WorktreeFeature {
                         await send(.boardOverlayHydrated(persisted))
                     },
                     .run { send in
-                        let repos = try await worktreeClient.fetchRepositories()
-                        let worktrees = try await worktreeClient.fetchWorktrees()
-                        var allQueueItems: [WorktreeQueueItemRecord] = []
-                        for worktree in worktrees {
-                            let items = try await worktreeClient.fetchQueueItems(worktree.worktreeId)
-                            allQueueItems.append(contentsOf: items)
+                        let repoRecords = try await worktreeClient.fetchRepositories()
+                        let worktreeRecords = try await worktreeClient.fetchWorktrees()
+                        var allQueueItems: [WorktreeQueueItem] = []
+                        for record in worktreeRecords {
+                            let items = try await worktreeClient.fetchQueueItems(record.worktreeId)
+                            allQueueItems.append(contentsOf: items.map(WorktreeQueueItem.init(from:)))
                         }
-                        let issues = try await databaseClient.fetchImportedIssues()
+                        let issueRecords = try await databaseClient.fetchImportedIssues()
                         await send(.worktreesLoaded(
-                            repositories: repos,
-                            worktrees: worktrees,
+                            repositories: repoRecords.map(Repository.init(from:)),
+                            worktrees: worktreeRecords.map(WorktreesLoadedWorktree.init(from:)),
                             queueItems: allQueueItems,
-                            issues: issues
+                            issues: issueRecords.map(LinearIssue.init(from:))
                         ))
                     } catch: { error, send in
                         await send(.loadFailed(error.localizedDescription))
@@ -637,16 +685,14 @@ struct WorktreeFeature {
                 state.showBoardOverlay = persisted
                 return .none
 
-            case let .worktreesLoaded(repoRecords, worktreeRecords, queueItems, issueRecords):
-                state.repositories = IdentifiedArrayOf(uniqueElements: repoRecords.map { record in
-                    Repository(id: record.repoId, name: record.name, path: record.path, sortOrder: record.sortOrder)
-                })
+            case let .worktreesLoaded(repositories, worktreeSnapshots, queueItems, issues):
+                state.repositories = IdentifiedArrayOf(uniqueElements: repositories)
 
                 let issuesByLinearId = Dictionary(
-                    uniqueKeysWithValues: issueRecords.map { ($0.linearId, LinearIssue(from: $0)) }
+                    uniqueKeysWithValues: issues.map { ($0.id, $0) }
                 )
                 let queueItemsByWorktree = Dictionary(grouping: queueItems, by: \.worktreeId)
-                let repoNames = Dictionary(uniqueKeysWithValues: repoRecords.map { ($0.repoId, $0.name) })
+                let repoNames = Dictionary(uniqueKeysWithValues: repositories.map { ($0.id, $0.name) })
 
                 let orphanedItems = queueItems.filter { issuesByLinearId[$0.issueLinearId] == nil }
                 if !orphanedItems.isEmpty {
@@ -660,20 +706,20 @@ struct WorktreeFeature {
                 // the previous worktrees list so a re-fired onAppear doesn't
                 // flash stale-looking "empty" rows before the background
                 // refreshes catch back up. Only DB-sourced fields come from
-                // the fresh record.
+                // the fresh snapshot.
                 let previousWorktreesByID = Dictionary(
                     uniqueKeysWithValues: state.worktrees.map { ($0.id, $0) }
                 )
-                state.worktrees = IdentifiedArrayOf(uniqueElements: worktreeRecords.map { record in
-                    let items = queueItemsByWorktree[record.worktreeId] ?? []
-                    let previous = previousWorktreesByID[record.worktreeId]
+                state.worktrees = IdentifiedArrayOf(uniqueElements: worktreeSnapshots.map { snapshot in
+                    let items = queueItemsByWorktree[snapshot.id] ?? []
+                    let previous = previousWorktreesByID[snapshot.id]
                     return Worktree(
-                        id: record.worktreeId,
-                        name: record.name,
-                        sortOrder: record.sortOrder,
-                        gitWorktreePath: record.gitWorktreePath,
-                        repoId: record.repoId,
-                        repoName: record.repoId.flatMap { repoNames[$0] },
+                        id: snapshot.id,
+                        name: snapshot.name,
+                        sortOrder: snapshot.sortOrder,
+                        gitWorktreePath: snapshot.gitWorktreePath,
+                        repoId: snapshot.repoId,
+                        repoName: snapshot.repoId.flatMap { repoNames[$0] },
                         currentBranch: previous?.currentBranch,
                         tmuxSessionStatus: previous?.tmuxSessionStatus ?? .unknown,
                         meisterStatus: previous?.meisterStatus ?? .none,
@@ -887,7 +933,7 @@ struct WorktreeFeature {
                             let record = try await worktreeClient.createWorktree(
                                 sanitized, worktreePath, repoId
                             )
-                            await send(.worktreeCreated(.success(record)))
+                            await send(.worktreeCreated(.success(WorktreesLoadedWorktree(from: record))))
                         } catch {
                             do {
                                 try await gitClient.removeWorktree(repoPath, worktreePath)
@@ -907,16 +953,16 @@ struct WorktreeFeature {
                     }
                 }
 
-            case let .worktreeCreated(.success(record)):
+            case let .worktreeCreated(.success(snapshot)):
                 state.isCreatingWorktree = false
-                let repoName = record.repoId.flatMap { id in state.repositories[id: id]?.name }
-                let branch = WorktreeConfig.branchName(fromIdentifier: record.name)
+                let repoName = snapshot.repoId.flatMap { id in state.repositories[id: id]?.name }
+                let branch = WorktreeConfig.branchName(fromIdentifier: snapshot.name)
                 state.worktrees.append(Worktree(
-                    id: record.worktreeId,
-                    name: record.name,
-                    sortOrder: record.sortOrder,
-                    gitWorktreePath: record.gitWorktreePath,
-                    repoId: record.repoId,
+                    id: snapshot.id,
+                    name: snapshot.name,
+                    sortOrder: snapshot.sortOrder,
+                    gitWorktreePath: snapshot.gitWorktreePath,
+                    repoId: snapshot.repoId,
                     repoName: repoName,
                     currentBranch: branch,
                     tmuxSessionStatus: .needsCreation
@@ -1477,19 +1523,14 @@ struct WorktreeFeature {
                     await send(.repoAdded(TaskResult {
                         let repoRoot = try await gitClient.repositoryRoot(url.path)
                         let name = URL(fileURLWithPath: repoRoot).lastPathComponent
-                        return try await worktreeClient.addRepository(name, repoRoot)
+                        let record = try await worktreeClient.addRepository(name, repoRoot)
+                        return Repository(from: record)
                     }))
                 }
 
-            case let .repoAdded(.success(record)):
-                let repo = Repository(
-                    id: record.repoId,
-                    name: record.name,
-                    path: record.path,
-                    sortOrder: record.sortOrder
-                )
+            case let .repoAdded(.success(repo)):
                 state.repositories.append(repo)
-                return .send(.syncRepo(repoId: record.repoId))
+                return .send(.syncRepo(repoId: repo.id))
 
             case .repoAdded(.failure):
                 state.alert = AlertState {
