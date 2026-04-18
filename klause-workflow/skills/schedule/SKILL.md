@@ -1,6 +1,6 @@
 ---
 name: schedule
-description: Use when the user wants to schedule a Linear project's tickets across worktree queues, distribute work based on dependencies, or says "schedule this project" / "assign tickets to worktrees" / "plan the work". Takes a Linear project, builds a dependency-aware assignment plan, and enqueues after approval.
+description: Use when the user wants to schedule a Linear project's tickets across worktree queues, distribute work based on dependencies, or says "schedule this project" / "assign tickets to worktrees" / "plan the work" / "save this schedule". Takes a Linear project, builds a dependency-aware assignment plan, then lets the user save the plan, enqueue it immediately, or cancel.
 ---
 
 # /schedule
@@ -10,7 +10,7 @@ Schedule a Linear project's tickets across available Klausemeister worktree queu
 ## Usage
 
 ```
-/schedule <project-name>
+/schedule <project-name> [--name <schedule-name>]
 ```
 
 ## Step 1: Gather data
@@ -107,22 +107,49 @@ If there are **unscheduled** tickets (beyond cycles), list them with reasons.
 
 If there are **external blockers** (blockers outside this project), note them.
 
-Ask: **"Approve this plan? (yes/no)"**
+Present the three-way choice:
 
-Do NOT proceed without explicit user approval.
+```
+Choose an action:
+  save    store this schedule in Klausemeister, do not enqueue
+          (find it later as a pill under the repo header in the sidebar)
+  run     store and enqueue immediately (today's behavior)
+  cancel  discard, do nothing
+```
 
-## Step 5: Enqueue
+Do NOT proceed without explicit user choice.
 
-On approval, enqueue each ticket in plan order using the Klausemeister MCP:
+## Step 5: Dispatch on user choice
 
-For each worktree in the plan, for each item in order:
-1. Call `enqueueItem` with `issueLinearId` (UUID **or** human identifier like `KLA-136`) and `targetWorktreeId`
-2. If it fails, report the error and continue with the next item
+### Schedule name
 
-After all enqueue calls complete, report:
-- How many tickets were enqueued successfully
-- Any failures
-- The updated queue state (call `listWorktrees` again to confirm)
+Before making any MCP calls, determine the schedule name:
+- If the user passed `--name <string>` to `/schedule`, use that string.
+- Otherwise use the default: `<linear-project-name> · <YYYY-MM-DD HH:mm>` in the user's local timezone.
+
+### On `save`
+
+1. Call `saveSchedule` with the assignment plan. The payload shape is:
+   ```json
+   {
+     "name": "<schedule name>",
+     "assignments": [
+       { "issueLinearId": "<UUID>", "targetWorktreeId": "<worktreeId>", "queuePosition": <int> }
+     ]
+   }
+   ```
+2. Report: `Saved as schedule "<name>" (<id>). Open it from the sidebar pill under <repo-name> to view the gantt or run it later.`
+
+### On `run`
+
+1. Call `saveSchedule` with the same payload as above; capture the returned `scheduleId`.
+2. Call `runSchedule({ scheduleId })`.
+3. Report success/failure per item from `runSchedule`'s response.
+4. Call `listWorktrees` to confirm the updated queue state and include a summary.
+
+### On `cancel`
+
+Stop immediately. Make no MCP calls and report: `Cancelled — nothing changed.`
 
 ## Error handling
 

@@ -1,6 +1,6 @@
 ---
 description: Schedule a Linear project's tickets across worktree queues using dependency-aware load balancing
-argument-hint: "<project-name>"
+argument-hint: "<project-name> [--name <schedule-name>]"
 ---
 
 # /klause-schedule
@@ -21,8 +21,8 @@ This command invokes the `schedule` skill from the klause-workflow plugin. See `
 2. **Query worktree capacity** via the Klausemeister `listWorktrees` MCP tool — get all tracked worktrees with their current inbox/processing/outbox state.
 3. **Run the scheduling algorithm** (`klause-workflow/scripts/schedule.py`) — builds a DAG, detects cycles, runs a topological sort, and distributes tickets across worktrees using an LPT (Longest Processing Time) heuristic that respects dependency constraints.
 4. **Present the plan** as a table (worktree -> ordered list of tickets with weights). Surface any dependency cycles or unschedulable tickets.
-5. **Wait for explicit user approval** before making any changes.
-6. **Enqueue** each ticket in the planned order via the Klausemeister `enqueueItem` MCP tool.
+5. **Wait for explicit user choice**: `save` (store the plan without enqueuing), `run` (store and enqueue immediately), or `cancel` (discard).
+6. **Dispatch**: on `save`, call `saveSchedule`; on `run`, call `saveSchedule` then `runSchedule`; on `cancel`, stop.
 
 ## Scheduling constraints
 
