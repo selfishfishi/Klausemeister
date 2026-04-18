@@ -99,15 +99,15 @@ struct AppFeature {
             case .onAppear:
                 state.keyBindings = actionRegistry.resolvedBindings()
                 return .merge(
-                    .run { [keyBindingsClient] send in
+                    .run(priority: .utility) { [keyBindingsClient] send in
                         let overrides = await (try? keyBindingsClient.loadOverrides()) ?? [:]
                         await send(.keyBindingsLoaded(overrides))
                     },
-                    .run { [mcpServerClient] _ in
+                    .run(priority: .utility) { [mcpServerClient] _ in
                         await mcpServerClient.start()
                     }
                     .cancellable(id: CancelID.mcpServer),
-                    .run { [mcpServerClient] send in
+                    .run(priority: .utility) { [mcpServerClient] send in
                         for await event in mcpServerClient.events() {
                             await send(.mcpServerEvent(event))
                         }

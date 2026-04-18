@@ -46,13 +46,26 @@ final class SurfaceStore {
 
     func focus(_ id: String) async -> Bool {
         guard let record = records[id] else { return false }
-        for _ in 0 ..< 50 {
-            if let window = record.view.window, window.makeFirstResponder(record.view) {
-                return true
-            }
-            try? await Task.sleep(for: .milliseconds(10))
+        let view = record.view
+        // Fast path: already in a window and ready to accept first responder.
+        if let window = view.window, window.makeFirstResponder(view) {
+            return true
         }
-        return false
+        // Otherwise await `viewDidMoveToWindow`, racing a 500ms ceiling so a
+        // detached surface can't hang a focus request.
+        let window: NSWindow? = await withTaskGroup(of: NSWindow?.self) { group in
+            group.addTask { @MainActor in await view.awaitWindow() }
+            group.addTask {
+                try? await Task.sleep(for: .milliseconds(500))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            for await _ in group {}
+            return first
+        }
+        guard let window else { return false }
+        return window.makeFirstResponder(view)
     }
 
     func unfocus(_ id: String) {
