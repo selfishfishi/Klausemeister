@@ -68,7 +68,12 @@ struct SidebarView: View {
             set: { _ in store.send(.worktree(.repoCollapseToggled(repoId: repo.id))) }
         )
 
+        let schedules = store.worktree.schedulesByRepoId[repo.id] ?? []
+
         return DisclosureGroup(isExpanded: isExpanded) {
+            RepoScheduleStripView(schedules: schedules) { scheduleId in
+                store.send(.worktree(.scheduleTapped(scheduleId: scheduleId)))
+            }
             ForEach(store.worktree.worktreesByRepo[repo.id] ?? []) { worktree in
                 sidebarWorktreeRow(worktree)
             }
