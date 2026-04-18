@@ -153,5 +153,29 @@ enum DatabaseMigrations {
                 t.drop(column: "ingestionStrategy")
             }
         }
+
+        migrator.registerMigration("v14-hot-path-indexes") { db in
+            // Indexes for frequently-filtered columns. These back:
+            // - worktree_queue_items lookups by worktreeId (queue UI / MCP tools)
+            // - imported_issues lookups by identifier (Linear sync dedupe path)
+            // - imported_issues deletes/fetches filtered by teamId
+            // - linear_workflow_states fetches by teamId (state mapping editor)
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_worktree_queue_items_worktree_id
+                    ON worktree_queue_items(worktreeId)
+            """)
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_imported_issues_identifier
+                    ON imported_issues(identifier)
+            """)
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_imported_issues_team_id
+                    ON imported_issues(teamId)
+            """)
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_linear_workflow_states_team_id
+                    ON linear_workflow_states(teamId)
+            """)
+        }
     }
 }

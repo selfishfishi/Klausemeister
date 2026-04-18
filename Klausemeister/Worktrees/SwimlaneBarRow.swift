@@ -146,6 +146,7 @@ struct SwimlaneBarRow: View {
                     SwimlaneWorkingCometOverlay(
                         cycleColors: cometCycleColors,
                         phaseOffset: Self.phaseOffset(for: worktree.id),
+                        paused: !worktree.isMeisterWorking,
                         cornerRadius: 4
                     )
                 }

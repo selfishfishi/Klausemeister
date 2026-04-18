@@ -12,6 +12,16 @@ struct TerminalContainerView: View {
     @AppStorage("inspectorOpen") private var inspectorOpenPref: Bool = false
     @AppStorage(AppTheme.storageKey) private var selectedTheme: AppTheme = .everforestDarkMedium
 
+    /// Teams keyed by id. Empty when only one team is configured — the
+    /// `WorktreeDetailView` elides team chips in that case. Built once per
+    /// render rather than inline to avoid the O(N) allocation on every
+    /// sidebar-toggle / inspector-toggle / command-palette open.
+    private var teamsByID: [String: LinearTeam] {
+        let teams = store.meister.teams
+        guard teams.count > 1 else { return [:] }
+        return Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0) })
+    }
+
     var body: some View {
         ZStack {
             NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -38,9 +48,7 @@ struct TerminalContainerView: View {
                     WorktreeDetailView(
                         store: store.scope(state: \.worktree, action: \.worktree),
                         surfaceStore: surfaceStore,
-                        teamsByID: store.meister.teams.count > 1
-                            ? Dictionary(uniqueKeysWithValues: store.meister.teams.map { ($0.id, $0) })
-                            : [:]
+                        teamsByID: teamsByID
                     )
                 }
             }

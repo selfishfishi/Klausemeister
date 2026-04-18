@@ -11,6 +11,15 @@ struct MeisterView: View {
 
     @Environment(\.themeColors) private var themeColors
 
+    /// Teams keyed by id, or empty when there's only a single team (the
+    /// kanban card doesn't render team chips in that case). Built only
+    /// when `teams` changes — not on every body evaluation — so the
+    /// `GeometryReader` re-render on window resize doesn't reallocate.
+    private var teamsByID: [String: LinearTeam] {
+        guard teams.count > 1 else { return [:] }
+        return Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0) })
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Header with filter + sync
@@ -107,7 +116,6 @@ struct MeisterView: View {
 
             // Kanban board
             GeometryReader { proxy in
-                let teamsByID = Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0) })
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 14) {
                         ForEach(store.visibleColumns) { column in
@@ -116,7 +124,7 @@ struct MeisterView: View {
                                 worktrees: worktrees,
                                 repositories: repositories,
                                 assignedWorktreeNames: assignedWorktreeNames,
-                                teamsByID: teams.count > 1 ? teamsByID : [:],
+                                teamsByID: teamsByID,
                                 onMoveToStatus: { issueId, target in
                                     store.send(.moveToStatusTapped(issueId: issueId, target: target))
                                 },
