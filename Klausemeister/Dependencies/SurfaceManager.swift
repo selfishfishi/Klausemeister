@@ -15,7 +15,7 @@ struct SurfaceManager {
     /// against the new app. The order is load-bearing: libghostty crashes
     /// in `ghostty_app_free` if surfaces still reference the app, and
     /// `ghostty_surface_free` is unsafe after the app is gone.
-    var rebuildApp: @Sendable @MainActor (_ appRebuild: () -> Void) -> Void
+    var rebuildApp: @Sendable @MainActor (_ appRebuild: @escaping () -> Void) -> Void
 }
 
 extension SurfaceManager {
@@ -57,7 +57,7 @@ extension SurfaceManager: DependencyKey {
         destroySurface: unimplemented("SurfaceManager.destroySurface"),
         focus: unimplemented("SurfaceManager.focus", placeholder: false),
         unfocus: unimplemented("SurfaceManager.unfocus"),
-        rebuildApp: unimplemented("SurfaceManager.rebuildApp")
+        rebuildApp: unimplemented("SurfaceManager.rebuildApp", placeholder: ())
     )
     nonisolated static let testValue = SurfaceManager(
         createSurface: unimplemented(
@@ -67,7 +67,7 @@ extension SurfaceManager: DependencyKey {
         destroySurface: unimplemented("SurfaceManager.destroySurface"),
         focus: unimplemented("SurfaceManager.focus", placeholder: false),
         unfocus: unimplemented("SurfaceManager.unfocus"),
-        rebuildApp: unimplemented("SurfaceManager.rebuildApp")
+        rebuildApp: unimplemented("SurfaceManager.rebuildApp", placeholder: ())
     )
 }
 
