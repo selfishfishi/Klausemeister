@@ -133,9 +133,9 @@ struct MeisterFeature {
     private func onAppearEffect(enabledTeams: [LinearTeam] = []) -> Effect<Action> {
         .run { [linearAPIClient, databaseClient, stateMappingClient, currentNow = date.now] send in
             // 0. Load persisted filters and state mappings
-            let mappingRecords = await (try? stateMappingClient.fetchAll()) ?? []
-            if !mappingRecords.isEmpty {
-                await send(.stateMappingsLoaded(StateMappingTable.from(mappingRecords)))
+            let mappings = await (try? stateMappingClient.fetchAll()) ?? []
+            if !mappings.isEmpty {
+                await send(.stateMappingsLoaded(StateMappingTable.from(mappings)))
             }
             let hiddenProjects = await (try? databaseClient.fetchHiddenProjects()) ?? []
             if !hiddenProjects.isEmpty {
@@ -143,23 +143,15 @@ struct MeisterFeature {
             }
 
             // 1. Load persisted cache (if any)
-            let records = await (try? databaseClient.fetchWorkflowStates()) ?? []
+            let cachedStates = await (try? databaseClient.fetchWorkflowStates()) ?? []
             var cachedFetchedAt: Date?
-            if !records.isEmpty {
-                let grouped = Dictionary(grouping: records, by: \.teamId)
-                let cachedStates: WorkflowStatesByTeam = grouped.mapValues { rows in
-                    rows.map { LinearWorkflowState(
-                        id: $0.id,
-                        name: $0.name,
-                        type: $0.type,
-                        position: $0.position,
-                        teamId: $0.teamId
-                    ) }.sorted { $0.position < $1.position }
+            if !cachedStates.isEmpty {
+                let grouped = Dictionary(grouping: cachedStates, by: \.teamId)
+                let byTeam: WorkflowStatesByTeam = grouped.mapValues { rows in
+                    rows.sorted { $0.position < $1.position }
                 }
-                cachedFetchedAt = records.first.flatMap {
-                    ISO8601DateFormatter.shared.date(from: $0.fetchedAt)
-                }
-                await send(.workflowStatesLoadedFromCache(cachedStates, cachedFetchedAt))
+                cachedFetchedAt = try? await databaseClient.lastWorkflowStateFetch()
+                await send(.workflowStatesLoadedFromCache(byTeam, cachedFetchedAt))
             }
 
             // 2. Decide whether to refetch states based on the cached timestamp
@@ -247,19 +239,9 @@ struct MeisterFeature {
                     from: result.issues, mappings: state.stateMappings
                 )
                 state.syncStatus = .succeeded
-                let records = result.issues.map { ImportedIssueRecord(from: $0, importedAt: now) }
-                let workflowRecordsToSave: [LinearWorkflowStateRecord]? = result.workflowStatesByTeam.map { states in
-                    let timestamp = ISO8601DateFormatter.shared.string(from: now)
-                    return states.values.flatMap(\.self).map { state in
-                        LinearWorkflowStateRecord(
-                            id: state.id,
-                            teamId: state.teamId,
-                            name: state.name,
-                            type: state.type,
-                            position: state.position,
-                            fetchedAt: timestamp
-                        )
-                    }
+                let issues = result.issues
+                let workflowStatesToSave = result.workflowStatesByTeam.map { byTeam in
+                    Array(byTeam.values.flatMap(\.self))
                 }
                 let effects: [Effect<Action>] = [
                     result.teamFailures.isEmpty
@@ -272,7 +254,7 @@ struct MeisterFeature {
                         ))),
                     .run { [databaseClient] send in
                         do {
-                            try await databaseClient.batchSaveImportedIssues(records)
+                            try await databaseClient.batchSaveImportedIssues(issues, now)
                         } catch {
                             await send(.delegate(.errorOccurred(
                                 message: "Failed to save sync results: \(error.localizedDescription)"
@@ -280,15 +262,15 @@ struct MeisterFeature {
                         }
                     },
                     .run { [databaseClient] _ in
-                        if let workflowRecordsToSave {
-                            try? await databaseClient.saveWorkflowStates(workflowRecordsToSave)
+                        if let workflowStatesToSave {
+                            try? await databaseClient.saveWorkflowStates(workflowStatesToSave, now)
                         }
                     },
                     .run { [stateMappingClient] send in
                         if let freshStates = result.workflowStatesByTeam {
                             let allStates = freshStates.values.flatMap(\.self)
                             let existing = await (try? stateMappingClient.fetchAll()) ?? []
-                            let seeds = StateMappingClient.computeSeedRecords(
+                            let seeds = StateMappingClient.computeSeedMappings(
                                 freshStates: allStates, existingMappings: existing
                             )
                             if !seeds.isEmpty {
@@ -302,8 +284,8 @@ struct MeisterFeature {
                             }
                         }
                         // Only update in-memory table if fetch succeeds — avoid wiping valid mappings
-                        if let records = try? await stateMappingClient.fetchAll() {
-                            let table = StateMappingTable.from(records)
+                        if let mappings = try? await stateMappingClient.fetchAll() {
+                            let table = StateMappingTable.from(mappings)
                             await send(.stateMappingsLoaded(table))
                         }
                     },
@@ -433,8 +415,7 @@ struct MeisterFeature {
 
             case let .issueDroppedFromWorktree(issueId, onColumn):
                 return .run { send in
-                    guard let record = try await databaseClient.fetchImportedIssue(issueId) else { return }
-                    let issue = LinearIssue(from: record)
+                    guard let issue = try await databaseClient.fetchImportedIssue(issueId) else { return }
                     await send(.issueDroppedFromWorktreeResolved(issue: issue, onColumn: onColumn))
                 }
 
@@ -672,23 +653,21 @@ nonisolated private func performSync(
 
     let (fetchedIssues, teamFailures) = try await issuesTask
     let workflowStatesByTeam = try await statesTask
-    let dbRecords = try await databaseClient.fetchUnqueuedImportedIssues()
+    let dbIssues = try await databaseClient.fetchUnqueuedImportedIssues()
 
     let fetchedIds = Set(fetchedIssues.map(\.id))
-    let dbIds = Set(dbRecords.map(\.linearId))
+    let dbIds = Set(dbIssues.map(\.id))
 
     // Orphaned: in DB but not in the fresh fetch
     let orphanedIds = dbIds.subtracting(fetchedIds)
 
     // Restored: previously orphaned but now present in the fetch
-    let previouslyOrphaned = Set(dbRecords.filter(\.isOrphaned).map(\.linearId))
+    let previouslyOrphaned = Set(dbIssues.filter(\.isOrphaned).map(\.id))
     let restoredIds = fetchedIds.intersection(previouslyOrphaned)
 
     // Merge fetched issues with still-orphaned DB issues so they remain visible in the kanban
-    let stillOrphanedRecords = dbRecords.filter { orphanedIds.contains($0.linearId) }
     var mergedIssues = fetchedIssues
-    for record in stillOrphanedRecords {
-        var issue = LinearIssue(from: record)
+    for var issue in dbIssues where orphanedIds.contains(issue.id) {
         issue.isOrphaned = true
         mergedIssues.append(issue)
     }

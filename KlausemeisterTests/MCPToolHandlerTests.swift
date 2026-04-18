@@ -5,16 +5,11 @@ import Testing
 
 // MARK: - Fixtures
 
-// NOTE: These fixtures use *Record types directly because DatabaseClient and
-// WorktreeClient return records (not domain types) — a pre-existing layer
-// violation tracked as KLA-60. Once KLA-60 is resolved, these fixtures
-// should be expressed as domain types instead.
-
 private let teamId = "team-1"
 private let worktreeId = "wt-1"
 
-private let issueRecord = ImportedIssueRecord(
-    linearId: "issue-1",
+private let issue = LinearIssue(
+    id: "issue-1",
     identifier: "KLA-70",
     title: "MCP server",
     status: "Backlog",
@@ -22,51 +17,42 @@ private let issueRecord = ImportedIssueRecord(
     statusType: "backlog",
     teamId: teamId,
     projectName: "Klause",
-    labels: "[]",
+    labels: [],
     description: "Build the in-process MCP server",
     url: "https://linear.app/x/issue/KLA-70",
-    updatedAt: "2026-04-06",
-    importedAt: "2026-04-06",
-    sortOrder: 0,
-    isOrphaned: false
+    updatedAt: "2026-04-06"
 )
 
-private let inProgressState = LinearWorkflowStateRecord(
+private let inProgressState = LinearWorkflowState(
     id: "state-in-progress",
-    teamId: teamId,
     name: "In Progress",
     type: "started",
     position: 2,
-    fetchedAt: "2026-04-06"
+    teamId: teamId
 )
 
-private let doneState = LinearWorkflowStateRecord(
+private let doneState = LinearWorkflowState(
     id: "state-done",
-    teamId: teamId,
     name: "Done",
     type: "completed",
     position: 5,
-    fetchedAt: "2026-04-06"
+    teamId: teamId
 )
 
-private let inboxItem = WorktreeQueueItemRecord(
+private let inboxItem = WorktreeQueueItem(
     id: "qi-1",
     worktreeId: worktreeId,
-    issueLinearId: issueRecord.linearId,
+    issueLinearId: issue.id,
     queuePosition: .inbox,
-    sortOrder: 0,
-    assignedAt: "2026-04-06",
-    completedAt: nil
+    sortOrder: 0
 )
 
-private let processingItem = WorktreeQueueItemRecord(
+private let processingItem = WorktreeQueueItem(
     id: "qi-2",
     worktreeId: worktreeId,
     issueLinearId: "issue-other",
     queuePosition: .processing,
-    sortOrder: 0,
-    assignedAt: "2026-04-06",
-    completedAt: nil
+    sortOrder: 0
 )
 
 // MARK: - WorkflowStateResolver
@@ -118,8 +104,8 @@ private let processingItem = WorktreeQueueItemRecord(
             movedToProcessing = (issueId, wid)
         }
         $0.databaseClient.fetchImportedIssue = { id in
-            #expect(id == issueRecord.linearId)
-            return issueRecord
+            #expect(id == issue.id)
+            return issue
         }
         $0.databaseClient.fetchWorkflowStates = { [inProgressState, doneState] }
         $0.stateMappingClient.fetchForTeam = { _ in [] }
@@ -135,9 +121,9 @@ private let processingItem = WorktreeQueueItemRecord(
     continuation.finish()
 
     #expect(!result.isError)
-    #expect(movedToProcessing?.issueId == issueRecord.linearId)
+    #expect(movedToProcessing?.issueId == issue.id)
     #expect(movedToProcessing?.worktreeId == worktreeId)
-    #expect(linearUpdate?.issueId == issueRecord.linearId)
+    #expect(linearUpdate?.issueId == issue.id)
     #expect(linearUpdate?.statusId == inProgressState.id)
     #expect(result.text.contains("\"identifier\":\"KLA-70\""))
 
@@ -146,7 +132,7 @@ private let processingItem = WorktreeQueueItemRecord(
         events.append(event)
     }
     #expect(events.contains(.itemMovedToProcessing(
-        worktreeId: worktreeId, issueLinearId: issueRecord.linearId
+        worktreeId: worktreeId, issueLinearId: issue.id
     )))
 }
 
@@ -189,7 +175,7 @@ private let processingItem = WorktreeQueueItemRecord(
     let (stream, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
 
     let result = try await withDependencies {
-        $0.databaseClient.fetchImportedIssue = { _ in issueRecord }
+        $0.databaseClient.fetchImportedIssue = { _ in issue }
         $0.databaseClient.fetchWorkflowStates = { [inProgressState, doneState] }
         $0.worktreeClient.moveToOutboxByIssueId = { issueId, wid in
             movedToOutbox = (issueId, wid)
@@ -199,7 +185,7 @@ private let processingItem = WorktreeQueueItemRecord(
         }
     } operation: {
         try await ToolHandlers.completeItem(
-            issueLinearId: issueRecord.linearId,
+            issueLinearId: issue.id,
             worktreeId: worktreeId,
             nextLinearState: "Done",
             eventContinuation: continuation
@@ -208,7 +194,7 @@ private let processingItem = WorktreeQueueItemRecord(
     continuation.finish()
 
     #expect(!result.isError)
-    #expect(movedToOutbox?.issueId == issueRecord.linearId)
+    #expect(movedToOutbox?.issueId == issue.id)
     #expect(movedToOutbox?.worktreeId == worktreeId)
     #expect(linearUpdate?.statusId == doneState.id)
 
@@ -217,18 +203,18 @@ private let processingItem = WorktreeQueueItemRecord(
         events.append(event)
     }
     #expect(events.contains(.itemMovedToOutbox(
-        worktreeId: worktreeId, issueLinearId: issueRecord.linearId
+        worktreeId: worktreeId, issueLinearId: issue.id
     )))
 }
 
 @Test func `completeItem fails when state name does not exist`() async throws {
     let (_, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
     let result = try await withDependencies {
-        $0.databaseClient.fetchImportedIssue = { _ in issueRecord }
+        $0.databaseClient.fetchImportedIssue = { _ in issue }
         $0.databaseClient.fetchWorkflowStates = { [inProgressState] }
     } operation: {
         try await ToolHandlers.completeItem(
-            issueLinearId: issueRecord.linearId,
+            issueLinearId: issue.id,
             worktreeId: worktreeId,
             nextLinearState: "Nonexistent",
             eventContinuation: continuation

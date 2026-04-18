@@ -23,25 +23,28 @@ import GRDB
 /// `DatabaseMigrations.registerAll`; a failure to migrate `fatalError`s
 /// because the app cannot start with a broken database.
 ///
-/// KLA-60 note: the public closure API still returns raw `*Record`
-/// types. Reducers convert to domain types at the effect boundary;
-/// collapsing that conversion into the live value is a follow-up.
+/// All fetch/save closures speak in domain types (`LinearIssue`,
+/// `LinearWorkflowState`, `LinearTeam`). Record→Domain mapping happens
+/// inside `liveValue`; GRDB types never cross the dependency boundary.
 struct DatabaseClient {
     var getDbQueue: @Sendable () -> DatabaseQueue
-    var fetchImportedIssues: @Sendable () async throws -> [ImportedIssueRecord]
-    var saveImportedIssue: @Sendable (ImportedIssueRecord) async throws -> Void
+    var fetchImportedIssues: @Sendable () async throws -> [LinearIssue]
+    var saveImportedIssue: @Sendable (_ issue: LinearIssue, _ importedAt: Date) async throws -> Void
     var deleteImportedIssue: @Sendable (_ linearId: String) async throws -> Void
     var updateIssueStatus: @Sendable (_ linearId: String, _ status: String, _ statusId: String, _ statusType: String) async throws -> Void
-    var updateIssueFromLinear: @Sendable (ImportedIssueRecord) async throws -> Void
-    var batchSaveImportedIssues: @Sendable ([ImportedIssueRecord]) async throws -> Void
-    var fetchUnqueuedImportedIssues: @Sendable () async throws -> [ImportedIssueRecord]
-    var fetchImportedIssue: @Sendable (_ linearId: String) async throws -> ImportedIssueRecord?
-    var fetchImportedIssueByIdentifier: @Sendable (_ identifier: String) async throws -> ImportedIssueRecord?
+    var updateIssueFromLinear: @Sendable (_ issue: LinearIssue, _ importedAt: Date) async throws -> Void
+    var batchSaveImportedIssues: @Sendable (_ issues: [LinearIssue], _ importedAt: Date) async throws -> Void
+    var fetchUnqueuedImportedIssues: @Sendable () async throws -> [LinearIssue]
+    var fetchImportedIssue: @Sendable (_ linearId: String) async throws -> LinearIssue?
+    var fetchImportedIssueByIdentifier: @Sendable (_ identifier: String) async throws -> LinearIssue?
     var markOrphanedIssues: @Sendable (_ linearIds: [String], _ isOrphaned: Bool) async throws -> Void
-    var fetchWorkflowStates: @Sendable () async throws -> [LinearWorkflowStateRecord]
-    var saveWorkflowStates: @Sendable (_ records: [LinearWorkflowStateRecord]) async throws -> Void
-    var fetchTeams: @Sendable () async throws -> [LinearTeamRecord]
-    var saveTeams: @Sendable (_ records: [LinearTeamRecord]) async throws -> Void
+    var fetchWorkflowStates: @Sendable () async throws -> [LinearWorkflowState]
+    /// Timestamp of the most-recent `saveWorkflowStates`, used to decide
+    /// whether to refresh from Linear. Returns `nil` when the cache is empty.
+    var lastWorkflowStateFetch: @Sendable () async throws -> Date?
+    var saveWorkflowStates: @Sendable (_ states: [LinearWorkflowState], _ fetchedAt: Date) async throws -> Void
+    var fetchTeams: @Sendable () async throws -> [LinearTeam]
+    var saveTeams: @Sendable (_ teams: [LinearTeam]) async throws -> Void
     var deleteAllTeams: @Sendable () async throws -> Void
     var deleteIssuesByTeam: @Sendable (_ teamId: String) async throws -> Void
     var deleteTeam: @Sendable (_ teamId: String) async throws -> Void
@@ -74,11 +77,15 @@ extension DatabaseClient: DependencyKey {
             getDbQueue: { dbQueue },
             fetchImportedIssues: {
                 try await dbQueue.read { db in
-                    try ImportedIssueRecord.order(Column("sortOrder").asc).fetchAll(db)
+                    try ImportedIssueRecord.order(Column("sortOrder").asc)
+                        .fetchAll(db)
+                        .map(LinearIssue.init(from:))
                 }
             },
-            saveImportedIssue: { record in
-                try await dbQueue.write { db in try record.save(db) }
+            saveImportedIssue: { issue, importedAt in
+                try await dbQueue.write { db in
+                    try ImportedIssueRecord(from: issue, importedAt: importedAt).save(db)
+                }
             },
             deleteImportedIssue: { linearId in
                 try await dbQueue.write { db in
@@ -95,13 +102,15 @@ extension DatabaseClient: DependencyKey {
                     }
                 }
             },
-            updateIssueFromLinear: { record in
-                try await dbQueue.write { db in try record.save(db) }
-            },
-            batchSaveImportedIssues: { records in
+            updateIssueFromLinear: { issue, importedAt in
                 try await dbQueue.write { db in
-                    for record in records {
-                        try record.save(db)
+                    try ImportedIssueRecord(from: issue, importedAt: importedAt).save(db)
+                }
+            },
+            batchSaveImportedIssues: { issues, importedAt in
+                try await dbQueue.write { db in
+                    for issue in issues {
+                        try ImportedIssueRecord(from: issue, importedAt: importedAt).save(db)
                     }
                 }
             },
@@ -115,11 +124,12 @@ extension DatabaseClient: DependencyKey {
                         )
                         ORDER BY ii.sortOrder ASC
                     """)
+                    .map(LinearIssue.init(from:))
                 }
             },
             fetchImportedIssue: { linearId in
                 try await dbQueue.read { db in
-                    try ImportedIssueRecord.fetchOne(db, key: linearId)
+                    try ImportedIssueRecord.fetchOne(db, key: linearId).map(LinearIssue.init(from:))
                 }
             },
             fetchImportedIssueByIdentifier: { identifier in
@@ -127,6 +137,7 @@ extension DatabaseClient: DependencyKey {
                     try ImportedIssueRecord
                         .filter(Column("identifier") == identifier)
                         .fetchOne(db)
+                        .map(LinearIssue.init(from:))
                 }
             },
             markOrphanedIssues: { linearIds, isOrphaned in
@@ -143,26 +154,35 @@ extension DatabaseClient: DependencyKey {
             fetchWorkflowStates: {
                 try await dbQueue.read { db in
                     try LinearWorkflowStateRecord.fetchAll(db)
+                        .map(LinearWorkflowState.init(from:))
                 }
             },
-            saveWorkflowStates: { records in
+            lastWorkflowStateFetch: {
+                try await dbQueue.read { db in
+                    try String.fetchOne(
+                        db,
+                        sql: "SELECT fetchedAt FROM linear_workflow_states ORDER BY fetchedAt DESC LIMIT 1"
+                    ).flatMap { ISO8601DateFormatter.shared.date(from: $0) }
+                }
+            },
+            saveWorkflowStates: { states, fetchedAt in
                 try await dbQueue.write { db in
                     try db.execute(sql: "DELETE FROM linear_workflow_states")
-                    for record in records {
-                        try record.save(db)
+                    for state in states {
+                        try LinearWorkflowStateRecord(from: state, fetchedAt: fetchedAt).save(db)
                     }
                 }
             },
             fetchTeams: {
                 try await dbQueue.read { db in
-                    try LinearTeamRecord.fetchAll(db)
+                    try LinearTeamRecord.fetchAll(db).map(LinearTeam.init(from:))
                 }
             },
-            saveTeams: { records in
+            saveTeams: { teams in
                 try await dbQueue.write { db in
                     try db.execute(sql: "DELETE FROM linear_teams")
-                    for record in records {
-                        try record.save(db)
+                    for team in teams {
+                        try LinearTeamRecord(from: team).save(db)
                     }
                 }
             },
@@ -261,6 +281,7 @@ extension DatabaseClient: DependencyKey {
         fetchImportedIssueByIdentifier: unimplemented("DatabaseClient.fetchImportedIssueByIdentifier"),
         markOrphanedIssues: unimplemented("DatabaseClient.markOrphanedIssues"),
         fetchWorkflowStates: unimplemented("DatabaseClient.fetchWorkflowStates"),
+        lastWorkflowStateFetch: unimplemented("DatabaseClient.lastWorkflowStateFetch", placeholder: nil),
         saveWorkflowStates: unimplemented("DatabaseClient.saveWorkflowStates"),
         fetchTeams: unimplemented("DatabaseClient.fetchTeams"),
         saveTeams: unimplemented("DatabaseClient.saveTeams"),

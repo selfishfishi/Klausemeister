@@ -93,8 +93,7 @@ struct LinearAuthFeature {
                     let persistedTeams = try await databaseClient.fetchTeams()
                     if !persistedTeams.isEmpty {
                         // Teams already configured — skip picker
-                        let teams = persistedTeams.map { LinearTeam(from: $0) }
-                        await send(.delegate(.teamsConfirmed(teams)))
+                        await send(.delegate(.teamsConfirmed(persistedTeams)))
                     } else {
                         // First auth — fetch teams from Linear
                         await send(.teamsLoaded(TaskResult {
@@ -143,8 +142,7 @@ struct LinearAuthFeature {
                     }
                 return .run { [databaseClient] send in
                     do {
-                        let records = confirmedTeams.map { LinearTeamRecord(from: $0) }
-                        try await databaseClient.saveTeams(records)
+                        try await databaseClient.saveTeams(confirmedTeams)
                         await send(.delegate(.teamsConfirmed(confirmedTeams)))
                     } catch {
                         await send(.delegate(.errorOccurred(

@@ -661,19 +661,19 @@ struct WorktreeFeature {
                         await send(.boardOverlayHydrated(persisted))
                     },
                     .run { send in
-                        let repoRecords = try await worktreeClient.fetchRepositories()
-                        let worktreeRecords = try await worktreeClient.fetchWorktrees()
+                        let repos = try await worktreeClient.fetchRepositories()
+                        let worktrees = try await worktreeClient.fetchWorktrees()
                         var allQueueItems: [WorktreeQueueItem] = []
-                        for record in worktreeRecords {
-                            let items = try await worktreeClient.fetchQueueItems(record.worktreeId)
-                            allQueueItems.append(contentsOf: items.map(WorktreeQueueItem.init(from:)))
+                        for snapshot in worktrees {
+                            let items = try await worktreeClient.fetchQueueItems(snapshot.id)
+                            allQueueItems.append(contentsOf: items)
                         }
-                        let issueRecords = try await databaseClient.fetchImportedIssues()
+                        let issues = try await databaseClient.fetchImportedIssues()
                         await send(.worktreesLoaded(
-                            repositories: repoRecords.map(Repository.init(from:)),
-                            worktrees: worktreeRecords.map(WorktreesLoadedWorktree.init(from:)),
+                            repositories: repos,
+                            worktrees: worktrees,
                             queueItems: allQueueItems,
-                            issues: issueRecords.map(LinearIssue.init(from:))
+                            issues: issues
                         ))
                     } catch: { error, send in
                         await send(.loadFailed(error.localizedDescription))
@@ -930,10 +930,10 @@ struct WorktreeFeature {
                             repoPath, worktreePath, sanitized, baseRef
                         )
                         do {
-                            let record = try await worktreeClient.createWorktree(
+                            let snapshot = try await worktreeClient.createWorktree(
                                 sanitized, worktreePath, repoId
                             )
-                            await send(.worktreeCreated(.success(WorktreesLoadedWorktree(from: record))))
+                            await send(.worktreeCreated(.success(snapshot)))
                         } catch {
                             do {
                                 try await gitClient.removeWorktree(repoPath, worktreePath)
@@ -1385,8 +1385,7 @@ struct WorktreeFeature {
                 }
                 // Issue is from kanban — look up from DB
                 return .run { send in
-                    guard let record = try await databaseClient.fetchImportedIssue(issueId) else { return }
-                    let issue = LinearIssue(from: record)
+                    guard let issue = try await databaseClient.fetchImportedIssue(issueId) else { return }
                     await send(.issueDroppedOnInboxResolved(worktreeId: worktreeId, issue: issue))
                 }
 
@@ -1523,8 +1522,7 @@ struct WorktreeFeature {
                     await send(.repoAdded(TaskResult {
                         let repoRoot = try await gitClient.repositoryRoot(url.path)
                         let name = URL(fileURLWithPath: repoRoot).lastPathComponent
-                        let record = try await worktreeClient.addRepository(name, repoRoot)
-                        return Repository(from: record)
+                        return try await worktreeClient.addRepository(name, repoRoot)
                     }))
                 }
 
@@ -1609,13 +1607,13 @@ struct WorktreeFeature {
                 guard state.repositories[id: repoId] != nil else { return .none }
                 let repoName = state.repositories[id: repoId]?.name
                 // Apply diff to in-memory state
-                for record in result.inserted {
+                for snapshot in result.inserted {
                     state.worktrees.append(Worktree(
-                        id: record.worktreeId,
-                        name: record.name,
-                        sortOrder: record.sortOrder,
-                        gitWorktreePath: record.gitWorktreePath,
-                        repoId: record.repoId,
+                        id: snapshot.id,
+                        name: snapshot.name,
+                        sortOrder: snapshot.sortOrder,
+                        gitWorktreePath: snapshot.gitWorktreePath,
+                        repoId: snapshot.repoId,
                         repoName: repoName
                     ))
                 }
@@ -1642,15 +1640,14 @@ struct WorktreeFeature {
                 var effects: [Effect<Action>] = cancelEffects
                 effects.append(.run { send in
                     var branches: [String: String] = [:]
-                    for record in inserted {
-                        guard !record.gitWorktreePath.isEmpty else { continue }
-                        if let branch = try? await gitClient.currentBranch(record.gitWorktreePath) {
-                            branches[record.worktreeId] = branch
+                    for snapshot in inserted {
+                        guard !snapshot.gitWorktreePath.isEmpty else { continue }
+                        if let branch = try? await gitClient.currentBranch(snapshot.gitWorktreePath) {
+                            branches[snapshot.id] = branch
                             if let identifier = WorktreeConfig.extractIssueIdentifier(fromBranchName: branch),
-                               let issueRecord = try? await databaseClient.fetchImportedIssueByIdentifier(identifier)
+                               let issue = try? await databaseClient.fetchImportedIssueByIdentifier(identifier)
                             {
-                                let issue = LinearIssue(from: issueRecord)
-                                await send(.issueAssignedToWorktree(worktreeId: record.worktreeId, issue: issue))
+                                await send(.issueAssignedToWorktree(worktreeId: snapshot.id, issue: issue))
                             }
                         }
                     }
@@ -1874,8 +1871,7 @@ struct WorktreeFeature {
                     // DB write already happened in the enqueueItem handler —
                     // only fetch the issue record to update in-memory state.
                     return .run { [databaseClient] send in
-                        if let record = try await databaseClient.fetchImportedIssue(issueLinearId) {
-                            let issue = LinearIssue(from: record)
+                        if let issue = try await databaseClient.fetchImportedIssue(issueLinearId) {
                             await send(.mcpItemAddedToInboxResolved(
                                 worktreeId: worktreeId, issue: issue
                             ))

@@ -65,8 +65,8 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
         $0.linearAPIClient.fetchWorkflowStatesByTeam = { sampleWorkflowStates }
         $0.databaseClient.fetchUnqueuedImportedIssues = { [] }
         $0.databaseClient.fetchWorkflowStates = { [] }
-        $0.databaseClient.saveWorkflowStates = { _ in }
-        $0.databaseClient.batchSaveImportedIssues = { _ in }
+        $0.databaseClient.saveWorkflowStates = { _, _ in }
+        $0.databaseClient.batchSaveImportedIssues = { _, _ in }
         $0.databaseClient.markOrphanedIssues = { _, _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
         $0.continuousClock = testClock
@@ -93,7 +93,6 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
 
 @Test func `sync marks issues no longer labeled as orphaned`() async {
     // DB has both issues; fetch returns only one → the other is orphaned.
-    let orphanedRecord = ImportedIssueRecord(from: sampleIssueKLA15, importedAt: Date(timeIntervalSince1970: 0))
     let testClock = TestClock()
 
     let store = TestStore(initialState: MeisterFeature.State()) {
@@ -101,10 +100,10 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
     } withDependencies: {
         $0.linearAPIClient.fetchLabeledIssues = { _, _ in [sampleIssue] }
         $0.linearAPIClient.fetchWorkflowStatesByTeam = { sampleWorkflowStates }
-        $0.databaseClient.fetchUnqueuedImportedIssues = { [orphanedRecord] }
+        $0.databaseClient.fetchUnqueuedImportedIssues = { [sampleIssueKLA15] }
         $0.databaseClient.fetchWorkflowStates = { [] }
-        $0.databaseClient.saveWorkflowStates = { _ in }
-        $0.databaseClient.batchSaveImportedIssues = { _ in }
+        $0.databaseClient.saveWorkflowStates = { _, _ in }
+        $0.databaseClient.batchSaveImportedIssues = { _, _ in }
         $0.databaseClient.markOrphanedIssues = { _, _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
         $0.continuousClock = testClock
@@ -142,7 +141,7 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
         $0.linearAPIClient.fetchWorkflowStatesByTeam = { [:] }
         $0.databaseClient.fetchUnqueuedImportedIssues = { [] }
         $0.databaseClient.fetchWorkflowStates = { [] }
-        $0.databaseClient.saveWorkflowStates = { _ in }
+        $0.databaseClient.saveWorkflowStates = { _, _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
     }
 
@@ -395,8 +394,8 @@ private let mobileIssue = LinearIssue(
         }
         $0.linearAPIClient.fetchWorkflowStatesByTeam = { sampleWorkflowStates }
         $0.databaseClient.fetchUnqueuedImportedIssues = { [] }
-        $0.databaseClient.saveWorkflowStates = { _ in }
-        $0.databaseClient.batchSaveImportedIssues = { _ in }
+        $0.databaseClient.saveWorkflowStates = { _, _ in }
+        $0.databaseClient.batchSaveImportedIssues = { _, _ in }
         $0.stateMappingClient.fetchAll = { [] }
         $0.stateMappingClient.seedMappings = { _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
@@ -430,11 +429,11 @@ private let mobileIssue = LinearIssue(
 
 // MARK: - State Mapping Tests
 
-@Test func `computeSeedRecords seeds new states and skips existing`() {
+@Test func `computeSeedMappings seeds new states and skips existing`() {
     let existing = [
-        StateMappingRecord(
+        StateMapping(
             teamId: "team-1", linearStateId: "state-todo",
-            linearStateName: "Todo", meisterState: "todo"
+            linearStateName: "Todo", meisterState: .todo
         )
     ]
     let fresh: [LinearWorkflowState] = [
@@ -443,7 +442,7 @@ private let mobileIssue = LinearIssue(
         LinearWorkflowState(id: "state-canceled", name: "Canceled", type: "canceled", position: 5, teamId: "team-1")
     ]
 
-    let seeds = StateMappingClient.computeSeedRecords(
+    let seeds = StateMappingClient.computeSeedMappings(
         freshStates: fresh, existingMappings: existing
     )
 
@@ -452,7 +451,7 @@ private let mobileIssue = LinearIssue(
     // state-ip is new → seeded
     #expect(seeds.count == 1)
     #expect(seeds.first?.linearStateId == "state-ip")
-    #expect(seeds.first?.meisterState == "inProgress")
+    #expect(seeds.first?.meisterState == .inProgress)
 }
 
 @Test func `rebuildColumns uses mapping table over heuristic`() {
@@ -502,8 +501,8 @@ private let mobileIssue = LinearIssue(
         }
         $0.linearAPIClient.fetchWorkflowStatesByTeam = { sampleWorkflowStates }
         $0.databaseClient.fetchUnqueuedImportedIssues = { [] }
-        $0.databaseClient.saveWorkflowStates = { _ in }
-        $0.databaseClient.batchSaveImportedIssues = { _ in }
+        $0.databaseClient.saveWorkflowStates = { _, _ in }
+        $0.databaseClient.batchSaveImportedIssues = { _, _ in }
         $0.stateMappingClient.fetchAll = { [] }
         $0.stateMappingClient.seedMappings = { _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))

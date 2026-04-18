@@ -24,7 +24,7 @@ struct TeamSettingsFeature {
 
     struct TeamSettingsData: Equatable {
         let apiTeams: [LinearTeam]
-        let persistedTeams: [LinearTeamRecord]
+        let persistedTeams: [LinearTeam]
         let labels: [String]
     }
 
@@ -197,8 +197,7 @@ struct TeamSettingsFeature {
                             try await databaseClient.deleteTeam(teamId)
                         }
                         // Save the updated team list
-                        let records = teamsToSave.map { LinearTeamRecord(from: $0) }
-                        try await databaseClient.saveTeams(records)
+                        try await databaseClient.saveTeams(teamsToSave)
                         return teamsToSave
                     }))
                 }
