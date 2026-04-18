@@ -26,7 +26,9 @@ struct LinearConnectView: View {
     // MARK: - Logo
 
     private var logoSection: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating)) { timeline in
+        // 15 Hz — the logo pulse period is 3 s; 45 frames per cycle is
+        // ample for a slow glow, and halves SwiftUI body evaluations.
+        TimelineView(.animation(minimumInterval: 1.0 / 15.0, paused: !isAnimating)) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
             let pulse = 0.5 + 0.5 * sin(time * .pi * 2.0 / 3.0)
             let glowRadius = 30 + 20 * pulse

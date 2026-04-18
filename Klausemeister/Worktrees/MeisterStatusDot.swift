@@ -32,8 +32,11 @@ struct MeisterStatusDot: View {
     @Environment(\.swimlaneAnimating) private var isAnimating
 
     var body: some View {
+        // 15 Hz is visually indistinguishable from 30 Hz for a slow 3 s glow
+        // pulse (45 frames per cycle) and halves the body-rebuild cost per
+        // active dot.
         TimelineView(.animation(
-            minimumInterval: 1.0 / 30.0,
+            minimumInterval: 1.0 / 15.0,
             paused: status != .running || !isAnimating
         )) { timeline in
             let phase = (status == .running && isAnimating)

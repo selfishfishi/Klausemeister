@@ -170,11 +170,20 @@ struct SwimlaneWorkingCometOverlay: View {
     let phaseOffset: Double
     var cornerRadius: CGFloat = swimlaneGlassCornerRadius
 
+    @Environment(\.swimlaneAnimating) private var isAnimating
+
     private let rotationPeriod: Double = 1.5
     private let colorCyclePeriod: Double = 6.0
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { timeline in
+        // 30 Hz is plenty for a gradient sweep at this rotation speed — the
+        // eye can't distinguish it from 60 Hz and the CPU cost halves.
+        // `isAnimating` folds panel visibility + window focus — see
+        // `WorktreeSwimlaneView` for how it's derived.
+        TimelineView(.animation(
+            minimumInterval: 1.0 / 30.0,
+            paused: !isAnimating
+        )) { timeline in
             let elapsed = timeline.date.timeIntervalSinceReferenceDate - phaseOffset
             let rotationDegrees = (elapsed / rotationPeriod)
                 .truncatingRemainder(dividingBy: 1) * 360

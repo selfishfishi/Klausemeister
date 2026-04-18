@@ -6,13 +6,17 @@ struct WorktreeSwimlaneView: View {
     var teams: [LinearTeam] = []
 
     @Environment(\.themeColors) private var themeColors
+    @Environment(\.controlActiveState) private var activeState
     @State private var isPanelVisible = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             swimlanes
-                .environment(\.swimlaneAnimating, isPanelVisible)
+                // Gate on both panel visibility (onAppear/onDisappear) and
+                // window focus — so animations stop when the window is
+                // backgrounded, not just when the panel scrolls off-screen.
+                .environment(\.swimlaneAnimating, isPanelVisible && activeState != .inactive)
                 .onAppear { isPanelVisible = true }
                 .onDisappear { isPanelVisible = false }
         }
@@ -69,8 +73,7 @@ struct WorktreeSwimlaneView: View {
                 ForEach(store.repositories) { repo in
                     repoSection(repo: repo, tints: tints)
                 }
-                let ungrouped = store.worktrees.filter { $0.repoId == nil }
-                ForEach(ungrouped) { worktree in
+                ForEach(store.ungroupedWorktrees) { worktree in
                     swimlaneRow(worktree: worktree, tints: tints)
                 }
             }
@@ -80,7 +83,7 @@ struct WorktreeSwimlaneView: View {
 
     private func repoSection(repo: Repository, tints: [Color]) -> some View {
         let isCollapsed = store.collapsedRepoIds.contains(repo.id)
-        let repoWorktrees = store.worktrees.filter { $0.repoId == repo.id }
+        let repoWorktrees = store.worktreesByRepo[repo.id] ?? []
 
         return VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 6) {

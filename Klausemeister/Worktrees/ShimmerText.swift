@@ -28,8 +28,18 @@ struct ShimmerText: View {
     /// How much white to mix into the base to build the sheen color.
     var highlightBoost: Double = 0.45
 
+    @Environment(\.controlActiveState) private var activeState
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+        // 15 Hz = 27 frames per 1.8 s sheen sweep — visually smooth for a
+        // gradient shimmer, and halves the body-rebuild cost vs 30 Hz. With
+        // N worktrees running a meister, each renders its own ShimmerText,
+        // so per-instance savings scale linearly. Paused when the window is
+        // backgrounded so sidebar shimmers go quiet for a minimised app.
+        TimelineView(.animation(
+            minimumInterval: 1.0 / 15.0,
+            paused: activeState == .inactive
+        )) { timeline in
             let now = timeline.date.timeIntervalSinceReferenceDate
             let sweepElapsed = now - sweepOffset
             let colorElapsed = now - colorOffset

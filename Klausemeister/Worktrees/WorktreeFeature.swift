@@ -2009,4 +2009,20 @@ extension WorktreeFeature.State {
             uniquingKeysWith: { first, _ in first }
         )
     }
+
+    /// Worktrees that aren't assigned to any repository. Hoisted out of the
+    /// sidebar view body so the filter isn't re-run on every body evaluation.
+    /// Reading this computed property tracks changes to `worktrees` only,
+    /// which is what SwiftUI's observation already tracks.
+    var ungroupedWorktrees: [Worktree] {
+        worktrees.filter { $0.repoId == nil }
+    }
+
+    /// Worktrees grouped by their parent repo id. Exposed as a dictionary
+    /// rather than a function because TCA's `@dynamicMemberLookup` on
+    /// `Store` only projects stored/computed properties, not methods —
+    /// view bodies read `store.worktreesByRepo[repoId] ?? []`.
+    var worktreesByRepo: [String: [Worktree]] {
+        Dictionary(grouping: worktrees) { $0.repoId ?? "" }
+    }
 }
