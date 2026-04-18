@@ -339,7 +339,10 @@ struct SwimlaneBarRow: View {
         }
     }
 
-    private var idlePlaceholder: some View {
+}
+
+private extension SwimlaneBarRow {
+    var idlePlaceholder: some View {
         Text("— idle —")
             .font(.footnote.italic())
             .foregroundStyle(.secondary.opacity(0.5))
@@ -353,7 +356,7 @@ struct SwimlaneBarRow: View {
             )
     }
 
-    private func targetingRing(isOn: Bool, tint: Color) -> some View {
+    func targetingRing(isOn: Bool, tint: Color) -> some View {
         RoundedRectangle(cornerRadius: 4, style: .continuous)
             .strokeBorder(tint.opacity(isOn ? 0.7 : 0), lineWidth: 2)
     }
