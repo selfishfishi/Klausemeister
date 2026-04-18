@@ -64,18 +64,37 @@ final class SurfaceStore {
         records.removeAll()
     }
 
-    /// Recreate all surfaces in place using their stored config. Used after
-    /// theme rebuilds, which invalidate the underlying ghostty_app_t and
-    /// require fresh surfaces bound to the new app handle.
-    func recreateAll(app: ghostty_app_t) {
-        let snapshots = records
-        records.removeAll()
-        for (id, record) in snapshots {
-            _ = create(
+    /// Snapshot of each surface's config used to rebuild it after a
+    /// `ghostty_app_t` rebuild. Holding only value types here (no
+    /// `SurfaceView`) ensures `destroyAll()` can actually deinit surfaces
+    /// and call `ghostty_surface_free` while the old app is still alive.
+    struct Snapshot {
+        let id: String
+        let workingDirectory: String
+        let command: String?
+    }
+
+    /// Capture each surface's config so callers can rebuild the
+    /// ghostty app and restore surfaces against the new handle.
+    func snapshotAll() -> [Snapshot] {
+        records.map { id, record in
+            Snapshot(
                 id: id,
-                app: app,
                 workingDirectory: record.workingDirectory,
                 command: record.command
+            )
+        }
+    }
+
+    /// Recreate surfaces from a previously captured snapshot, binding each
+    /// to the supplied `ghostty_app_t`.
+    func restore(from snapshots: [Snapshot], app: ghostty_app_t) {
+        for snapshot in snapshots {
+            _ = create(
+                id: snapshot.id,
+                app: app,
+                workingDirectory: snapshot.workingDirectory,
+                command: snapshot.command
             )
         }
     }

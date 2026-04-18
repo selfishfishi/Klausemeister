@@ -10,11 +10,12 @@ struct SurfaceManager {
     var destroySurface: @Sendable @MainActor (_ id: String) -> Void
     var focus: @Sendable @MainActor (_ id: String) async -> Bool
     var unfocus: @Sendable @MainActor (_ id: String) -> Void
-    /// Rebuild every live surface against the current `ghostty_app_t`.
-    /// Called after a theme change, which invalidates prior app handles.
-    /// Reads stored per-surface config from the `SurfaceStore` — callers do
-    /// not pass IDs.
-    var recreateAllSurfaces: @Sendable @MainActor () -> Void
+    /// Tear down all surfaces, run `appRebuild` (which frees the old
+    /// `ghostty_app_t` and creates a new one), then recreate surfaces
+    /// against the new app. The order is load-bearing: libghostty crashes
+    /// in `ghostty_app_free` if surfaces still reference the app, and
+    /// `ghostty_surface_free` is unsafe after the app is gone.
+    var rebuildApp: @Sendable @MainActor (_ appRebuild: () -> Void) -> Void
 }
 
 extension SurfaceManager {
@@ -32,9 +33,12 @@ extension SurfaceManager {
             destroySurface: { id in surfaceStore.destroy(id: id) },
             focus: { id in await surfaceStore.focus(id) },
             unfocus: { id in surfaceStore.unfocus(id) },
-            recreateAllSurfaces: {
+            rebuildApp: { appRebuild in
+                let snapshots = surfaceStore.snapshotAll()
+                surfaceStore.destroyAll()
+                appRebuild()
                 guard let app = ghosttyApp.app() else { return }
-                surfaceStore.recreateAll(app: app)
+                surfaceStore.restore(from: snapshots, app: app)
             }
         )
     }
@@ -53,7 +57,7 @@ extension SurfaceManager: DependencyKey {
         destroySurface: unimplemented("SurfaceManager.destroySurface"),
         focus: unimplemented("SurfaceManager.focus", placeholder: false),
         unfocus: unimplemented("SurfaceManager.unfocus"),
-        recreateAllSurfaces: unimplemented("SurfaceManager.recreateAllSurfaces")
+        rebuildApp: unimplemented("SurfaceManager.rebuildApp")
     )
     nonisolated static let testValue = SurfaceManager(
         createSurface: unimplemented(
@@ -63,7 +67,7 @@ extension SurfaceManager: DependencyKey {
         destroySurface: unimplemented("SurfaceManager.destroySurface"),
         focus: unimplemented("SurfaceManager.focus", placeholder: false),
         unfocus: unimplemented("SurfaceManager.unfocus"),
-        recreateAllSurfaces: unimplemented("SurfaceManager.recreateAllSurfaces")
+        rebuildApp: unimplemented("SurfaceManager.rebuildApp")
     )
 }
 
