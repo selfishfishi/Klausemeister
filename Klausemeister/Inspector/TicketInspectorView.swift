@@ -272,23 +272,23 @@ private let samplePreviewURL = URL(string: "https://linear.app/example/issue/KLA
         ]
     )))
     .frame(width: 340, height: 500)
-    .environment(\.themeColors, AppTheme.darkMedium.colors)
+    .environment(\.themeColors, AppTheme.everforestDarkMedium.colors)
 }
 
 #Preview("loading") {
     TicketInspectorView(state: .loading)
         .frame(width: 340, height: 500)
-        .environment(\.themeColors, AppTheme.darkMedium.colors)
+        .environment(\.themeColors, AppTheme.everforestDarkMedium.colors)
 }
 
 #Preview("error") {
     TicketInspectorView(state: .error(.transport(message: "Could not reach Linear.")))
         .frame(width: 340, height: 500)
-        .environment(\.themeColors, AppTheme.darkMedium.colors)
+        .environment(\.themeColors, AppTheme.everforestDarkMedium.colors)
 }
 
 #Preview("empty") {
     TicketInspectorView(state: .empty)
         .frame(width: 340, height: 500)
-        .environment(\.themeColors, AppTheme.darkMedium.colors)
+        .environment(\.themeColors, AppTheme.everforestDarkMedium.colors)
 }

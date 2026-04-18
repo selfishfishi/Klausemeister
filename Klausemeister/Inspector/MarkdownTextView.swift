@@ -145,5 +145,5 @@ private extension Theme {
         .padding()
     }
     .frame(width: 380, height: 800)
-    .environment(\.themeColors, AppTheme.darkMedium.colors)
+    .environment(\.themeColors, AppTheme.everforestDarkMedium.colors)
 }
