@@ -1,4 +1,5 @@
 // Klausemeister/MCP/ToolHandlers.swift
+// swiftlint:disable file_length
 import Dependencies
 import Foundation
 
@@ -29,10 +30,166 @@ struct ToolResult: Equatable {
 enum ToolHandlers {
     // MARK: - getNextItem
 
-    /// Claim the next inbox item for a worktree, set its Linear status to
-    /// "In Progress", and return its details. Returns a `success` result with
-    /// `{"item":null}` if the inbox is empty.
+    /// Claim the next *unblocked* inbox item for a worktree, set its Linear
+    /// status to "In Progress", and return its details.
+    ///
+    /// An inbox item is considered BLOCKED when a `schedule_items` row exists
+    /// for it (i.e. it was placed by `/klause-schedule`) AND any of its
+    /// `blockedByIssueLinearIds` blockers still has a schedule_item whose
+    /// `status != "done"`. Items not present in any schedule (direct
+    /// `enqueueItem` path) are always unblocked, preserving the non-schedule
+    /// workflow.
+    ///
+    /// Return shapes:
+    /// - Success with `{"item": { ... }}` — claimed.
+    /// - Success with `{"item": null}` — inbox empty.
+    /// - Success with `{"item": null, "reason": "all-blocked",
+    ///   "blockedItems": [{ "issueLinearId": …, "blockedBy": […] }]}` —
+    ///   inbox non-empty but every candidate is waiting on a dependency.
+    ///   The meister loop uses `blockedBy` identifiers to narrate progress
+    ///   ("idle — waiting on KLA-195").
     static func getNextItem(
+        worktreeId: String,
+        eventContinuation: AsyncStream<MCPServerEvent>.Continuation
+    ) async throws -> ToolResult {
+        @Dependency(\.worktreeClient) var worktreeClient
+
+        let items = try await worktreeClient.fetchQueueItems(worktreeId)
+        // Explicit sort — never rely on DB ordering contract.
+        let inbox = items
+            .filter { $0.queuePosition == .inbox }
+            .sorted { $0.sortOrder < $1.sortOrder }
+        guard !inbox.isEmpty else {
+            return .success(#"{"item":null}"#)
+        }
+
+        let selection = try await selectNextUnblocked(
+            inbox: inbox,
+            worktreeClient: worktreeClient
+        )
+        switch selection {
+        case let .claim(item):
+            return try await claimInboxItem(
+                item,
+                worktreeId: worktreeId,
+                eventContinuation: eventContinuation
+            )
+        case let .allBlocked(hints):
+            return try .success(Self.encodeJSON(AllBlockedPayload(blockedItems: hints)))
+        }
+    }
+
+    /// Resolution of an inbox-scan. Either we found something runnable, or
+    /// every candidate is waiting on a blocker.
+    enum InboxSelection: Equatable {
+        case claim(WorktreeQueueItem)
+        case allBlocked([BlockedItemHint])
+    }
+
+    /// Scan `inbox` in sortOrder and pick the first item whose schedule
+    /// dependencies are all `done`. Pure function over the two DB reads —
+    /// separated so it can be unit tested without stubbing the whole claim
+    /// path.
+    static func selectNextUnblocked(
+        inbox: [WorktreeQueueItem],
+        worktreeClient: WorktreeClient
+    ) async throws -> InboxSelection {
+        let candidateIds = inbox.map(\.issueLinearId)
+        let candidateScheduleItems = try await worktreeClient
+            .fetchScheduleItemsByIssueLinearIds(candidateIds)
+
+        // Fast path: none of the inbox items are in any schedule, so the
+        // legacy "first in FIFO" rule applies and we can skip the blocker
+        // lookup entirely.
+        if candidateScheduleItems.isEmpty {
+            return .claim(inbox[0])
+        }
+
+        let byCandidate = Dictionary(
+            grouping: candidateScheduleItems, by: \.issueLinearId
+        )
+        let allBlockerIds = Set(
+            candidateScheduleItems.flatMap { decodeBlockerIds($0.blockedByIssueLinearIds) }
+        )
+        let blockersByIssue: [String: [ScheduleItemRecord]]
+        if allBlockerIds.isEmpty {
+            blockersByIssue = [:]
+        } else {
+            let blockerEntries = try await worktreeClient
+                .fetchScheduleItemsByIssueLinearIds(Array(allBlockerIds))
+            blockersByIssue = Dictionary(grouping: blockerEntries, by: \.issueLinearId)
+        }
+
+        var hints: [BlockedItemHint] = []
+        for candidate in inbox {
+            let candidateEntries = byCandidate[candidate.issueLinearId] ?? []
+            if candidateEntries.isEmpty {
+                // Item enqueued outside any schedule → treat as unblocked,
+                // matching the tradeoff called out in KLA-200.
+                return .claim(candidate)
+            }
+            let blockingIdentifiers = blockingBlockerIdentifiers(
+                for: candidateEntries,
+                blockersByIssue: blockersByIssue
+            )
+            if blockingIdentifiers.isEmpty {
+                return .claim(candidate)
+            }
+            hints.append(BlockedItemHint(
+                issueLinearId: candidate.issueLinearId,
+                blockedBy: blockingIdentifiers
+            ))
+        }
+        return .allBlocked(hints)
+    }
+
+    /// Distinct identifiers (e.g. "KLA-195") of blockers that still have a
+    /// non-`done` schedule_item. Deduped in encounter order so the narration
+    /// reads left-to-right as discovered.
+    private static func blockingBlockerIdentifiers(
+        for candidateEntries: [ScheduleItemRecord],
+        blockersByIssue: [String: [ScheduleItemRecord]]
+    ) -> [String] {
+        var result: [String] = []
+        var seen: Set<String> = []
+        let doneRaw = ScheduleItemStatus.done.rawValue
+        for entry in candidateEntries {
+            for blockerId in decodeBlockerIds(entry.blockedByIssueLinearIds) {
+                let blockerEntries = blockersByIssue[blockerId] ?? []
+                // If we don't know about the blocker at all in any schedule,
+                // we can't prove it's done — treat as still blocking. This
+                // matches the strictest-safe interpretation.
+                let isBlockerDone: Bool = if blockerEntries.isEmpty {
+                    false
+                } else {
+                    blockerEntries.allSatisfy { $0.status == doneRaw }
+                }
+                guard !isBlockerDone else { continue }
+                let identifier = blockerEntries.first?.issueIdentifier ?? blockerId
+                if seen.insert(identifier).inserted {
+                    result.append(identifier)
+                }
+            }
+        }
+        return result
+    }
+
+    /// Decode the JSON-encoded `[String]` that `schedule_items.blockedByIssueLinearIds`
+    /// stores. Silently returns an empty array on decode failure — a malformed
+    /// row must not take down the whole pull path.
+    private static func decodeBlockerIds(_ json: String) -> [String] {
+        guard let data = json.data(using: .utf8),
+              let ids = try? JSONDecoder().decode([String].self, from: data)
+        else {
+            return []
+        }
+        return ids
+    }
+
+    /// Shared claim + Linear-update path. Called once a candidate has passed
+    /// the blocker check.
+    private static func claimInboxItem(
+        _ inboxItem: WorktreeQueueItem,
         worktreeId: String,
         eventContinuation: AsyncStream<MCPServerEvent>.Continuation
     ) async throws -> ToolResult {
@@ -40,28 +197,19 @@ enum ToolHandlers {
         @Dependency(\.databaseClient) var databaseClient
         @Dependency(\.linearAPIClient) var linearAPIClient
 
-        let items = try await worktreeClient.fetchQueueItems(worktreeId)
-        // Explicitly sort by sortOrder rather than relying on DB ordering contract.
-        guard let inboxItem = items
-            .filter({ $0.queuePosition == .inbox })
-            .min(by: { $0.sortOrder < $1.sortOrder })
-        else {
-            return .success(#"{"item":null}"#)
-        }
-
         guard let issue = try await databaseClient.fetchImportedIssue(inboxItem.issueLinearId) else {
             return .failure("Imported issue \(inboxItem.issueLinearId) not found in local cache")
         }
 
-        // Move to processing first; rollback Linear status update is not feasible,
-        // so we order so the local move happens before the (less reliable) network call.
+        // Move to processing first; a Linear-side rollback is not feasible,
+        // so the more-reliable local move must happen before the network call.
         try await worktreeClient.moveToProcessingByIssueId(issue.id, worktreeId)
         eventContinuation.yield(.itemMovedToProcessing(
             worktreeId: worktreeId, issueLinearId: issue.id
         ))
 
-        // Best-effort Linear status update — log on failure but do not fail the tool,
-        // because the queue side has already advanced.
+        // Best-effort Linear status update — log on failure but do not fail the
+        // tool, because the queue side has already advanced.
         if let inProgressId = try? await WorkflowStateResolver.resolve(
             teamId: issue.teamId,
             stateName: "In Progress"
@@ -485,6 +633,36 @@ extension ToolHandlers {
         let issueLinearId: String?
         let identifier: String?
         let title: String?
+    }
+
+    /// One entry in the `blockedItems` array returned by `getNextItem` when
+    /// every inbox candidate is waiting on dependencies. `blockedBy` holds
+    /// human identifiers (e.g. "KLA-195") — callers present these directly
+    /// in progress narration; they can fall back to the raw UUID only when
+    /// no schedule_item is yet available for the blocker.
+    struct BlockedItemHint: Encodable, Equatable {
+        let issueLinearId: String
+        let blockedBy: [String]
+    }
+
+    /// Response envelope for the all-blocked case. Manually encodes `item`
+    /// as JSON `null` rather than omitting the key — callers' JSON parsers
+    /// expect the presence of `item` as the "no work claimed" signal.
+    struct AllBlockedPayload: Encodable, Equatable {
+        let blockedItems: [BlockedItemHint]
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: AllBlockedPayloadKey.self)
+            try container.encodeNil(forKey: .item)
+            try container.encode("all-blocked", forKey: .reason)
+            try container.encode(blockedItems, forKey: .blockedItems)
+        }
+    }
+
+    /// Extracted from `AllBlockedPayload` so the inner struct doesn't nest
+    /// two levels under `ToolHandlers`, which swiftlint bans.
+    private enum AllBlockedPayloadKey: String, CodingKey {
+        case item, reason, blockedItems
     }
 }
 
