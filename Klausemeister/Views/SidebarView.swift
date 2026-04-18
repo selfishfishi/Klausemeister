@@ -191,16 +191,16 @@ struct SidebarWorktreeRow: View, Equatable {
                     .buttonStyle(.plain)
                 }
             }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isSelected ? themeColors.accentColor.opacity(0.18) : Color.clear)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.vertical, 7)
-        .listRowBackground(
-            isSelected
-                ? RoundedRectangle(cornerRadius: 6)
-                .fill(themeColors.accentColor.opacity(0.18))
-                : nil
-        )
+        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
         .onHover { hovering in isHovering = hovering }
         .contextMenu {
             Button(role: .destructive) {
