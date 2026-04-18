@@ -12,6 +12,12 @@ struct ShimmerText: View {
     let cycleColors: [Color]
     /// Fallback text color when `cycleColors` is empty.
     let baseColor: Color
+    /// Per-instance phase desync seed. Two instances with different seeds
+    /// will be at different sweep positions and palette colors at the same
+    /// wall-clock moment, so a row of shimmers doesn't pulse in lockstep.
+    /// Pass the worktree id (or any stable string) to keep each row at the
+    /// same offset across renders. Empty string falls back to no offset.
+    var phaseSeed: String = ""
 
     /// Seconds for one full sheen sweep across the text.
     var sweepPeriod: Double = 1.8
@@ -24,11 +30,14 @@ struct ShimmerText: View {
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            let elapsed = timeline.date.timeIntervalSinceReferenceDate
-            let sweepProgress = (elapsed / sweepPeriod).truncatingRemainder(dividingBy: 1.0)
-            let center = -bandWidth + sweepProgress * (1.0 + 2 * bandWidth)
+            let now = timeline.date.timeIntervalSinceReferenceDate
+            let sweepElapsed = now - sweepOffset
+            let colorElapsed = now - colorOffset
+            let sweepProgress = (sweepElapsed / sweepPeriod).truncatingRemainder(dividingBy: 1.0)
+            let normalizedSweep = sweepProgress < 0 ? sweepProgress + 1 : sweepProgress
+            let center = -bandWidth + normalizedSweep * (1.0 + 2 * bandWidth)
 
-            let currentBase = morphedColor(at: elapsed)
+            let currentBase = morphedColor(at: colorElapsed)
             let highlight = currentBase.mix(with: .white, by: highlightBoost)
 
             let leftStop = clamp(center - bandWidth)
@@ -49,6 +58,22 @@ struct ShimmerText: View {
                     )
                 )
         }
+    }
+
+    /// Stable per-seed sweep offset in `[0, sweepPeriod)`.
+    private var sweepOffset: Double {
+        guard !phaseSeed.isEmpty else { return 0 }
+        let hash = phaseSeed.utf8.reduce(0) { $0 &+ Int($1) }
+        return Double(hash % 1000) / 1000.0 * sweepPeriod
+    }
+
+    /// Stable per-seed color-cycle offset in `[0, colorCyclePeriod)`.
+    /// Uses a different mix of the hash so it isn't perfectly correlated
+    /// with `sweepOffset`.
+    private var colorOffset: Double {
+        guard !phaseSeed.isEmpty else { return 0 }
+        let hash = phaseSeed.utf8.reduce(7) { ($0 &* 31) &+ Int($1) }
+        return Double(abs(hash) % 1000) / 1000.0 * colorCyclePeriod
     }
 
     private func morphedColor(at elapsed: Double) -> Color {

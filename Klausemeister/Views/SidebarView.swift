@@ -125,7 +125,8 @@ struct SidebarWorktreeRow: View {
                         ShimmerText(
                             text: worktree.name,
                             cycleColors: shimmerPaletteColors,
-                            baseColor: themeColors.accentColor
+                            baseColor: themeColors.accentColor,
+                            phaseSeed: worktree.id
                         )
                     } else {
                         Text(worktree.name)
