@@ -9,7 +9,9 @@ import Foundation
 struct StateMapping: Equatable, Identifiable {
     /// Composite identifier used for `Identifiable`. Matches the
     /// uniqueness key we enforce in SQL (`teamId × linearStateId`).
-    var id: String {
+    /// `nonisolated` so pure helpers like `StateMappingClient.computeSeedMappings`
+    /// can form a `\.id` key path from a detached effect.
+    nonisolated var id: String {
         "\(teamId):\(linearStateId)"
     }
 
