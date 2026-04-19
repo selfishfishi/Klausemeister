@@ -115,7 +115,7 @@ nonisolated private func fetchPaginatedIssues(
 // MARK: - Shared issue fields
 
 nonisolated private let issueFields = """
-      id identifier title url description updatedAt
+      id identifier title url description createdAt updatedAt
       state { id name type }
       team { id }
       project { name }
@@ -485,6 +485,7 @@ nonisolated private struct LabeledIssuesResponse: Decodable {
                 let title: String
                 let url: String
                 let description: String?
+                let createdAt: String
                 let updatedAt: String
                 struct State: Decodable {
                     let id: String
@@ -520,6 +521,7 @@ nonisolated private struct LabeledIssuesResponse: Decodable {
                         labels: labels?.nodes.map(\.name) ?? [],
                         description: description,
                         url: url,
+                        createdAt: createdAt,
                         updatedAt: updatedAt,
                         isOrphaned: false
                     )

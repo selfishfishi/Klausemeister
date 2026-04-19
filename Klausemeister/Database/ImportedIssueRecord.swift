@@ -16,6 +16,7 @@ struct ImportedIssueRecord: Codable, Equatable, FetchableRecord, PersistableReco
     var labels: String
     var description: String?
     var url: String
+    var createdAt: String
     var updatedAt: String
     var importedAt: String
     var sortOrder: Int

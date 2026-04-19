@@ -20,6 +20,11 @@ struct IssueCardView: View {
         tint ?? issue.meisterState?.tint ?? themeColors.accentColor
     }
 
+    private var createdDate: Date? {
+        guard !issue.createdAt.isEmpty else { return nil }
+        return ISO8601DateFormatter.shared.date(from: issue.createdAt)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
@@ -36,6 +41,12 @@ struct IssueCardView: View {
                         .help("This issue no longer has the klause label in Linear")
                 }
                 Spacer(minLength: 0)
+                if let created = createdDate {
+                    Text(created.formatted(.dateTime.month(.abbreviated).day()))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .help(created.formatted(date: .long, time: .shortened))
+                }
             }
 
             Text(issue.title)
