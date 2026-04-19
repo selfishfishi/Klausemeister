@@ -1681,8 +1681,17 @@ struct WorktreeFeature {
                             schedules.reserveCapacity(records.count)
                             for record in records {
                                 let itemRecords = try await worktreeClient.fetchScheduleItems(record.scheduleId)
-                                let items = itemRecords.map(ScheduleItem.init(record:))
-                                schedules.append(Schedule(record: record, items: items))
+                                // Schedule / ScheduleItem inits inherit module-default
+                                // MainActor isolation, so the mapping has to happen on
+                                // the main actor before we hand the values back to the
+                                // reducer via `send`.
+                                let schedule = await MainActor.run {
+                                    Schedule(
+                                        record: record,
+                                        items: itemRecords.map(ScheduleItem.init(record:))
+                                    )
+                                }
+                                schedules.append(schedule)
                             }
                             await send(.schedulesLoaded(repoId: repoId, schedules: schedules))
                         } catch {
