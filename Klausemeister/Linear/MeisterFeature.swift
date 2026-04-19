@@ -754,7 +754,9 @@ extension LinearIssue {
             teamId: teamId,
             projectName: projectName,
             labels: labels, description: description,
-            url: url, updatedAt: updatedAt,
+            url: url,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
             isOrphaned: isOrphaned
         )
     }
@@ -783,6 +785,7 @@ extension LinearIssue {
             labels: decodedLabels,
             description: record.description,
             url: record.url,
+            createdAt: record.createdAt,
             updatedAt: record.updatedAt,
             isOrphaned: record.isOrphaned
         )
@@ -810,6 +813,7 @@ extension ImportedIssueRecord {
             labels: labelsJSON,
             description: issue.description,
             url: issue.url,
+            createdAt: issue.createdAt,
             updatedAt: issue.updatedAt,
             importedAt: ISO8601DateFormatter.shared.string(from: importedAt),
             sortOrder: 0,

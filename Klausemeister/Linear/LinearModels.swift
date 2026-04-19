@@ -44,6 +44,7 @@ struct LinearIssue: Equatable, Codable {
     let labels: [String]
     let description: String?
     let url: String
+    let createdAt: String
     let updatedAt: String
     var isOrphaned: Bool = false
 }

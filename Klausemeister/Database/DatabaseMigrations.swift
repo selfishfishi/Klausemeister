@@ -194,5 +194,11 @@ enum DatabaseMigrations {
                 columns: ["issueLinearId"]
             )
         }
+
+        migrator.registerMigration("v15-imported-issue-created-at") { db in
+            try db.alter(table: "imported_issues") { t in
+                t.add(column: "createdAt", .text).notNull().defaults(to: "")
+            }
+        }
     }
 }

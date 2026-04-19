@@ -23,6 +23,7 @@ private let sampleIssue = LinearIssue(
     labels: ["feature", "klause"],
     description: "Build the meister tab",
     url: "https://linear.app/selfishfish/issue/KLA-12/meister-tab",
+    createdAt: "2026-04-01",
     updatedAt: "2026-04-04",
     isOrphaned: false
 )
@@ -39,6 +40,7 @@ private let sampleIssueKLA15 = LinearIssue(
     labels: ["api", "klause"],
     description: nil,
     url: "https://linear.app/selfishfish/issue/KLA-15/linear-api-integration",
+    createdAt: "2026-04-01",
     updatedAt: "2026-04-04",
     isOrphaned: false
 )
@@ -294,13 +296,13 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
         id: "i1", identifier: "KLA-1", title: "Has project",
         status: "Todo", statusId: "s1", statusType: "unstarted",
         teamId: "t1", projectName: "Alpha", labels: [],
-        description: nil, url: "", updatedAt: "", isOrphaned: false
+        description: nil, url: "", createdAt: "", updatedAt: "", isOrphaned: false
     )
     let issueNoProject = LinearIssue(
         id: "i2", identifier: "KLA-2", title: "No project",
         status: "Todo", statusId: "s2", statusType: "unstarted",
         teamId: "t1", projectName: nil, labels: [],
-        description: nil, url: "", updatedAt: "", isOrphaned: false
+        description: nil, url: "", createdAt: "", updatedAt: "", isOrphaned: false
     )
 
     var state = MeisterFeature.State()
@@ -369,6 +371,7 @@ private let mobileIssue = LinearIssue(
     labels: [],
     description: nil,
     url: "https://linear.app/selfishfish/issue/MOB-1",
+    createdAt: "2026-04-08",
     updatedAt: "2026-04-12",
     isOrphaned: false
 )
@@ -459,7 +462,7 @@ private let mobileIssue = LinearIssue(
         id: "issue-1", identifier: "KLA-1", title: "Test",
         status: "Spec", statusId: "state-spec", statusType: "started",
         teamId: "team-1", projectName: nil, labels: [],
-        description: nil, url: "", updatedAt: "", isOrphaned: false
+        description: nil, url: "", createdAt: "", updatedAt: "", isOrphaned: false
     )
 
     // Without mapping: "Spec" has type "started" → heuristic maps to .inProgress

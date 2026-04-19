@@ -20,6 +20,7 @@ private let issue = LinearIssue(
     labels: [],
     description: "Build the in-process MCP server",
     url: "https://linear.app/x/issue/KLA-70",
+    createdAt: "2026-04-01",
     updatedAt: "2026-04-06"
 )
 
@@ -210,7 +211,8 @@ private func scheduleItem(
         title: "second",
         status: "Todo", statusId: "state-todo", statusType: "unstarted",
         teamId: teamId, projectName: "Klause", labels: [],
-        description: nil, url: "https://linear.app/x/KLA-B", updatedAt: "2026-04-18"
+        description: nil, url: "https://linear.app/x/KLA-B",
+        createdAt: "2026-04-18", updatedAt: "2026-04-18"
     )
     var claimed: String?
     let (_, continuation) = AsyncStream.makeStream(of: MCPServerEvent.self)
