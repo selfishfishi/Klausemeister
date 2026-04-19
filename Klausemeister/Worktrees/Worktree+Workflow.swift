@@ -8,6 +8,22 @@ import Foundation
 /// by this extension instead of building `ProductState` instances in the
 /// view body.
 extension Worktree {
+    /// Best-available narration for the activity ticker shown in the sidebar.
+    /// Priority: recap (persistent) → live activity → step-boundary progress.
+    /// Hook tool name (`last_tool`) excluded — too terse for a headline.
+    ///
+    /// Used by `SwimlaneRowView` to decide whether to swap the branch/stats
+    /// footer for an activity marquee. Keeping this on `Worktree` (rather
+    /// than duplicating in each view) ensures both decisions agree and that
+    /// cells never render a marquee AND a branch/stats footer simultaneously
+    /// — doing so inflates row height inconsistently across the sidebar.
+    var tickerText: String? {
+        if let text = recapText, !text.isEmpty { return text }
+        if let text = claudeActivityText, !text.isEmpty { return text }
+        if let text = claudeStatusText, !text.isEmpty { return text }
+        return nil
+    }
+
     /// The command the meister will run next given this worktree's queue
     /// state. Prefers the processing item, falls back to the front inbox
     /// item, and is `nil` when neither resolves to a canonical stage.

@@ -100,26 +100,36 @@ struct SwimlaneRowView: View {
         }
     }
 
+    /// Footer slot. When the worktree has live activity / recap narration,
+    /// the marquee occupies this slot instead of the branch+stats line so
+    /// the cell's overall height doesn't jump by ~20pt when narration comes
+    /// and goes. Both renderings are a single ~16pt line — cells therefore
+    /// stay uniform in height across the sidebar regardless of meister
+    /// activity state.
     @ViewBuilder
     private var footerRow: some View {
-        let branch = worktree.currentBranch
-        let stats = worktree.gitStats.flatMap { $0.isEmpty ? nil : $0 }
-        if branch != nil || stats != nil {
-            HStack(spacing: 6) {
-                if let branch {
-                    Text(branch)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                if branch != nil, stats != nil {
-                    Text("·")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                if let stats {
-                    GitStatsLineView(stats: stats)
+        if let ticker = worktree.tickerText {
+            ActivityMarquee(text: ticker, tint: MeisterState.inProgress.tint)
+        } else {
+            let branch = worktree.currentBranch
+            let stats = worktree.gitStats.flatMap { $0.isEmpty ? nil : $0 }
+            if branch != nil || stats != nil {
+                HStack(spacing: 6) {
+                    if let branch {
+                        Text(branch)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    if branch != nil, stats != nil {
+                        Text("·")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    if let stats {
+                        GitStatsLineView(stats: stats)
+                    }
                 }
             }
         }
