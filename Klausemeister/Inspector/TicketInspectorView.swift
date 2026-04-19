@@ -18,11 +18,18 @@ struct TicketInspectorView: View {
                 .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .glassEffect(
-            .regular.tint(themeColors.accentColor.opacity(0.04)),
-            in: Rectangle()
-        )
-        .ignoresSafeArea()
+        .background {
+            // Glass ignores the safe area so the material reaches the window
+            // edge, but the interactive VStack stays below the title bar's
+            // draggable region — otherwise the top-right buttons get their
+            // clicks swallowed by window drag.
+            Rectangle()
+                .glassEffect(
+                    .regular.tint(themeColors.accentColor.opacity(0.04)),
+                    in: Rectangle()
+                )
+                .ignoresSafeArea()
+        }
     }
 
     private var topBar: some View {
