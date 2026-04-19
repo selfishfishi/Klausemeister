@@ -221,14 +221,14 @@ extension ToolHandlers {
 // MARK: - Input / payload types
 
 extension ToolHandlers {
-    struct SaveScheduleInput: Decodable, Equatable {
+    struct SaveScheduleInput: Equatable {
         let repoId: String
         let name: String
         let linearProjectId: String?
         let items: [SaveScheduleItemInput]
 
         // swiftlint:disable:next nesting
-        struct SaveScheduleItemInput: Decodable, Equatable {
+        struct SaveScheduleItemInput: Equatable {
             let worktreeId: String
             let issueLinearId: String
             let issueIdentifier: String
@@ -279,3 +279,9 @@ extension ToolHandlers {
         let error: String?
     }
 }
+
+// Decodable conformances declared in nonisolated extensions so their
+// synthesized `init(from:)` is callable from non-MainActor contexts
+// (e.g. the MCP dispatch path, which inherits caller isolation).
+nonisolated extension ToolHandlers.SaveScheduleInput: Decodable {}
+nonisolated extension ToolHandlers.SaveScheduleInput.SaveScheduleItemInput: Decodable {}
