@@ -172,7 +172,9 @@ struct KanbanIssueCardView: View {
                     ForEach(grouped) { repo in
                         Section(repo.name) {
                             ForEach(byRepo[repo.id] ?? []) { worktree in
-                                Button(worktree.name) { onAssignToWorktree(issue, worktree.id) }
+                                Button("\(worktree.name) (\(worktree.inbox.count))") {
+                                    onAssignToWorktree(issue, worktree.id)
+                                }
                             }
                         }
                     }
@@ -180,7 +182,9 @@ struct KanbanIssueCardView: View {
                     if !ungrouped.isEmpty {
                         if !grouped.isEmpty { Divider() }
                         ForEach(ungrouped) { worktree in
-                            Button(worktree.name) { onAssignToWorktree(issue, worktree.id) }
+                            Button("\(worktree.name) (\(worktree.inbox.count))") {
+                                onAssignToWorktree(issue, worktree.id)
+                            }
                         }
                     }
                 }
