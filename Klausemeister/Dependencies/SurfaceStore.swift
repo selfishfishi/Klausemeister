@@ -75,50 +75,18 @@ final class SurfaceStore {
         ghostty_surface_set_focus(surface, false)
     }
 
-    /// Tear down every surface synchronously. MUST run before
-    /// `ghostty_app_free`: libghostty's internal surface tracker holds
-    /// references that become dangling once the app is freed, and
-    /// dictionary removal alone doesn't trigger `SurfaceView.deinit` while
-    /// SwiftUI/NSView hierarchy still retains the view wrapper.
-    func destroyAll() {
+    /// Push a new `ghostty_config_t` to every live surface. Used by
+    /// `AppFeature.themeChanged` after `GhosttyApp.rebuild` has hot-reloaded
+    /// the app-level config: surfaces don't auto-inherit app updates, so
+    /// each one needs its own `ghostty_surface_update_config` call to
+    /// repaint with the new theme.
+    ///
+    /// The caller retains ownership of `config` — `ghostty_surface_update_config`
+    /// borrows it (matches the upstream `Ghostty.App.swift` convention).
+    func applyConfig(_ config: ghostty_config_t) {
         for record in records.values {
-            record.view.teardown()
-        }
-        records.removeAll()
-    }
-
-    /// Snapshot of each surface's config used to rebuild it after a
-    /// `ghostty_app_t` rebuild. Holding only value types here (no
-    /// `SurfaceView`) ensures `destroyAll()` can actually deinit surfaces
-    /// and call `ghostty_surface_free` while the old app is still alive.
-    struct Snapshot {
-        let id: String
-        let workingDirectory: String
-        let command: String?
-    }
-
-    /// Capture each surface's config so callers can rebuild the
-    /// ghostty app and restore surfaces against the new handle.
-    func snapshotAll() -> [Snapshot] {
-        records.map { id, record in
-            Snapshot(
-                id: id,
-                workingDirectory: record.workingDirectory,
-                command: record.command
-            )
-        }
-    }
-
-    /// Recreate surfaces from a previously captured snapshot, binding each
-    /// to the supplied `ghostty_app_t`.
-    func restore(from snapshots: [Snapshot], app: ghostty_app_t) {
-        for snapshot in snapshots {
-            _ = create(
-                id: snapshot.id,
-                app: app,
-                workingDirectory: snapshot.workingDirectory,
-                command: snapshot.command
-            )
+            guard let surface = record.view.surface else { continue }
+            ghostty_surface_update_config(surface, config)
         }
     }
 }

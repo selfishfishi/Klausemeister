@@ -228,16 +228,17 @@ struct AppFeature {
                 return .none
 
             case let .themeChanged(theme):
-                // libghostty requires: destroy surfaces → free app → new app
-                // → restore surfaces. Sequencing lives here (in the reducer)
-                // so the ordering is visible at the call site, not hidden
-                // behind a callback parameter.
+                // Hot-reload via ghostty_app_update_config (KLA-173):
+                // app handle is stable across theme swaps, so we no longer
+                // need the destroy-surfaces / free-app / new-app / restore
+                // dance. Surfaces don't auto-inherit app config updates,
+                // so we explicitly push the new config to each.
                 return .run { _ in
                     await MainActor.run {
-                        let snapshots = surfaceManager.captureSurfaces()
-                        surfaceManager.destroyAllSurfaces()
                         ghosttyApp.rebuild(theme)
-                        surfaceManager.restoreSurfaces(snapshots)
+                        if let config = ghosttyApp.config() {
+                            surfaceManager.applyConfigToAll(config)
+                        }
                     }
                 }
 

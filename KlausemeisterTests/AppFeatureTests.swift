@@ -7,24 +7,23 @@ import Testing
 // MARK: - themeChanged
 
 @Test @MainActor
-func `themeChanged sequences capture → destroy → rebuild → restore`() async {
+func `themeChanged hot-reloads ghostty then pushes config to surfaces`() async throws {
+    // KLA-173: switched from free+new to ghostty_app_update_config.
+    // The old capture/destroy/restore dance is gone — just rebuild()
+    // (which now calls update_config under the hood) and then push the
+    // new config to every live surface via applyConfigToAll.
     let events = LockIsolated<[String]>([])
+    let stubConfig = try #require(OpaquePointer(bitPattern: 0xC0FFEE))
 
     let store = TestStore(initialState: AppFeature.State()) {
         AppFeature()
     } withDependencies: {
-        $0.surfaceManager.captureSurfaces = {
-            events.withValue { $0.append("capture") }
-            return []
-        }
-        $0.surfaceManager.destroyAllSurfaces = {
-            events.withValue { $0.append("destroy") }
-        }
-        $0.surfaceManager.restoreSurfaces = { _ in
-            events.withValue { $0.append("restore") }
-        }
         $0.ghosttyApp.rebuild = { theme in
             events.withValue { $0.append("rebuild(\(theme.rawValue))") }
+        }
+        $0.ghosttyApp.config = { stubConfig }
+        $0.surfaceManager.applyConfigToAll = { config in
+            events.withValue { $0.append("applyConfigToAll(\(config))") }
         }
     }
 
@@ -32,10 +31,8 @@ func `themeChanged sequences capture → destroy → rebuild → restore`() asyn
     await store.finish()
 
     #expect(events.value == [
-        "capture",
-        "destroy",
         "rebuild(gruvboxDarkHard)",
-        "restore"
+        "applyConfigToAll(\(stubConfig))"
     ])
 }
 
