@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import ComposableArchitecture
 import Foundation
 
@@ -427,6 +428,13 @@ struct AppFeature {
                 case let .itemAddedToInbox(worktreeId, issueLinearId):
                     return .merge(
                         .send(.worktree(.mcpItemAddedToInbox(
+                            worktreeId: worktreeId, issueLinearId: issueLinearId
+                        ))),
+                        debugEffect
+                    )
+                case let .itemRemovedFromInbox(worktreeId, issueLinearId):
+                    return .merge(
+                        .send(.worktree(.mcpItemRemovedFromInbox(
                             worktreeId: worktreeId, issueLinearId: issueLinearId
                         ))),
                         debugEffect

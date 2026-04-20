@@ -570,6 +570,63 @@ enum ToolHandlers {
         return .success(#"{"ok":true}"#)
     }
 
+    // MARK: - dequeueItem
+
+    /// Remove an issue from a worktree's inbox without claiming it.
+    /// Idempotent — no-op if the issue isn't queued on that worktree.
+    /// Refuses if the issue is currently in `processing` (caller should
+    /// `completeItem` instead) or `outbox` (out of scope for this tool).
+    ///
+    /// `issueLinearId` accepts either the Linear UUID or the human identifier
+    /// (e.g. `KLA-136`), matching `enqueueItem`'s contract.
+    static func dequeueItem(
+        issueLinearId: String,
+        targetWorktreeId: String,
+        eventContinuation: AsyncStream<MCPServerEvent>.Continuation
+    ) async throws -> ToolResult {
+        @Dependency(\.worktreeClient) var worktreeClient
+        @Dependency(\.databaseClient) var databaseClient
+
+        let resolvedIssueId: String
+        if let issue = try await databaseClient.fetchImportedIssue(issueLinearId) {
+            resolvedIssueId = issue.id
+        } else if let issue = try await databaseClient.fetchImportedIssueByIdentifier(issueLinearId) {
+            resolvedIssueId = issue.id
+        } else {
+            return .failure("Issue \(issueLinearId) not found in local cache")
+        }
+
+        let worktrees = try await worktreeClient.fetchWorktrees()
+        guard worktrees.contains(where: { $0.id == targetWorktreeId }) else {
+            return .failure("Worktree \(targetWorktreeId) not found")
+        }
+
+        let existingItems = try await worktreeClient.fetchQueueItems(targetWorktreeId)
+        guard let target = existingItems.first(where: { $0.issueLinearId == resolvedIssueId }) else {
+            // Idempotent: already absent, nothing to do.
+            return .success(#"{"ok":true}"#)
+        }
+
+        switch target.queuePosition {
+        case .processing:
+            return .failure(
+                "Cannot dequeue an item that's in processing — complete or skip it instead"
+            )
+        case .outbox:
+            return .failure(
+                "Cannot dequeue an item from outbox — dequeueItem operates on inbox only"
+            )
+        case .inbox:
+            break
+        }
+
+        try await worktreeClient.removeFromQueueByIssueId(resolvedIssueId, targetWorktreeId)
+        eventContinuation.yield(.itemRemovedFromInbox(
+            worktreeId: targetWorktreeId, issueLinearId: resolvedIssueId
+        ))
+        return .success(#"{"ok":true}"#)
+    }
+
     // MARK: - JSON helpers
 
     private static let encoder: JSONEncoder = {

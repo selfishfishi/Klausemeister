@@ -47,6 +47,11 @@ enum MCPServerEvent: Equatable {
     /// in-memory state with the DB mutation.
     case itemAddedToInbox(worktreeId: String, issueLinearId: String)
 
+    /// An MCP tool removed an item from a worktree's inbox (e.g.
+    /// `dequeueItem`). `WorktreeFeature` uses this to sync its
+    /// in-memory state with the DB mutation.
+    case itemRemovedFromInbox(worktreeId: String, issueLinearId: String)
+
     /// A new schedule was persisted via the `saveSchedule` MCP tool.
     /// Consumed by `WorktreeFeature` (KLA-197) to refresh the sidebar
     /// pills under the repo header.

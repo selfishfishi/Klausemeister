@@ -87,6 +87,8 @@ struct DebugPanelFeature {
             "Item → outbox [\(worktreeId.prefix(8))]: \(issueLinearId)"
         case let .itemAddedToInbox(worktreeId, issueLinearId):
             "Item → inbox [\(worktreeId.prefix(8))]: \(issueLinearId)"
+        case let .itemRemovedFromInbox(worktreeId, issueLinearId):
+            "Item ← inbox [\(worktreeId.prefix(8))]: \(issueLinearId)"
         case let .scheduleSaved(scheduleId):
             "Schedule saved [\(scheduleId.prefix(8))]"
         case let .scheduleDeleted(scheduleId):
