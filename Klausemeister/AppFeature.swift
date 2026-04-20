@@ -21,6 +21,9 @@ struct AppFeature {
         @Presents var shortcutCenter: ShortcutCenterFeature.State?
         var worktreeSwitcher: WorktreeSwitcherFeature.State?
         var keyBindings: [AppCommand: KeyBinding] = [:]
+        /// Schedule UUID currently presented as a gantt overlay, or `nil`.
+        /// Set by `.scheduleTapped`; cleared on Escape/outside-click/close.
+        var presentedScheduleId: String?
     }
 
     enum Action {
@@ -49,6 +52,8 @@ struct AppFeature {
         case selectWorktreeByPosition(Int)
         case keyBindingsLoaded([AppCommand: KeyBinding?])
         case mcpServerEvent(MCPServerEvent)
+        case ganttOverlayDismissed
+        case ganttRunTapped(scheduleId: String)
     }
 
     nonisolated private enum CancelID {
@@ -183,11 +188,16 @@ struct AppFeature {
             case let .worktree(.delegate(.moveIssueStatusRequested(issueId, target))):
                 return .send(.meister(.moveToStatusTapped(issueId: issueId, target: target)))
 
-            case .worktree(.delegate(.scheduleTapped)):
-                // KLA-198 will wire this to open the gantt overlay. The
-                // delegate is still emitted so the MCP/debug path observes
-                // the event; this branch just absorbs it today.
+            case let .worktree(.delegate(.scheduleTapped(scheduleId))):
+                state.presentedScheduleId = scheduleId
                 return .none
+
+            case .ganttOverlayDismissed:
+                state.presentedScheduleId = nil
+                return .none
+
+            case let .ganttRunTapped(scheduleId):
+                return .send(.worktree(.runScheduleTapped(scheduleId: scheduleId)))
 
             case .worktree:
                 return .none
