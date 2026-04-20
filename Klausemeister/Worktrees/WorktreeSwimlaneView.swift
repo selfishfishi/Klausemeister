@@ -69,15 +69,24 @@ struct WorktreeSwimlaneView: View {
     private var swimlanes: some View {
         let tints = themeColors.swimlaneRowTints
         return ScrollView(.vertical) {
-            LazyVStack(spacing: 12) {
-                ForEach(store.repositories) { repo in
-                    repoSection(repo: repo, tints: tints)
+            if store.isLoading, store.repositories.isEmpty, store.worktrees.isEmpty {
+                // Initial DB fetch is in flight. Show a spinner instead of
+                // letting the empty LazyVStack flash as "no repos".
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 40)
+            } else {
+                LazyVStack(spacing: 12) {
+                    ForEach(store.repositories) { repo in
+                        repoSection(repo: repo, tints: tints)
+                    }
+                    ForEach(store.ungroupedWorktrees) { worktree in
+                        swimlaneRow(worktree: worktree, tints: tints)
+                    }
                 }
-                ForEach(store.ungroupedWorktrees) { worktree in
-                    swimlaneRow(worktree: worktree, tints: tints)
-                }
+                .padding(12)
             }
-            .padding(12)
         }
     }
 

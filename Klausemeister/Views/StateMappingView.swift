@@ -75,8 +75,15 @@ struct StateMappingView: View {
 
     private var contentSection: some View {
         Group {
-            if let teamId = store.selectedTeamId,
-               let states = store.workflowStatesByTeam[teamId]
+            if store.isLoading {
+                VStack {
+                    Spacer()
+                    ProgressView()
+                        .controlSize(.small)
+                    Spacer()
+                }
+            } else if let teamId = store.selectedTeamId,
+                      let states = store.workflowStatesByTeam[teamId]
             {
                 stateList(teamId: teamId, states: states)
             } else {
