@@ -4,27 +4,31 @@ import SwiftUI
 /// One row of the gantt: a worktree plus its assigned items, sorted by
 /// `position`. Items whose `worktreeId` doesn't match any visible worktree
 /// are excluded by `GanttLayout.rows(...)`.
-struct GanttRow {
+struct GanttRow: Identifiable, Equatable {
     let worktree: Worktree
     let items: [ScheduleItem]
+
+    var id: String {
+        worktree.id
+    }
 }
 
-/// Pure value type that owns gantt geometry: cell frames, label frames,
+/// Stateless namespace owning gantt geometry: cell frames, label frames,
 /// total content size, and the connector edges derived from
 /// `blockedByIssueLinearIds`. Everything is deterministic given the inputs,
 /// so the row layer and connector overlay both consume the same frames
 /// without anchor preferences.
-struct GanttLayout {
+enum GanttLayout {
     /// Width per unit of `weight`. A `weight: 3` cell is 3× as wide as a
     /// `weight: 1` cell.
-    let weightUnit: CGFloat = 60
-    let cellHeight: CGFloat = 56
-    let cellSpacing: CGFloat = 8
-    let rowSpacing: CGFloat = 14
-    let labelWidth: CGFloat = 100
-    let gridPadding: CGFloat = 18
+    static let weightUnit: CGFloat = 60
+    static let cellHeight: CGFloat = 56
+    static let cellSpacing: CGFloat = 8
+    static let rowSpacing: CGFloat = 14
+    static let labelWidth: CGFloat = 100
+    static let gridPadding: CGFloat = 18
 
-    func rows(items: [ScheduleItem], worktrees: [Worktree]) -> [GanttRow] {
+    static func rows(items: [ScheduleItem], worktrees: [Worktree]) -> [GanttRow] {
         worktrees.map { worktree in
             let rowItems = items
                 .filter { $0.worktreeId == worktree.id }
@@ -33,7 +37,7 @@ struct GanttLayout {
         }
     }
 
-    func labelFrame(rowIndex: Int) -> CGRect {
+    static func labelFrame(rowIndex: Int) -> CGRect {
         CGRect(
             x: 0,
             y: CGFloat(rowIndex) * (cellHeight + rowSpacing),
@@ -42,21 +46,23 @@ struct GanttLayout {
         )
     }
 
-    func cellWidth(weight: Int) -> CGFloat {
+    static func cellWidth(weight: Int) -> CGFloat {
         max(1, CGFloat(weight)) * weightUnit
     }
 
     /// Total horizontal extent of one row including label, cells, and
-    /// inter-cell spacing. Used to size the row background band.
-    func totalRowWidth(items: [ScheduleItem]) -> CGFloat {
+    /// inter-cell spacing. Matches the rightmost cell's `maxX` (no trailing
+    /// stray spacing) so the row background band lines up cleanly with the
+    /// last cell's right edge.
+    static func totalRowWidth(items: [ScheduleItem]) -> CGFloat {
         let cellsWidth = items.reduce(CGFloat(0)) { acc, item in
             acc + cellWidth(weight: item.weight)
         }
-        let spacings = max(0, CGFloat(items.count)) * cellSpacing
-        return labelWidth + cellSpacing + cellsWidth + spacings
+        let spacings = CGFloat(items.count) * cellSpacing
+        return labelWidth + cellsWidth + spacings
     }
 
-    func totalSize(rows: [GanttRow]) -> CGSize {
+    static func totalSize(rows: [GanttRow]) -> CGSize {
         let widest = rows.map { totalRowWidth(items: $0.items) }.max() ?? 0
         let height = max(0, CGFloat(rows.count)) * (cellHeight + rowSpacing)
         return CGSize(width: max(widest, 200), height: max(height, cellHeight))
@@ -64,7 +70,7 @@ struct GanttLayout {
 
     /// Per-item top-left frame in the grid coordinate space (origin at the
     /// top-left of the first row, inside the grid padding inset).
-    func frames(rows: [GanttRow]) -> [String: CGRect] {
+    static func frames(rows: [GanttRow]) -> [String: CGRect] {
         var result: [String: CGRect] = [:]
         for (rowIndex, row) in rows.enumerated() {
             let originY = CGFloat(rowIndex) * (cellHeight + rowSpacing)
@@ -81,7 +87,7 @@ struct GanttLayout {
     /// Build connector edges from each item's `blockedByIssueLinearIds`. Both
     /// blocker and blocked must be in `frames` (i.e. visible in the grid);
     /// blockers outside this schedule are ignored.
-    func connectorEdges(
+    static func connectorEdges(
         items: [ScheduleItem],
         frames: [String: CGRect]
     ) -> [GanttConnectorEdge] {
@@ -109,9 +115,8 @@ struct GanttLayout {
 }
 
 /// One blocker → blocked dependency edge whose endpoints are precomputed cell
-/// frames. The connector overlay draws a Bezier curve between the right edge
-/// of the blocker and the left edge of the blocked, plus particles flowing
-/// along the curve in dependency direction.
+/// frames. Drawn by `GanttConnectorOverlay` as a Bezier curve with particles
+/// flowing in dependency direction.
 struct GanttConnectorEdge: Equatable {
     let fromId: String
     let toId: String

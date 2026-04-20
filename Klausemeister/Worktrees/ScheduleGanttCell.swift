@@ -90,9 +90,7 @@ private struct WeightDots: View {
 
 // MARK: - Cell motion overlays
 
-/// Slow breathing edge pulse for `.queued` cells. ~1.5 s period — slightly
-/// faster than the swimlane's 2 s breath so the gantt feels more
-/// anticipation-heavy.
+/// Slow breathing edge pulse for `.queued` cells. ~1.5 s period.
 private struct CellBreathingEdge: View {
     let tint: Color
     let glowIntensity: Double
@@ -116,9 +114,8 @@ private struct CellBreathingEdge: View {
     }
 }
 
-/// Rotating comet trail for `.inProgress` cells. Sized down from
-/// `SwimlaneWorkingCometOverlay` (1.2/0.6 vs 3.2/1.2 stroke widths) so the
-/// effect reads at cell scale rather than swimlane scale.
+/// Rotating comet trail for `.inProgress` cells. Smaller stroke widths than
+/// the swimlane comet so it reads at cell scale.
 private struct CellCometEdge: View {
     let cycleColors: [Color]
     let phaseOffset: Double

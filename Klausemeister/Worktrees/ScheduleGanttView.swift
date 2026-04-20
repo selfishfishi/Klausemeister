@@ -1,41 +1,28 @@
 // Klausemeister/Worktrees/ScheduleGanttView.swift
 import SwiftUI
 
-/// Full-window overlay that visualizes a saved `Schedule` as a per-worktree
-/// gantt grid. Pure presentation — takes plain values + closures, no store
-/// dependency.
-///
-/// Layout: header strip on top (name, status summary, Run/Close), then a
-/// 2-D scrolling grid where each row is a worktree and each cell is a
-/// `ScheduleItem` whose width is proportional to its `weight`. Cells render
-/// with status-driven tint and motion (planned: dormant; queued: breathing
-/// edge; inProgress: rotating comet; done: settled, dimmed). A `Canvas`
-/// overlay (`GanttConnectorOverlay`) draws Bezier connectors with flowing
-/// particles between `blockedBy` pairs within the schedule.
+/// Full-window overlay visualizing a `Schedule` as a per-worktree gantt grid.
+/// Pure presentation — takes plain values + closures, no store dependency.
+/// Status tint and motion live in `ScheduleStatusTint` / `GanttCellView`;
+/// connector geometry and Bezier-particle drawing live in
+/// `ScheduleGanttLayout`.
 struct ScheduleGanttView: View {
-    /// The schedule being visualized.
     let schedule: Schedule
     /// Worktrees in display order — typically the sidebar order. Items whose
     /// `worktreeId` doesn't match any of these are dropped (the worktree was
     /// removed after the schedule was saved).
     let worktrees: [Worktree]
-    /// True while a `runScheduleTapped` effect is in flight for this schedule.
     let isRunInFlight: Bool
-    /// Run-Schedule tap callback. Disabled if `isRunInFlight` or no `.planned`
-    /// items remain.
     let onRunTapped: () -> Void
-    /// Close-button (and outside-click / Escape) callback.
     let onClose: () -> Void
 
     @Environment(\.themeColors) private var themeColors
 
-    private let layout = GanttLayout()
-
     var body: some View {
-        let rows = layout.rows(items: schedule.items, worktrees: worktrees)
-        let frames = layout.frames(rows: rows)
-        let totalSize = layout.totalSize(rows: rows)
-        let edges = layout.connectorEdges(items: schedule.items, frames: frames)
+        let rows = GanttLayout.rows(items: schedule.items, worktrees: worktrees)
+        let frames = GanttLayout.frames(rows: rows)
+        let totalSize = GanttLayout.totalSize(rows: rows)
+        let edges = GanttLayout.connectorEdges(items: schedule.items, frames: frames)
 
         VStack(spacing: 0) {
             GanttHeader(
@@ -51,14 +38,8 @@ struct ScheduleGanttView: View {
 
             ScrollView([.horizontal, .vertical]) {
                 ZStack(alignment: .topLeading) {
-                    ForEach(rows.indices, id: \.self) { rowIndex in
-                        let row = rows[rowIndex]
-                        GanttRowLayer(
-                            row: row,
-                            rowIndex: rowIndex,
-                            frames: frames,
-                            layout: layout
-                        )
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { rowIndex, row in
+                        GanttRowLayer(row: row, rowIndex: rowIndex, frames: frames)
                     }
                     GanttConnectorOverlay(
                         edges: edges,
@@ -69,7 +50,7 @@ struct ScheduleGanttView: View {
                     .allowsHitTesting(false)
                 }
                 .frame(width: totalSize.width, height: totalSize.height, alignment: .topLeading)
-                .padding(layout.gridPadding)
+                .padding(GanttLayout.gridPadding)
             }
             .scrollIndicators(.hidden)
         }
@@ -139,14 +120,11 @@ private struct StatusSummary: View {
     let items: [ScheduleItem]
 
     var body: some View {
-        let counts = Dictionary(grouping: items, by: \.status).mapValues(\.count)
-        let parts: [String] = [
-            "\(counts[.inProgress, default: 0]) in progress",
-            "\(counts[.queued, default: 0]) queued",
-            "\(counts[.planned, default: 0]) planned",
-            "\(counts[.done, default: 0]) done"
-        ]
-        Text(parts.joined(separator: " · "))
+        let inProgress = items.count(where: { $0.status == .inProgress })
+        let queued = items.count(where: { $0.status == .queued })
+        let planned = items.count(where: { $0.status == .planned })
+        let done = items.count(where: { $0.status == .done })
+        Text("\(inProgress) in progress · \(queued) queued · \(planned) planned · \(done) done")
     }
 }
 
@@ -156,19 +134,19 @@ private struct StatusSummary: View {
 /// at frames computed by `GanttLayout`. Each item's frame is positioned
 /// absolutely inside the parent ZStack, which lets the connector canvas
 /// read the same frames without anchor preferences.
-struct GanttRowLayer: View {
+private struct GanttRowLayer: View {
     let row: GanttRow
     let rowIndex: Int
     let frames: [String: CGRect]
-    let layout: GanttLayout
 
     @Environment(\.themeColors) private var themeColors
 
     var body: some View {
-        let labelFrame = layout.labelFrame(rowIndex: rowIndex)
+        let labelFrame = GanttLayout.labelFrame(rowIndex: rowIndex)
         let tints = themeColors.swimlaneRowTints
-        let tintIndex = abs(row.worktree.id.hashValue) % max(1, tints.count)
-        let rowTint = tints[tintIndex]
+        // Index-based palette pick keeps the same worktree on the same tint
+        // across launches (String.hashValue is randomized per process).
+        let rowTint = tints[rowIndex % max(1, tints.count)]
 
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -179,8 +157,8 @@ struct GanttRowLayer: View {
                         .frame(width: 2)
                 }
                 .frame(
-                    width: max(0, layout.totalRowWidth(items: row.items)),
-                    height: layout.cellHeight
+                    width: max(0, GanttLayout.totalRowWidth(items: row.items)),
+                    height: GanttLayout.cellHeight
                 )
                 .offset(x: 0, y: labelFrame.origin.y)
 

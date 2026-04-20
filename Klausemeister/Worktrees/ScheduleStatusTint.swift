@@ -18,16 +18,6 @@ extension ScheduleItemStatus {
         }
     }
 
-    /// Whether the gantt cell should run a continuous animation for this
-    /// status. `planned` and `done` are static; `queued` breathes; `inProgress`
-    /// runs the comet trail.
-    var isAnimated: Bool {
-        switch self {
-        case .planned, .done: false
-        case .queued, .inProgress: true
-        }
-    }
-
     /// Cell foreground/border opacity multiplier. `done` recedes (0.55) so the
     /// eye is drawn to in-flight and pending work; everything else renders at
     /// full strength.

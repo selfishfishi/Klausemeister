@@ -22,7 +22,6 @@ struct AppFeature {
         var worktreeSwitcher: WorktreeSwitcherFeature.State?
         var keyBindings: [AppCommand: KeyBinding] = [:]
         /// Schedule UUID currently presented as a gantt overlay, or `nil`.
-        /// Set by `.scheduleTapped`; cleared on Escape/outside-click/close.
         var presentedScheduleId: String?
     }
 
