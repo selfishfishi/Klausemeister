@@ -2,7 +2,7 @@ import ComposableArchitecture
 import SwiftUI
 
 struct TerminalContainerView: View {
-    let store: StoreOf<AppFeature>
+    @Bindable var store: StoreOf<AppFeature>
     let surfaceStore: SurfaceStore
 
     @Environment(\.themeColors) private var themeColors
@@ -87,28 +87,14 @@ struct TerminalContainerView: View {
             store.send(.onAppear)
         }
         .sheet(
-            isPresented: Binding(
-                get: { store.shortcutCenter != nil },
-                set: { if !$0 { store.send(.shortcutCenterDismissed) } }
-            )
-        ) {
-            if let scStore = store.scope(
-                state: \.shortcutCenter, action: \.shortcutCenter
-            ) {
-                ShortcutCenterView(store: scStore)
-            }
+            item: $store.scope(state: \.shortcutCenter, action: \.shortcutCenter)
+        ) { scStore in
+            ShortcutCenterView(store: scStore)
         }
         .sheet(
-            isPresented: Binding(
-                get: { store.teamSettings != nil },
-                set: { if !$0 { store.send(.teamSettingsDismissed) } }
-            )
-        ) {
-            if let settingsStore = store.scope(
-                state: \.teamSettings, action: \.teamSettings
-            ) {
-                TeamSettingsView(store: settingsStore)
-            }
+            item: $store.scope(state: \.teamSettings, action: \.teamSettings)
+        ) { settingsStore in
+            TeamSettingsView(store: settingsStore)
         }
     }
 }
@@ -135,9 +121,7 @@ private struct DetailPane: View {
             WorktreeDetailView(
                 store: store.scope(state: \.worktree, action: \.worktree),
                 surfaceStore: surfaceStore,
-                teamsByID: store.meister.teams.count > 1
-                    ? Dictionary(uniqueKeysWithValues: store.meister.teams.map { ($0.id, $0) })
-                    : [:]
+                teamsByID: store.meister.teamsByID
             )
         }
     }

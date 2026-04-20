@@ -109,9 +109,9 @@ enum ToolHandlers {
             grouping: candidateScheduleItems, by: \.issueLinearId
         )
         let allBlockerIds = Set(
-            candidateScheduleItems.flatMap { decodeBlockerIds($0.blockedByIssueLinearIds) }
+            candidateScheduleItems.flatMap(\.blockedByIssueLinearIds)
         )
-        let blockersByIssue: [String: [ScheduleItemRecord]]
+        let blockersByIssue: [String: [ScheduleItem]]
         if allBlockerIds.isEmpty {
             blockersByIssue = [:]
         } else {
@@ -147,14 +147,13 @@ enum ToolHandlers {
     /// non-`done` schedule_item. Deduped in encounter order so the narration
     /// reads left-to-right as discovered.
     private static func blockingBlockerIdentifiers(
-        for candidateEntries: [ScheduleItemRecord],
-        blockersByIssue: [String: [ScheduleItemRecord]]
+        for candidateEntries: [ScheduleItem],
+        blockersByIssue: [String: [ScheduleItem]]
     ) -> [String] {
         var result: [String] = []
         var seen: Set<String> = []
-        let doneRaw = ScheduleItemStatus.done.rawValue
         for entry in candidateEntries {
-            for blockerId in decodeBlockerIds(entry.blockedByIssueLinearIds) {
+            for blockerId in entry.blockedByIssueLinearIds {
                 let blockerEntries = blockersByIssue[blockerId] ?? []
                 // If we don't know about the blocker at all in any schedule,
                 // we can't prove it's done — treat as still blocking. This
@@ -162,7 +161,7 @@ enum ToolHandlers {
                 let isBlockerDone: Bool = if blockerEntries.isEmpty {
                     false
                 } else {
-                    blockerEntries.allSatisfy { $0.status == doneRaw }
+                    blockerEntries.allSatisfy { $0.status == .done }
                 }
                 guard !isBlockerDone else { continue }
                 let identifier = blockerEntries.first?.issueIdentifier ?? blockerId
@@ -172,18 +171,6 @@ enum ToolHandlers {
             }
         }
         return result
-    }
-
-    /// Decode the JSON-encoded `[String]` that `schedule_items.blockedByIssueLinearIds`
-    /// stores. Silently returns an empty array on decode failure — a malformed
-    /// row must not take down the whole pull path.
-    private static func decodeBlockerIds(_ json: String) -> [String] {
-        guard let data = json.data(using: .utf8),
-              let ids = try? JSONDecoder().decode([String].self, from: data)
-        else {
-            return []
-        }
-        return ids
     }
 
     /// Shared claim + Linear-update path. Called once a candidate has passed

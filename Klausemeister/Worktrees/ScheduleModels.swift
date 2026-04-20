@@ -44,46 +44,9 @@ enum ScheduleItemStatus: String, Codable, Equatable {
 }
 
 extension Schedule {
-    /// Compose from the DB-layer records. Records carry the durable shape of
-    /// the `schedules` / `schedule_items` tables; the reducer works with the
-    /// domain types above so views never see raw rows.
-    init(record: ScheduleRecord, items: [ScheduleItem]) {
-        id = record.scheduleId
-        repoId = record.repoId
-        name = record.name
-        linearProjectId = record.linearProjectId
-        createdAt = record.createdAt
-        runAt = record.runAt
-        self.items = items
-    }
-
     /// Count of items that have reached the `done` terminal state — used to
     /// drive the sidebar pill's progress indicator without any extra queries.
     var doneCount: Int {
         items.count(where: { $0.status == .done })
-    }
-}
-
-extension ScheduleItem {
-    init(record: ScheduleItemRecord) {
-        id = record.scheduleItemId
-        scheduleId = record.scheduleId
-        worktreeId = record.worktreeId
-        issueLinearId = record.issueLinearId
-        issueIdentifier = record.issueIdentifier
-        issueTitle = record.issueTitle
-        position = record.position
-        weight = record.weight
-        // `blockedByIssueLinearIds` is stored as a JSON-encoded string to keep
-        // the schema flat — decode defensively so a malformed row doesn't
-        // crash the sidebar load.
-        if let data = record.blockedByIssueLinearIds.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([String].self, from: data)
-        {
-            blockedByIssueLinearIds = decoded
-        } else {
-            blockedByIssueLinearIds = []
-        }
-        status = ScheduleItemStatus(rawValue: record.status) ?? .planned
     }
 }

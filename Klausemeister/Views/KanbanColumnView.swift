@@ -5,8 +5,7 @@ import SwiftUI
 /// badge, accent line, container border, and propagated to each card.
 struct KanbanColumnView: View {
     let column: MeisterFeature.KanbanColumn
-    let worktrees: [Worktree]
-    let repositories: [Repository]
+    let worktreeMenuEntries: [WorktreeMenuEntry]
     var assignedWorktreeNames: [String: String] = [:]
     var teamsByID: [String: LinearTeam] = [:]
     let onMoveToStatus: (_ issueId: String, _ target: MeisterState) -> Void
@@ -97,8 +96,7 @@ struct KanbanColumnView: View {
                     KanbanIssueCardView(
                         issue: issue,
                         tint: tint,
-                        worktrees: worktrees,
-                        repositories: repositories,
+                        worktreeMenuEntries: worktreeMenuEntries,
                         worktreeName: assignedWorktreeNames[issue.id],
                         teamKey: team?.key,
                         teamTint: team.map { themeColors.teamTint(colorIndex: $0.colorIndex) },
