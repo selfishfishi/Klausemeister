@@ -14,6 +14,17 @@ struct StateMappingFeature {
         var originalMappings: StateMappingTable
         var saveError: String?
 
+        /// True when we don't yet have enough data to render the mapping list.
+        /// The editor sheet is opened from Meister, which seeds teams and
+        /// workflow states from its own async load; if that load hasn't
+        /// completed when the sheet opens, show a spinner instead of the
+        /// misleading "No team selected" idle state.
+        var isLoading: Bool {
+            if teams.isEmpty { return true }
+            guard let teamId = selectedTeamId else { return true }
+            return workflowStatesByTeam[teamId] == nil
+        }
+
         init(
             teams: [LinearTeam],
             workflowStatesByTeam: WorkflowStatesByTeam,

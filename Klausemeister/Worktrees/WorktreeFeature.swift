@@ -199,6 +199,10 @@ struct WorktreeFeature {
     struct State: Equatable {
         var repositories: IdentifiedArrayOf<Repository> = []
         var worktrees: IdentifiedArrayOf<Worktree> = []
+        /// True until the initial DB fetch in `.onAppear` completes (success
+        /// or failure). Lets the swimlane view show a ProgressView instead of
+        /// a misleading "no repos" empty state during launch.
+        var isLoading: Bool = true
         var isCreatingWorktree: Bool = false
         var selectedWorktreeId: String?
         /// Whether the board overlay (inbox/processing/outbox columns) is
@@ -766,6 +770,7 @@ struct WorktreeFeature {
                 return .none
 
             case let .worktreesLoaded(repositories, worktreeSnapshots, queueItems, issues):
+                state.isLoading = false
                 state.repositories = IdentifiedArrayOf(uniqueElements: repositories)
 
                 let issuesByLinearId = Dictionary(
@@ -1557,6 +1562,7 @@ struct WorktreeFeature {
                 }
 
             case let .loadFailed(message):
+                state.isLoading = false
                 state.pendingHellos.removeAll()
                 state.pendingQueueEvents.removeAll()
                 return .send(.delegate(.errorOccurred(message: message)))
