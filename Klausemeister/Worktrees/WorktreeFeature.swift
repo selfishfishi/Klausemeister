@@ -582,7 +582,7 @@ struct WorktreeFeature {
         if let selectedWt = state.selectedWorktreeId, worktreeIds.contains(selectedWt) {
             state.selectedWorktreeId = nil
         }
-        return .merge(
+        var effects: [Effect<Action>] = [
             .cancel(id: CancelID.syncRepo(repoId)),
             .merge(worktreeIds.map { .cancel(id: CancelID.meisterSpawn($0)) }),
             .merge(worktreeIds.map { .cancel(id: CancelID.gitFSWatcher($0)) }),
@@ -604,7 +604,14 @@ struct WorktreeFeature {
             } catch: { _, send in
                 await send(.onAppear)
             }
-        )
+        ]
+        // Stop the session-wide PR poll once the last worktree is gone — the
+        // poll is started in `worktreesLoaded` on `onAppear` and otherwise
+        // runs forever, calling `refreshPRInfo` against an empty list.
+        if state.worktrees.isEmpty {
+            effects.append(.cancel(id: CancelID.prInfoPoll))
+        }
+        return .merge(effects)
     }
 
     /// Transitions a worktree to `meisterStatus = .spawning` and returns the
