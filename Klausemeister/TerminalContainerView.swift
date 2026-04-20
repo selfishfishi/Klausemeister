@@ -38,6 +38,7 @@ struct TerminalContainerView: View {
 
             CommandPaletteOverlay(store: store)
             WorktreeSwitcherOverlay(store: store)
+            ScheduleGanttOverlay(store: store)
         }
         // Cross-cutting animations and lifecycle modifiers stay on the
         // parent. They read specific keypaths (showInspector,
@@ -49,7 +50,9 @@ struct TerminalContainerView: View {
         .animation(.easeInOut(duration: 0.2), value: store.showInspector)
         .animation(
             .spring(duration: 0.2, bounce: 0.1),
-            value: store.commandPalette != nil || store.worktreeSwitcher != nil
+            value: store.commandPalette != nil
+                || store.worktreeSwitcher != nil
+                || store.presentedScheduleId != nil
         )
         .onChange(of: store.showSidebar) { _, show in
             withAnimation {
@@ -197,5 +200,60 @@ private struct WorktreeSwitcherOverlay: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
                 .zIndex(1)
         }
+    }
+}
+
+// MARK: - Schedule gantt overlay
+
+/// Scrim + gantt overlay, conditional on `presentedScheduleId` being set.
+/// Resolves the full `Schedule` from `worktree.schedulesByRepoId` and the
+/// matching repo's worktrees in display order. Outside-tap and Escape both
+/// dismiss via `.ganttOverlayDismissed`.
+private struct ScheduleGanttOverlay: View {
+    let store: StoreOf<AppFeature>
+
+    var body: some View {
+        if let scheduleId = store.presentedScheduleId,
+           let schedule = findSchedule(id: scheduleId, in: store.worktree.schedulesByRepoId)
+        {
+            let worktrees = store.worktree.worktrees
+                .filter { $0.repoId == schedule.repoId }
+                .sorted { lhs, rhs in
+                    if lhs.sortOrder != rhs.sortOrder {
+                        return lhs.sortOrder < rhs.sortOrder
+                    }
+                    return lhs.name < rhs.name
+                }
+
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+                .onTapGesture { store.send(.ganttOverlayDismissed) }
+
+            ScheduleGanttView(
+                schedule: schedule,
+                worktrees: worktrees,
+                isRunInFlight: store.worktree.scheduleRunInFlight.contains(scheduleId),
+                onRunTapped: { store.send(.ganttRunTapped(scheduleId: scheduleId)) },
+                onClose: { store.send(.ganttOverlayDismissed) }
+            )
+            .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            .zIndex(2)
+            .onKeyPress(.escape) {
+                store.send(.ganttOverlayDismissed)
+                return .handled
+            }
+        }
+    }
+
+    private func findSchedule(
+        id: String,
+        in schedulesByRepoId: [String: [Schedule]]
+    ) -> Schedule? {
+        for (_, schedules) in schedulesByRepoId {
+            if let match = schedules.first(where: { $0.id == id }) {
+                return match
+            }
+        }
+        return nil
     }
 }
