@@ -22,13 +22,33 @@ final class GhosttyApp {
         setup(theme: nil)
     }
 
+    /// Apply a new theme without freeing the underlying `ghostty_app_t`.
+    ///
+    /// Hot-reloads the C-level config via `ghostty_app_update_config`. The
+    /// previous code path freed and recreated `ghostty_app_t` on every theme
+    /// change, leaving a use-after-free window: a `wakeup_cb` queued by the
+    /// old `ghostty_app_t` could fire after `ghostty_app_free` but before the
+    /// new app existed (KLA-173). Since the runtime config (callbacks,
+    /// userdata) is bound at `ghostty_app_new` time and survives
+    /// `update_config`, we never need to free the app for a theme swap.
+    ///
+    /// First-run path (called from `init` before `app` exists) falls through
+    /// to `setup(theme:)` which still uses `ghostty_app_new`.
+    ///
+    /// Surface-level config does NOT auto-propagate from app updates — the
+    /// caller (`AppFeature.themeChanged`) is responsible for pushing the
+    /// new config to live surfaces via `SurfaceManager.applyConfigToAll`.
     func rebuild(theme: AppTheme) {
-        if let app { ghostty_app_free(app) }
-        if let config { ghostty_config_free(config) }
-        app = nil
-        config = nil
+        guard let app else {
+            // First run — no live ghostty_app_t yet, build from scratch.
+            setup(theme: theme)
+            return
+        }
+        let newCfg = Self.buildConfig(theme: theme)
+        ghostty_app_update_config(app, newCfg)
+        if let oldConfig = config { ghostty_config_free(oldConfig) }
+        config = newCfg
         needsTick.withLock { $0 = false }
-        setup(theme: theme)
     }
 
     func tick() {
@@ -37,20 +57,28 @@ final class GhosttyApp {
     }
 
     private func setup(theme: AppTheme?) {
+        let cfg = Self.buildConfig(theme: theme)
+        config = cfg
+
+        var runtime = makeRuntimeConfig()
+        app = ghostty_app_new(&runtime, cfg)
+    }
+
+    /// Build a finalized `ghostty_config_t` for the given theme. Caller owns
+    /// the returned handle and must eventually `ghostty_config_free` it (or
+    /// pass it to `ghostty_app_update_config` and free the *previous* one).
+    private static func buildConfig(theme: AppTheme?) -> ghostty_config_t {
         let cfg = ghostty_config_new()!
         ghostty_config_load_default_files(cfg)
 
-        if let theme, let path = Self.writeThemeConfig(theme) {
+        if let theme, let path = writeThemeConfig(theme) {
             path.withCString { ptr in
                 ghostty_config_load_file(cfg, ptr)
             }
         }
 
         ghostty_config_finalize(cfg)
-        config = cfg
-
-        var runtime = makeRuntimeConfig()
-        app = ghostty_app_new(&runtime, cfg)
+        return cfg
     }
 
     // swiftlint:disable identifier_name

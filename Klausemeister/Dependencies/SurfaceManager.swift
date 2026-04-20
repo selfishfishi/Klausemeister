@@ -1,5 +1,6 @@
 import Dependencies
 import Foundation
+import GhosttyKit
 
 struct SurfaceManager {
     var createSurface: @Sendable @MainActor (
@@ -10,16 +11,12 @@ struct SurfaceManager {
     var destroySurface: @Sendable @MainActor (_ id: String) -> Void
     var focus: @Sendable @MainActor (_ id: String) async -> Bool
     var unfocus: @Sendable @MainActor (_ id: String) -> Void
-    /// Capture each live surface's config so the reducer can rebuild the
-    /// `ghostty_app_t` and then restore them against the new handle.
-    var captureSurfaces: @Sendable @MainActor () -> [SurfaceStore.Snapshot]
-    /// Tear down every live surface. Must be called BEFORE
-    /// `ghostty_app_free` — libghostty crashes in the free path when
-    /// surfaces still reference the app.
-    var destroyAllSurfaces: @Sendable @MainActor () -> Void
-    /// Recreate surfaces from a snapshot, binding each to the current
-    /// `ghostty_app_t`. Must be called AFTER the new app exists.
-    var restoreSurfaces: @Sendable @MainActor (_ snapshots: [SurfaceStore.Snapshot]) -> Void
+    /// Push a new `ghostty_config_t` to every live surface. Called from
+    /// `AppFeature.themeChanged` after `GhosttyApp.rebuild` has updated
+    /// the app-level config — surfaces don't auto-inherit app updates.
+    /// The caller retains ownership of `config` (borrowed by
+    /// `ghostty_surface_update_config`).
+    var applyConfigToAll: @Sendable @MainActor (_ config: ghostty_config_t) -> Void
 }
 
 extension SurfaceManager {
@@ -37,12 +34,7 @@ extension SurfaceManager {
             destroySurface: { id in surfaceStore.destroy(id: id) },
             focus: { id in await surfaceStore.focus(id) },
             unfocus: { id in surfaceStore.unfocus(id) },
-            captureSurfaces: { surfaceStore.snapshotAll() },
-            destroyAllSurfaces: { surfaceStore.destroyAll() },
-            restoreSurfaces: { snapshots in
-                guard let app = ghosttyApp.app() else { return }
-                surfaceStore.restore(from: snapshots, app: app)
-            }
+            applyConfigToAll: { config in surfaceStore.applyConfig(config) }
         )
     }
 }
@@ -60,12 +52,7 @@ extension SurfaceManager: DependencyKey {
         destroySurface: unimplemented("SurfaceManager.destroySurface"),
         focus: unimplemented("SurfaceManager.focus", placeholder: false),
         unfocus: unimplemented("SurfaceManager.unfocus"),
-        captureSurfaces: unimplemented(
-            "SurfaceManager.captureSurfaces",
-            placeholder: []
-        ),
-        destroyAllSurfaces: unimplemented("SurfaceManager.destroyAllSurfaces"),
-        restoreSurfaces: unimplemented("SurfaceManager.restoreSurfaces")
+        applyConfigToAll: unimplemented("SurfaceManager.applyConfigToAll")
     )
     nonisolated static let testValue = SurfaceManager(
         createSurface: unimplemented(
@@ -75,12 +62,7 @@ extension SurfaceManager: DependencyKey {
         destroySurface: unimplemented("SurfaceManager.destroySurface"),
         focus: unimplemented("SurfaceManager.focus", placeholder: false),
         unfocus: unimplemented("SurfaceManager.unfocus"),
-        captureSurfaces: unimplemented(
-            "SurfaceManager.captureSurfaces",
-            placeholder: []
-        ),
-        destroyAllSurfaces: unimplemented("SurfaceManager.destroyAllSurfaces"),
-        restoreSurfaces: unimplemented("SurfaceManager.restoreSurfaces")
+        applyConfigToAll: unimplemented("SurfaceManager.applyConfigToAll")
     )
 }
 
