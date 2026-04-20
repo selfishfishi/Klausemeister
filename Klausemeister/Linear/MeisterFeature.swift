@@ -733,6 +733,15 @@ extension MeisterFeature.State {
         return Array(Set(names)).sorted()
     }
 
+    /// Teams keyed by id for the kanban team-badge lookup. Empty when
+    /// fewer than two teams are configured (the badge strip is hidden in
+    /// that case), so the view doesn't need to gate on `teams.count` before
+    /// reading. Computed so observation tracks `teams` directly.
+    var teamsByID: [String: LinearTeam] {
+        guard teams.count > 1 else { return [:] }
+        return Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0) })
+    }
+
     func columnContainingIssue(_ issueId: String) -> MeisterFeature.KanbanColumn? {
         columns.first { $0.issues.contains { $0.id == issueId } }
     }
@@ -762,62 +771,6 @@ extension LinearIssue {
     }
 }
 
-// MARK: - Record Conversions
-
-extension LinearIssue {
-    nonisolated init(from record: ImportedIssueRecord) {
-        let decodedLabels: [String] = if let data = record.labels.data(using: .utf8),
-                                         let parsed = try? JSONDecoder().decode([String].self, from: data)
-        {
-            parsed
-        } else {
-            []
-        }
-        self.init(
-            id: record.linearId,
-            identifier: record.identifier,
-            title: record.title,
-            status: record.status,
-            statusId: record.statusId,
-            statusType: record.statusType,
-            teamId: record.teamId,
-            projectName: record.projectName,
-            labels: decodedLabels,
-            description: record.description,
-            url: record.url,
-            createdAt: record.createdAt,
-            updatedAt: record.updatedAt,
-            isOrphaned: record.isOrphaned
-        )
-    }
-}
-
-extension ImportedIssueRecord {
-    init(from issue: LinearIssue, importedAt: Date = Date()) {
-        let labelsJSON: String = if let data = try? JSONEncoder().encode(issue.labels),
-                                    let str = String(data: data, encoding: .utf8)
-        {
-            str
-        } else {
-            "[]"
-        }
-        self.init(
-            linearId: issue.id,
-            identifier: issue.identifier,
-            title: issue.title,
-            status: issue.status,
-            statusId: issue.statusId,
-            statusType: issue.statusType,
-            teamId: issue.teamId,
-            projectName: issue.projectName,
-            labels: labelsJSON,
-            description: issue.description,
-            url: issue.url,
-            createdAt: issue.createdAt,
-            updatedAt: issue.updatedAt,
-            importedAt: ISO8601DateFormatter.shared.string(from: importedAt),
-            sortOrder: 0,
-            isOrphaned: issue.isOrphaned
-        )
-    }
-}
+// `LinearIssue ↔ ImportedIssueRecord` conversions live in
+// `Database/RecordConversions.swift` — the canonical home for record↔domain
+// mappings that `DatabaseClient.liveValue` uses at the dependency boundary.

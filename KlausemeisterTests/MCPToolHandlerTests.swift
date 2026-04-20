@@ -180,11 +180,9 @@ private func scheduleItem(
     issueIdentifier: String,
     blockedByIssueLinearIds: [String] = [],
     status: ScheduleItemStatus
-) -> ScheduleItemRecord {
-    let blockers = (try? JSONEncoder().encode(blockedByIssueLinearIds))
-        .flatMap { String(bytes: $0, encoding: .utf8) } ?? "[]"
-    return ScheduleItemRecord(
-        scheduleItemId: id,
+) -> ScheduleItem {
+    ScheduleItem(
+        id: id,
         scheduleId: scheduleId,
         worktreeId: worktreeId,
         issueLinearId: issueLinearId,
@@ -192,8 +190,8 @@ private func scheduleItem(
         issueTitle: "fixture",
         position: 0,
         weight: 1,
-        blockedByIssueLinearIds: blockers,
-        status: status.rawValue
+        blockedByIssueLinearIds: blockedByIssueLinearIds,
+        status: status
     )
 }
 

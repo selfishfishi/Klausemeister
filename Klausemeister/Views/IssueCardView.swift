@@ -122,8 +122,7 @@ struct IssueCardView: View {
 struct KanbanIssueCardView: View {
     let issue: LinearIssue
     let tint: Color
-    let worktrees: [Worktree]
-    let repositories: [Repository]
+    let worktreeMenuEntries: [WorktreeMenuEntry]
     var worktreeName: String?
     var teamKey: String?
     var teamTint: Color?
@@ -141,21 +140,32 @@ struct KanbanIssueCardView: View {
         return MeisterState.allCases.filter { $0 != current }
     }
 
-    /// Worktrees grouped by their `repoId`. Built once per `body` pass so
-    /// the context-menu builder doesn't run `.filter` over `worktrees`
-    /// three times (twice per repo + once for the ungrouped tail) on
-    /// every cell re-render.
-    private var worktreesByRepoId: [String?: [Worktree]] {
-        Dictionary(grouping: worktrees, by: \.repoId)
+    /// Menu entries grouped into `(repoId, repoName, [entry])` sections,
+    /// preserving the encounter order from `worktreeMenuEntries` (which is
+    /// already sorted by repo `sortOrder` upstream). Entries without a
+    /// `repoId` are collected into an `ungrouped` bucket so they render
+    /// after the labeled sections.
+    private struct MenuSection: Identifiable {
+        let id: String
+        let repoName: String
+        var entries: [WorktreeMenuEntry]
     }
 
-    /// Repositories that actually have at least one worktree — the other
-    /// repos would render an empty `Section`. Derived from `worktreesByRepoId`
-    /// so we avoid the `repositories.filter { repo in worktrees.contains {...} }`
-    /// O(N×M) pattern.
-    private var reposWithWorktrees: [Repository] {
-        let byRepo = worktreesByRepoId
-        return repositories.filter { byRepo[$0.id]?.isEmpty == false }
+    private var menuSections: (grouped: [MenuSection], ungrouped: [WorktreeMenuEntry]) {
+        var sections: [MenuSection] = []
+        var ungrouped: [WorktreeMenuEntry] = []
+        for entry in worktreeMenuEntries {
+            guard let repoId = entry.repoId, let repoName = entry.repoName else {
+                ungrouped.append(entry)
+                continue
+            }
+            if let idx = sections.firstIndex(where: { $0.id == repoId }) {
+                sections[idx].entries.append(entry)
+            } else {
+                sections.append(MenuSection(id: repoId, repoName: repoName, entries: [entry]))
+            }
+        }
+        return (sections, ungrouped)
     }
 
     var body: some View {
@@ -176,25 +186,23 @@ struct KanbanIssueCardView: View {
                     }
                 }
             }
-            if !worktrees.isEmpty {
-                let byRepo = worktreesByRepoId
-                let grouped = reposWithWorktrees
+            if !worktreeMenuEntries.isEmpty {
+                let (grouped, ungrouped) = menuSections
                 Menu("Move to Worktree") {
-                    ForEach(grouped) { repo in
-                        Section(repo.name) {
-                            ForEach(byRepo[repo.id] ?? []) { worktree in
-                                Button("\(worktree.name) (\(worktree.inbox.count))") {
-                                    onAssignToWorktree(issue, worktree.id)
+                    ForEach(grouped) { section in
+                        Section(section.repoName) {
+                            ForEach(section.entries) { entry in
+                                Button("\(entry.name) (\(entry.inboxCount))") {
+                                    onAssignToWorktree(issue, entry.id)
                                 }
                             }
                         }
                     }
-                    let ungrouped = byRepo[nil] ?? []
                     if !ungrouped.isEmpty {
                         if !grouped.isEmpty { Divider() }
-                        ForEach(ungrouped) { worktree in
-                            Button("\(worktree.name) (\(worktree.inbox.count))") {
-                                onAssignToWorktree(issue, worktree.id)
+                        ForEach(ungrouped) { entry in
+                            Button("\(entry.name) (\(entry.inboxCount))") {
+                                onAssignToWorktree(issue, entry.id)
                             }
                         }
                     }

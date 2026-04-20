@@ -16,9 +16,9 @@ struct AppFeature {
         var linearAuth = LinearAuthFeature.State()
         var statusBar = StatusBarFeature.State()
         var debugPanel = DebugPanelFeature.State()
-        var teamSettings: TeamSettingsFeature.State?
+        @Presents var teamSettings: TeamSettingsFeature.State?
         var commandPalette: CommandPaletteFeature.State?
-        var shortcutCenter: ShortcutCenterFeature.State?
+        @Presents var shortcutCenter: ShortcutCenterFeature.State?
         var worktreeSwitcher: WorktreeSwitcherFeature.State?
         var keyBindings: [AppCommand: KeyBinding] = [:]
     }
@@ -39,13 +39,11 @@ struct AppFeature {
         case statusBar(StatusBarFeature.Action)
         case debugPanel(DebugPanelFeature.Action)
         case teamSettingsButtonTapped
-        case teamSettingsDismissed
-        case teamSettings(TeamSettingsFeature.Action)
+        case teamSettings(PresentationAction<TeamSettingsFeature.Action>)
         case openCommandPalette
         case commandPalette(CommandPaletteFeature.Action)
         case openShortcutCenter
-        case shortcutCenterDismissed
-        case shortcutCenter(ShortcutCenterFeature.Action)
+        case shortcutCenter(PresentationAction<ShortcutCenterFeature.Action>)
         case openWorktreeSwitcher
         case worktreeSwitcher(WorktreeSwitcherFeature.Action)
         case selectWorktreeByPosition(Int)
@@ -82,13 +80,13 @@ struct AppFeature {
         Scope(state: \.debugPanel, action: \.debugPanel) {
             DebugPanelFeature()
         }
-        .ifLet(\.teamSettings, action: \.teamSettings) {
+        .ifLet(\.$teamSettings, action: \.teamSettings) {
             TeamSettingsFeature()
         }
         .ifLet(\.commandPalette, action: \.commandPalette) {
             CommandPaletteFeature()
         }
-        .ifLet(\.shortcutCenter, action: \.shortcutCenter) {
+        .ifLet(\.$shortcutCenter, action: \.shortcutCenter) {
             ShortcutCenterFeature()
         }
         .ifLet(\.worktreeSwitcher, action: \.worktreeSwitcher) {
@@ -299,16 +297,12 @@ struct AppFeature {
                 )
                 return .none
 
-            case .shortcutCenterDismissed:
-                state.shortcutCenter = nil
-                return .none
-
-            case let .shortcutCenter(.delegate(.bindingsSaved(newBindings))):
+            case let .shortcutCenter(.presented(.delegate(.bindingsSaved(newBindings)))):
                 state.shortcutCenter = nil
                 state.keyBindings = newBindings
                 return .none
 
-            case .shortcutCenter(.delegate(.dismissed)):
+            case .shortcutCenter(.presented(.delegate(.dismissed))):
                 state.shortcutCenter = nil
                 return .none
 
@@ -352,18 +346,14 @@ struct AppFeature {
                 state.teamSettings = TeamSettingsFeature.State()
                 return .none
 
-            case .teamSettingsDismissed:
-                state.teamSettings = nil
-                return .none
-
-            case let .teamSettings(.delegate(.teamsUpdated(teams))):
+            case let .teamSettings(.presented(.delegate(.teamsUpdated(teams)))):
                 state.teamSettings = nil
                 return .merge(
                     .send(.meister(.teamsConfirmed(teams))),
                     .send(.worktree(.onAppear))
                 )
 
-            case .teamSettings(.delegate(.dismissed)):
+            case .teamSettings(.presented(.delegate(.dismissed))):
                 state.teamSettings = nil
                 return .none
 

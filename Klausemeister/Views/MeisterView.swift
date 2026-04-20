@@ -3,8 +3,7 @@ import SwiftUI
 
 struct MeisterView: View {
     @Bindable var store: StoreOf<MeisterFeature>
-    let worktrees: [Worktree]
-    let repositories: [Repository]
+    let worktreeMenuEntries: [WorktreeMenuEntry]
     var assignedWorktreeNames: [String: String] = [:]
     var teams: [LinearTeam] = []
     var onManageTeams: (() -> Void)?
@@ -107,16 +106,14 @@ struct MeisterView: View {
 
             // Kanban board
             GeometryReader { proxy in
-                let teamsByID = Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0) })
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 14) {
                         ForEach(store.visibleColumns) { column in
                             KanbanColumnView(
                                 column: column,
-                                worktrees: worktrees,
-                                repositories: repositories,
+                                worktreeMenuEntries: worktreeMenuEntries,
                                 assignedWorktreeNames: assignedWorktreeNames,
-                                teamsByID: teams.count > 1 ? teamsByID : [:],
+                                teamsByID: store.teamsByID,
                                 onMoveToStatus: { issueId, target in
                                     store.send(.moveToStatusTapped(issueId: issueId, target: target))
                                 },

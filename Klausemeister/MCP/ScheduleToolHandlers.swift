@@ -20,20 +20,9 @@ extension ToolHandlers {
         let scheduleId = UUID().uuidString
         let createdAt = ISO8601DateFormatter.shared.string(from: Date())
 
-        let scheduleRecord = ScheduleRecord(
-            scheduleId: scheduleId,
-            repoId: input.repoId,
-            name: input.name,
-            linearProjectId: input.linearProjectId,
-            createdAt: createdAt,
-            runAt: nil
-        )
-
-        let itemRecords: [ScheduleItemRecord] = try input.items.map { item in
-            let blockedData = try Self.scheduleEncoder.encode(item.blockedByIssueLinearIds)
-            let blockedJSON = String(bytes: blockedData, encoding: .utf8) ?? "[]"
-            return ScheduleItemRecord(
-                scheduleItemId: UUID().uuidString,
+        let items: [ScheduleItem] = input.items.map { item in
+            ScheduleItem(
+                id: UUID().uuidString,
                 scheduleId: scheduleId,
                 worktreeId: item.worktreeId,
                 issueLinearId: item.issueLinearId,
@@ -41,12 +30,21 @@ extension ToolHandlers {
                 issueTitle: item.issueTitle,
                 position: item.position,
                 weight: item.weight,
-                blockedByIssueLinearIds: blockedJSON,
-                status: ScheduleItemStatus.planned.rawValue
+                blockedByIssueLinearIds: item.blockedByIssueLinearIds,
+                status: .planned
             )
         }
+        let schedule = Schedule(
+            id: scheduleId,
+            repoId: input.repoId,
+            name: input.name,
+            linearProjectId: input.linearProjectId,
+            createdAt: createdAt,
+            runAt: nil,
+            items: items
+        )
 
-        try await worktreeClient.saveSchedule(scheduleRecord, itemRecords)
+        try await worktreeClient.saveSchedule(schedule)
         eventContinuation.yield(.scheduleSaved(scheduleId: scheduleId))
         return try .success(Self.encodeScheduleJSON(["scheduleId": scheduleId]))
     }
@@ -59,19 +57,15 @@ extension ToolHandlers {
         @Dependency(\.worktreeClient) var worktreeClient
 
         let schedules = try await worktreeClient.fetchSchedules(repoId)
-        var summaries: [ScheduleSummaryPayload] = []
-        summaries.reserveCapacity(schedules.count)
-        for schedule in schedules {
-            let items = try await worktreeClient.fetchScheduleItems(schedule.scheduleId)
-            let doneItems = items.count(where: { $0.status == ScheduleItemStatus.done.rawValue })
-            summaries.append(ScheduleSummaryPayload(
-                scheduleId: schedule.scheduleId,
+        let summaries: [ScheduleSummaryPayload] = schedules.map { schedule in
+            ScheduleSummaryPayload(
+                scheduleId: schedule.id,
                 name: schedule.name,
                 createdAt: schedule.createdAt,
                 runAt: schedule.runAt,
-                totalItems: items.count,
-                doneItems: doneItems
-            ))
+                totalItems: schedule.items.count,
+                doneItems: schedule.doneCount
+            )
         }
         return try .success(Self.encodeScheduleJSON(["schedules": summaries]))
     }
@@ -86,22 +80,21 @@ extension ToolHandlers {
         guard let schedule = try await worktreeClient.fetchSchedule(scheduleId) else {
             return .failure("Schedule \(scheduleId) not found")
         }
-        let itemRecords = try await worktreeClient.fetchScheduleItems(scheduleId)
-        let items: [ScheduleItemPayload] = itemRecords.map { record in
+        let items: [ScheduleItemPayload] = schedule.items.map { item in
             ScheduleItemPayload(
-                scheduleItemId: record.scheduleItemId,
-                worktreeId: record.worktreeId,
-                issueLinearId: record.issueLinearId,
-                issueIdentifier: record.issueIdentifier,
-                issueTitle: record.issueTitle,
-                position: record.position,
-                weight: record.weight,
-                blockedByIssueLinearIds: decodeBlockedIds(record.blockedByIssueLinearIds),
-                status: record.status
+                scheduleItemId: item.id,
+                worktreeId: item.worktreeId,
+                issueLinearId: item.issueLinearId,
+                issueIdentifier: item.issueIdentifier,
+                issueTitle: item.issueTitle,
+                position: item.position,
+                weight: item.weight,
+                blockedByIssueLinearIds: item.blockedByIssueLinearIds,
+                status: item.status.rawValue
             )
         }
         let payload = SchedulePayload(
-            scheduleId: schedule.scheduleId,
+            scheduleId: schedule.id,
             repoId: schedule.repoId,
             name: schedule.name,
             linearProjectId: schedule.linearProjectId,
@@ -151,7 +144,7 @@ extension ToolHandlers {
         for item in items {
             guard validWorktreeIds.contains(item.worktreeId) else {
                 results.append(RunScheduleItemResult(
-                    scheduleItemId: item.scheduleItemId,
+                    scheduleItemId: item.id,
                     ok: false,
                     error: "worktree gone"
                 ))
@@ -164,18 +157,18 @@ extension ToolHandlers {
                 eventContinuation.yield(.itemAddedToInbox(
                     worktreeId: item.worktreeId, issueLinearId: item.issueLinearId
                 ))
-                try await worktreeClient.updateScheduleItemStatus(item.scheduleItemId, queuedStatus)
+                try await worktreeClient.updateScheduleItemStatus(item.id, queuedStatus)
                 eventContinuation.yield(.scheduleItemStatusChanged(
-                    scheduleItemId: item.scheduleItemId, status: queuedStatus
+                    scheduleItemId: item.id, status: queuedStatus
                 ))
                 results.append(RunScheduleItemResult(
-                    scheduleItemId: item.scheduleItemId,
+                    scheduleItemId: item.id,
                     ok: true,
                     error: nil
                 ))
             } catch {
                 results.append(RunScheduleItemResult(
-                    scheduleItemId: item.scheduleItemId,
+                    scheduleItemId: item.id,
                     ok: false,
                     error: error.localizedDescription
                 ))
@@ -203,18 +196,6 @@ extension ToolHandlers {
         let data = try scheduleEncoder.encode(value)
         guard let json = String(bytes: data, encoding: .utf8) else { return "{}" }
         return json
-    }
-
-    /// Decode the JSON-string `blockedByIssueLinearIds` column. Failed
-    /// decode → empty array; we'd rather surface an empty block list than
-    /// blow up a read with one malformed row.
-    nonisolated private static let blockedDecoder = JSONDecoder()
-
-    nonisolated private static func decodeBlockedIds(_ json: String) -> [String] {
-        guard let data = json.data(using: .utf8),
-              let decoded = try? blockedDecoder.decode([String].self, from: data)
-        else { return [] }
-        return decoded
     }
 }
 

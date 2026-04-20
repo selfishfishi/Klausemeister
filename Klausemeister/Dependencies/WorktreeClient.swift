@@ -70,31 +70,24 @@ struct WorktreeClient {
 
     // MARK: - Saved schedules (KLA-195)
 
-    //
-    // Foundation for the saved-schedules feature. These still return raw
-    // `*Record` types — KLA-60 (migrate WorktreeClient off records) covers
-    // the broader refactor and is tracked separately so this ticket stays
-    // small. Domain-type callers (KLA-197 sidebar pills, KLA-198 gantt
-    // overlay) map `*Record → Schedule` / `ScheduleItem` at the reducer
-    // boundary.
-
-    var fetchSchedules: @Sendable (_ repoId: String) async throws -> [ScheduleRecord]
-    var fetchSchedule: @Sendable (_ scheduleId: String) async throws -> ScheduleRecord?
-    var fetchScheduleItems: @Sendable (_ scheduleId: String) async throws -> [ScheduleItemRecord]
-    /// Cross-schedule lookup by issue id. Returns every `schedule_item` row
-    /// whose `issueLinearId` is in the input set, across all schedules. Used
-    /// by `getNextItem` (KLA-200) to skip inbox items whose blockers aren't
-    /// yet `done`. Backed by the `idx_schedule_items_issue_linear_id` index.
+    /// Every schedule for a repo, each populated with its items. Ordered
+    /// newest-first by `createdAt`. GRDB `*Record` types are mapped to
+    /// domain types inside `liveValue` so the boundary stays clean.
+    var fetchSchedules: @Sendable (_ repoId: String) async throws -> [Schedule]
+    /// Full schedule with items. Returns `nil` if the schedule does not exist.
+    var fetchSchedule: @Sendable (_ scheduleId: String) async throws -> Schedule?
+    var fetchScheduleItems: @Sendable (_ scheduleId: String) async throws -> [ScheduleItem]
+    /// Cross-schedule lookup by issue id. Returns every item whose
+    /// `issueLinearId` is in the input set, across all schedules. Used by
+    /// `getNextItem` (KLA-200) to skip inbox items whose blockers aren't yet
+    /// `done`. Backed by the `idx_schedule_items_issue_linear_id` index.
     var fetchScheduleItemsByIssueLinearIds: @Sendable (
         _ issueLinearIds: [String]
-    ) async throws -> [ScheduleItemRecord]
+    ) async throws -> [ScheduleItem]
     /// Single-transaction write: replaces any existing items for the same
     /// `scheduleId` and upserts the schedule row. Keeps the on-disk view
     /// consistent — a partial write would leave orphans behind.
-    var saveSchedule: @Sendable (
-        _ schedule: ScheduleRecord,
-        _ items: [ScheduleItemRecord]
-    ) async throws -> Void
+    var saveSchedule: @Sendable (_ schedule: Schedule) async throws -> Void
     var deleteSchedule: @Sendable (_ scheduleId: String) async throws -> Void
     var updateScheduleItemStatus: @Sendable (
         _ scheduleItemId: String,
@@ -393,16 +386,36 @@ extension WorktreeClient: DependencyKey {
 
             fetchSchedules: { repoId in
                 try await dbQueue.read { db in
-                    try ScheduleRecord
+                    let scheduleRecords = try ScheduleRecord
                         .filter(Column("repoId") == repoId)
                         .order(Column("createdAt").desc)
                         .fetchAll(db)
+                    return try scheduleRecords.map { record in
+                        let itemRecords = try ScheduleItemRecord
+                            .filter(Column("scheduleId") == record.scheduleId)
+                            .order(Column("worktreeId"), Column("position").asc)
+                            .fetchAll(db)
+                        return Schedule(
+                            from: record,
+                            items: itemRecords.map(ScheduleItem.init(from:))
+                        )
+                    }
                 }
             },
 
             fetchSchedule: { scheduleId in
                 try await dbQueue.read { db in
-                    try ScheduleRecord.fetchOne(db, key: scheduleId)
+                    guard let record = try ScheduleRecord.fetchOne(db, key: scheduleId) else {
+                        return nil
+                    }
+                    let itemRecords = try ScheduleItemRecord
+                        .filter(Column("scheduleId") == scheduleId)
+                        .order(Column("worktreeId"), Column("position").asc)
+                        .fetchAll(db)
+                    return Schedule(
+                        from: record,
+                        items: itemRecords.map(ScheduleItem.init(from:))
+                    )
                 }
             },
 
@@ -412,6 +425,7 @@ extension WorktreeClient: DependencyKey {
                         .filter(Column("scheduleId") == scheduleId)
                         .order(Column("worktreeId"), Column("position").asc)
                         .fetchAll(db)
+                        .map(ScheduleItem.init(from:))
                 }
             },
 
@@ -424,22 +438,24 @@ extension WorktreeClient: DependencyKey {
                     try ScheduleItemRecord
                         .filter(issueLinearIds.contains(Column("issueLinearId")))
                         .fetchAll(db)
+                        .map(ScheduleItem.init(from:))
                 }
             },
 
-            saveSchedule: { schedule, items in
+            saveSchedule: { schedule in
                 try await dbQueue.write { db in
                     // Single transaction: upsert the schedule row, then
                     // replace its items wholesale. Items are replaced, not
                     // merged, because a schedule's composition is considered
                     // atomic — callers regenerate the full plan on each save.
-                    try schedule.save(db)
+                    let scheduleRecord = ScheduleRecord(from: schedule)
+                    try scheduleRecord.save(db)
                     try db.execute(
                         sql: "DELETE FROM schedule_items WHERE scheduleId = ?",
-                        arguments: [schedule.scheduleId]
+                        arguments: [schedule.id]
                     )
-                    for item in items {
-                        try item.insert(db)
+                    for item in schedule.items {
+                        try ScheduleItemRecord(from: item).insert(db)
                     }
                 }
             },

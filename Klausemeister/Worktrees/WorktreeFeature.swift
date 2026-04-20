@@ -237,6 +237,56 @@ struct WorktreeFeature {
         var nextDefaultName: String {
             WorktreeDefaultName.next(excluding: Set(worktrees.map(\.name)))
         }
+
+        /// Lightweight projection of `worktrees` + `repositories` for the
+        /// kanban's "Move to Worktree" context menu. Ordered by repository
+        /// `sortOrder`, then by worktree array order; worktrees without a
+        /// repo are appended last (the menu renders them ungrouped). Isolates
+        /// the menu from unrelated `Worktree` field changes so SwiftUI can
+        /// diff the array cheaply (KLA-62).
+        var worktreeMenuEntries: [WorktreeMenuEntry] {
+            let reposById = Dictionary(uniqueKeysWithValues: repositories.map { ($0.id, $0) })
+            let grouped = Dictionary(grouping: worktrees) { $0.repoId }
+            var result: [WorktreeMenuEntry] = []
+            result.reserveCapacity(worktrees.count)
+            for repo in repositories {
+                guard let bucket = grouped[repo.id] else { continue }
+                for worktree in bucket {
+                    result.append(WorktreeMenuEntry(
+                        id: worktree.id,
+                        name: worktree.name,
+                        inboxCount: worktree.inbox.count,
+                        repoId: repo.id,
+                        repoName: repo.name
+                    ))
+                }
+            }
+            // Worktrees with no `repoId` (or whose repo was removed) render
+            // ungrouped at the bottom of the menu.
+            for worktree in grouped[nil] ?? [] {
+                result.append(WorktreeMenuEntry(
+                    id: worktree.id,
+                    name: worktree.name,
+                    inboxCount: worktree.inbox.count,
+                    repoId: nil,
+                    repoName: nil
+                ))
+            }
+            for (repoId, bucket) in grouped
+                where repoId != nil && reposById[repoId!] == nil
+            {
+                for worktree in bucket {
+                    result.append(WorktreeMenuEntry(
+                        id: worktree.id,
+                        name: worktree.name,
+                        inboxCount: worktree.inbox.count,
+                        repoId: repoId,
+                        repoName: worktree.repoName
+                    ))
+                }
+            }
+            return result
+        }
     }
 
     enum Action: BindableAction, Equatable {
@@ -1689,23 +1739,7 @@ struct WorktreeFeature {
                 return .run(priority: .utility) { [worktreeClient] send in
                     for repoId in repoIds {
                         do {
-                            let records = try await worktreeClient.fetchSchedules(repoId)
-                            var schedules: [Schedule] = []
-                            schedules.reserveCapacity(records.count)
-                            for record in records {
-                                let itemRecords = try await worktreeClient.fetchScheduleItems(record.scheduleId)
-                                // Schedule / ScheduleItem inits inherit module-default
-                                // MainActor isolation, so the mapping has to happen on
-                                // the main actor before we hand the values back to the
-                                // reducer via `send`.
-                                let schedule = await MainActor.run {
-                                    Schedule(
-                                        record: record,
-                                        items: itemRecords.map(ScheduleItem.init(record:))
-                                    )
-                                }
-                                schedules.append(schedule)
-                            }
+                            let schedules = try await worktreeClient.fetchSchedules(repoId)
                             await send(.schedulesLoaded(repoId: repoId, schedules: schedules))
                         } catch {
                             Self.log.warning(
@@ -2124,14 +2158,14 @@ struct WorktreeFeature {
                         ))
                         return
                     }
-                    let itemRecords = await (try? worktreeClient.fetchScheduleItems(scheduleId)) ?? []
+                    let items = await (try? worktreeClient.fetchScheduleItems(scheduleId)) ?? []
                     let validWorktreeIds = await Set(
                         ((try? worktreeClient.fetchWorktrees()) ?? []).map(\.id)
                     )
                     var errors: [String] = []
                     let queuedStatus = ScheduleItemStatus.queued.rawValue
 
-                    for item in itemRecords {
+                    for item in items {
                         guard validWorktreeIds.contains(item.worktreeId) else {
                             errors.append("\(item.issueIdentifier): worktree removed")
                             continue
@@ -2141,7 +2175,7 @@ struct WorktreeFeature {
                                 item.issueLinearId, item.worktreeId
                             )
                             try await worktreeClient.updateScheduleItemStatus(
-                                item.scheduleItemId, queuedStatus
+                                item.id, queuedStatus
                             )
                             await send(.mcpItemAddedToInbox(
                                 worktreeId: item.worktreeId,

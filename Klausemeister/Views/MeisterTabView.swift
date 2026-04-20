@@ -17,8 +17,7 @@ struct MeisterTabView: View {
                 VSplitView {
                     MeisterView(
                         store: meisterStore,
-                        worktrees: Array(worktreeStore.worktrees),
-                        repositories: Array(worktreeStore.repositories),
+                        worktreeMenuEntries: worktreeStore.worktreeMenuEntries,
                         assignedWorktreeNames: worktreeStore.assignedWorktreeNames,
                         teams: meisterStore.teams,
                         onManageTeams: onManageTeams
