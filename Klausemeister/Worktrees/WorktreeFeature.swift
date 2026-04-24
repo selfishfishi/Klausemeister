@@ -414,6 +414,12 @@ struct WorktreeFeature {
         /// Fired when the `runScheduleTapped` effect finishes. `errors` is
         /// empty on a full clean run; partial failures are listed per-item.
         case runScheduleCompleted(scheduleId: String, errors: [String])
+        /// The user tapped "Finish" in the gantt overlay. Removes the
+        /// schedule from memory and persistence regardless of how many
+        /// items remain — used as an "abandon / archive" escape hatch so
+        /// schedules don't accumulate forever once the plan has served
+        /// its purpose.
+        case finishScheduleTapped(scheduleId: String)
 
         case queueRowTapped(issueId: String)
 
@@ -2202,6 +2208,19 @@ struct WorktreeFeature {
                 }
                 // Refresh so `runAt` is visible on the sidebar pill
                 return .send(.refreshSchedulesRequested)
+
+            case let .finishScheduleTapped(scheduleId):
+                // Purge in-memory state immediately so the sidebar pill and
+                // kanban strip stop rendering this schedule before the DB
+                // delete completes — feels instant.
+                for repoId in state.schedulesByRepoId.keys {
+                    state.schedulesByRepoId[repoId]?.removeAll { $0.id == scheduleId }
+                }
+                state.scheduleRunInFlight.remove(scheduleId)
+                state.scheduleRunErrors.removeValue(forKey: scheduleId)
+                return .run { [worktreeClient] _ in
+                    try? await worktreeClient.deleteSchedule(scheduleId)
+                }
 
             case .delegate:
                 return .none

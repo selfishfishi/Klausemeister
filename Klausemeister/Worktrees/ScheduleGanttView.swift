@@ -14,6 +14,7 @@ struct ScheduleGanttView: View {
     let worktrees: [Worktree]
     let isRunInFlight: Bool
     let onRunTapped: () -> Void
+    let onFinishTapped: () -> Void
     let onClose: () -> Void
 
     @Environment(\.themeColors) private var themeColors
@@ -21,7 +22,7 @@ struct ScheduleGanttView: View {
     var body: some View {
         let rows = GanttLayout.rows(items: schedule.items, worktrees: worktrees)
         let frames = GanttLayout.frames(rows: rows)
-        let totalSize = GanttLayout.totalSize(rows: rows)
+        let totalSize = GanttLayout.totalSize(rows: rows, frames: frames)
         let edges = GanttLayout.connectorEdges(items: schedule.items, frames: frames)
 
         VStack(spacing: 0) {
@@ -30,6 +31,7 @@ struct ScheduleGanttView: View {
                 isRunInFlight: isRunInFlight,
                 hasRunnable: schedule.items.contains { $0.status == .planned },
                 onRunTapped: onRunTapped,
+                onFinishTapped: onFinishTapped,
                 onClose: onClose
             )
 
@@ -68,9 +70,11 @@ private struct GanttHeader: View {
     let isRunInFlight: Bool
     let hasRunnable: Bool
     let onRunTapped: () -> Void
+    let onFinishTapped: () -> Void
     let onClose: () -> Void
 
     @Environment(\.themeColors) private var themeColors
+    @State private var isConfirmingFinish = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
@@ -99,6 +103,31 @@ private struct GanttHeader: View {
             .tint(themeColors.accentColor)
             .disabled(isRunInFlight || !hasRunnable)
             .help(hasRunnable ? "Enqueue all planned items" : "Nothing left to run")
+
+            Button {
+                isConfirmingFinish = true
+            } label: {
+                Label("Finish", systemImage: "checkmark.seal.fill")
+                    .font(.callout.weight(.medium))
+            }
+            .buttonStyle(.bordered)
+            .disabled(isRunInFlight)
+            .help("Remove this schedule regardless of remaining items")
+            .confirmationDialog(
+                "Finish \"\(schedule.name)\"?",
+                isPresented: $isConfirmingFinish,
+                titleVisibility: .visible
+            ) {
+                Button("Finish Schedule", role: .destructive) {
+                    onFinishTapped()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                let remaining = schedule.items.count { $0.status != .done }
+                Text(remaining > 0
+                    ? "\(remaining) item\(remaining == 1 ? "" : "s") still open. They stay in their worktree queues; only the schedule is removed."
+                    : "All items are done. The schedule will be removed.")
+            }
 
             Button {
                 onClose()
@@ -157,7 +186,7 @@ private struct GanttRowLayer: View {
                         .frame(width: 2)
                 }
                 .frame(
-                    width: max(0, GanttLayout.totalRowWidth(items: row.items)),
+                    width: max(0, GanttLayout.rowBackgroundWidth(row: row, frames: frames)),
                     height: GanttLayout.cellHeight
                 )
                 .offset(x: 0, y: labelFrame.origin.y)

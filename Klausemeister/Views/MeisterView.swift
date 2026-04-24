@@ -6,6 +6,12 @@ struct MeisterView: View {
     let worktreeMenuEntries: [WorktreeMenuEntry]
     var assignedWorktreeNames: [String: String] = [:]
     var teams: [LinearTeam] = []
+    /// All schedules across repos, flattened. Rendered above the kanban so
+    /// schedules are visible from the Meister the same way they are in the
+    /// sidebar — tapping a pill opens the gantt overlay via
+    /// `onScheduleTapped`.
+    var schedules: [Schedule] = []
+    var onScheduleTapped: ((String) -> Void)?
     var onManageTeams: (() -> Void)?
 
     @Environment(\.themeColors) private var themeColors
@@ -103,6 +109,15 @@ struct MeisterView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 6)
+
+            if let onScheduleTapped, !schedules.isEmpty {
+                RepoScheduleStripView(
+                    schedules: schedules,
+                    onScheduleTapped: onScheduleTapped
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 4)
+            }
 
             // Kanban board
             GeometryReader { proxy in

@@ -50,38 +50,117 @@ enum GanttLayout {
         max(1, CGFloat(weight)) * weightUnit
     }
 
-    /// Total horizontal extent of one row including label, cells, and
-    /// inter-cell spacing. Matches the rightmost cell's `maxX` (no trailing
-    /// stray spacing) so the row background band lines up cleanly with the
-    /// last cell's right edge.
-    static func totalRowWidth(items: [ScheduleItem]) -> CGFloat {
-        let cellsWidth = items.reduce(CGFloat(0)) { acc, item in
-            acc + cellWidth(weight: item.weight)
-        }
-        let spacings = CGFloat(items.count) * cellSpacing
-        return labelWidth + cellsWidth + spacings
+    /// Rightmost edge of the last cell in a row given the computed frames.
+    /// Drives the row background band so it extends to cover any gaps
+    /// introduced by dependency-driven shifts (items pushed right to start
+    /// after a cross-row blocker).
+    static func rowBackgroundWidth(row: GanttRow, frames: [String: CGRect]) -> CGFloat {
+        let maxX = row.items.compactMap { frames[$0.id]?.maxX }.max() ?? 0
+        return max(maxX, labelWidth)
     }
 
-    static func totalSize(rows: [GanttRow]) -> CGSize {
-        let widest = rows.map { totalRowWidth(items: $0.items) }.max() ?? 0
+    static func totalSize(rows: [GanttRow], frames: [String: CGRect]) -> CGSize {
+        let widest = rows.map { rowBackgroundWidth(row: $0, frames: frames) }.max() ?? 0
         let height = max(0, CGFloat(rows.count)) * (cellHeight + rowSpacing)
         return CGSize(width: max(widest, 200), height: max(height, cellHeight))
     }
 
-    /// Per-item top-left frame in the grid coordinate space (origin at the
-    /// top-left of the first row, inside the grid padding inset).
+    /// Per-item top-left frame in the grid coordinate space.
+    ///
+    /// Two-phase layout:
+    /// 1. **Position pack** — each row is laid out left-to-right by
+    ///    `position`, packing cells tightly (current KLA-198 behavior).
+    /// 2. **Dependency relaxation** — items whose blockers end further right
+    ///    than their current start get pushed right so they start *after*
+    ///    their blockers finish. Subsequent items in the same row cascade by
+    ///    the same delta so they don't overlap. The pass is repeated until
+    ///    stable (transitive chains settle across passes), bounded by item
+    ///    count to prevent infinite loops on pathological cyclic inputs.
+    ///
+    /// Net effect: a row with no cross-row dependencies looks identical to
+    /// before. A cross-row chain `A → B → C` (each on a different worktree)
+    /// now lays out diagonally like a real gantt rather than stacking in a
+    /// single column.
     static func frames(rows: [GanttRow]) -> [String: CGRect] {
         var result: [String: CGRect] = [:]
+        var rowOrder: [[String]] = []
+        var itemRowIndex: [String: Int] = [:]
+        var itemByIssueId: [String: String] = [:]
+
+        // Phase 1: pack left-to-right by position.
         for (rowIndex, row) in rows.enumerated() {
             let originY = CGFloat(rowIndex) * (cellHeight + rowSpacing)
             var originX = labelWidth + cellSpacing
+            var rowIds: [String] = []
             for item in row.items {
                 let width = cellWidth(weight: item.weight)
                 result[item.id] = CGRect(x: originX, y: originY, width: width, height: cellHeight)
+                itemRowIndex[item.id] = rowIndex
+                itemByIssueId[item.issueLinearId] = item.id
+                rowIds.append(item.id)
                 originX += width + cellSpacing
             }
+            rowOrder.append(rowIds)
+        }
+
+        // Phase 2: relax dependency constraints. Each pass pushes any item
+        // whose blocker ends past its current `minX` rightward, cascading
+        // subsequent cells in the same row by the same delta.
+        let allItems: [ScheduleItem] = rows.flatMap(\.items)
+        let maxPasses = max(1, allItems.count + 1)
+        for _ in 0 ..< maxPasses {
+            var changed = false
+            for item in allItems {
+                guard let currentRect = result[item.id] else { continue }
+                var requiredX = currentRect.origin.x
+                for blockerIssueId in item.blockedByIssueLinearIds {
+                    guard let blockerItemId = itemByIssueId[blockerIssueId],
+                          let blockerRect = result[blockerItemId] else { continue }
+                    requiredX = max(requiredX, blockerRect.maxX + cellSpacing)
+                }
+                guard requiredX > currentRect.origin.x else { continue }
+                let delta = requiredX - currentRect.origin.x
+                shiftRowTail(
+                    startingAt: item.id,
+                    by: delta,
+                    rowOrder: rowOrder,
+                    itemRowIndex: itemRowIndex,
+                    frames: &result
+                )
+                changed = true
+            }
+            if !changed { break }
         }
         return result
+    }
+
+    /// Shift `itemId` and every subsequent cell in the same row right by
+    /// `delta`. Used by `frames(rows:)` during dependency relaxation so
+    /// packed rows preserve their non-overlapping invariant when any member
+    /// gets pushed.
+    private static func shiftRowTail(
+        startingAt itemId: String,
+        by delta: CGFloat,
+        rowOrder: [[String]],
+        itemRowIndex: [String: Int],
+        frames: inout [String: CGRect]
+    ) {
+        guard let rowIndex = itemRowIndex[itemId],
+              rowOrder.indices.contains(rowIndex),
+              let startIndex = rowOrder[rowIndex].firstIndex(of: itemId)
+        else {
+            if var rect = frames[itemId] {
+                rect.origin.x += delta
+                frames[itemId] = rect
+            }
+            return
+        }
+        for tailId in rowOrder[rowIndex][startIndex...] {
+            if var rect = frames[tailId] {
+                rect.origin.x += delta
+                frames[tailId] = rect
+            }
+        }
     }
 
     /// Build connector edges from each item's `blockedByIssueLinearIds`. Both
