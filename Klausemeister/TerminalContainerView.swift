@@ -234,6 +234,7 @@ private struct ScheduleGanttOverlay: View {
                 worktrees: worktrees,
                 isRunInFlight: store.worktree.scheduleRunInFlight.contains(scheduleId),
                 onRunTapped: { store.send(.ganttRunTapped(scheduleId: scheduleId)) },
+                onFinishTapped: { store.send(.ganttFinishTapped(scheduleId: scheduleId)) },
                 onClose: { store.send(.ganttOverlayDismissed) }
             )
             .transition(.opacity.combined(with: .scale(scale: 0.97)))

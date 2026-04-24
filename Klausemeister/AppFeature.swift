@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import ComposableArchitecture
 import Foundation
 
@@ -53,6 +54,7 @@ struct AppFeature {
         case mcpServerEvent(MCPServerEvent)
         case ganttOverlayDismissed
         case ganttRunTapped(scheduleId: String)
+        case ganttFinishTapped(scheduleId: String)
     }
 
     nonisolated private enum CancelID {
@@ -197,6 +199,14 @@ struct AppFeature {
 
             case let .ganttRunTapped(scheduleId):
                 return .send(.worktree(.runScheduleTapped(scheduleId: scheduleId)))
+
+            case let .ganttFinishTapped(scheduleId):
+                // Dismiss overlay if the finished schedule is the one on
+                // screen, then hand off to worktree to purge state + DB.
+                if state.presentedScheduleId == scheduleId {
+                    state.presentedScheduleId = nil
+                }
+                return .send(.worktree(.finishScheduleTapped(scheduleId: scheduleId)))
 
             case .worktree:
                 return .none

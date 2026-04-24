@@ -14,36 +14,56 @@ struct GanttCellView: View {
     var body: some View {
         let tint = item.status.tint
         let intensity = item.status.displayIntensity
+        let isDone = item.status == .done
 
         HStack(alignment: .center, spacing: 6) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.issueIdentifier)
-                    .font(.caption.monospaced().weight(.semibold))
-                    .foregroundStyle(tint.opacity(0.95 * intensity))
+                HStack(spacing: 4) {
+                    if isDone {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(tint)
+                            .accessibilityLabel("Done")
+                    }
+                    Text(item.issueIdentifier)
+                        .font(.caption.monospaced().weight(.semibold))
+                        .foregroundStyle(tint.opacity(0.95 * intensity))
+                        .strikethrough(isDone, color: tint.opacity(0.85))
+                }
                 Text(item.issueTitle)
                     .font(.caption2)
                     .foregroundStyle(.primary.opacity(intensity))
+                    .strikethrough(isDone, color: .primary.opacity(intensity))
                     .lineLimit(2)
                     .truncationMode(.tail)
             }
             Spacer(minLength: 4)
-            WeightDots(weight: item.weight, tint: tint, intensity: intensity)
+            if isDone {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(tint)
+            } else {
+                WeightDots(weight: item.weight, tint: tint, intensity: intensity)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(tint.opacity(0.12 * intensity))
+                .fill(tint.opacity((isDone ? 0.22 : 0.12) * intensity))
         }
         .overlay {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(tint.opacity(0.55 * intensity), lineWidth: 0.75)
+                .strokeBorder(
+                    tint.opacity((isDone ? 0.85 : 0.55) * intensity),
+                    lineWidth: isDone ? 1.25 : 0.75
+                )
         }
         .overlay {
             statusMotionOverlay(tint: tint)
         }
-        .saturation(item.status == .done ? 0.7 : 1.0)
+        .saturation(isDone ? 0.8 : 1.0)
         .shadow(
             color: tint.opacity(item.status == .inProgress ? 0.35 : 0.0),
             radius: 8

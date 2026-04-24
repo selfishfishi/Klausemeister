@@ -18,12 +18,12 @@ extension ScheduleItemStatus {
         }
     }
 
-    /// Cell foreground/border opacity multiplier. `done` recedes (0.55) so the
-    /// eye is drawn to in-flight and pending work; everything else renders at
-    /// full strength.
+    /// Cell foreground/border opacity multiplier. `done` is lightly muted
+    /// (0.75) — the strikethrough and checkmark badges carry the "done"
+    /// signal, so we keep the card legible rather than ghosting it out.
     var displayIntensity: Double {
         switch self {
-        case .done: 0.55
+        case .done: 0.75
         default: 1.0
         }
     }

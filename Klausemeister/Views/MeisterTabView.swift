@@ -20,6 +20,13 @@ struct MeisterTabView: View {
                         worktreeMenuEntries: worktreeStore.worktreeMenuEntries,
                         assignedWorktreeNames: worktreeStore.assignedWorktreeNames,
                         teams: meisterStore.teams,
+                        schedules: worktreeStore.schedulesByRepoId
+                            .values
+                            .flatMap(\.self)
+                            .sorted { $0.createdAt < $1.createdAt },
+                        onScheduleTapped: { id in
+                            worktreeStore.send(.scheduleTapped(scheduleId: id))
+                        },
                         onManageTeams: onManageTeams
                     )
                     .frame(minHeight: 200)
