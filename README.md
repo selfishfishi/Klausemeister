@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/banner.png" alt="Klausemeister — Acid Techno Berlin 1988" width="420" />
+</p>
+
 # Klausemeister
 
 A native macOS **terminal + project-management tool + agent orchestrator**, built around a simple idea: the path from *"here's a Linear ticket"* to *"PR merged"* should be one app — ideally one keyboard shortcut.
