@@ -4,9 +4,10 @@ Guidance for Claude Code (claude.ai/code) when working in this repository.
 
 ## What this project is
 
-Klausemeister is a native macOS app that combines a **libghostty-powered terminal** with a **TCA-driven project management layer** for Linear issues, git worktrees, and a kanban board. It is a thin Swift shell over the libghostty C API, wrapped in a Composable Architecture state machine for everything outside the terminal itself.
+Klausemeister is a native macOS app that combines a **libghostty-powered terminal** with a **TCA-driven project-management layer** (Linear issues, git worktrees, kanban), a **command palette / shortcut-center UX shell**, and an **in-process MCP server** that orchestrates headless Claude Code "meister" agents running in per-worktree tmux sessions. It is a thin Swift shell over the libghostty C API, wrapped in Composable Architecture for everything else.
 
-For a full architectural walkthrough with diagrams, read `architecture.md` (or open `architecture.html` in a browser for the rendered version).
+For the user-facing overview and feature list, see `README.md`.
+For the full architectural walkthrough with diagrams, read `architecture.md` (or open `architecture.html` in a browser for the rendered version).
 
 ## Build & Run
 
@@ -60,10 +61,16 @@ External systems (GRDB/SQLite, Linear GraphQL, Keychain, git CLI, libghostty)
 **TCA feature hierarchy** (composition root is `AppFeature`):
 
 ```
-AppFeature                    tabs, sidebar, detail-pane routing
-├── MeisterFeature            kanban board, Linear issue import/refresh
-├── WorktreeFeature           worktrees, queues (inbox→processing→outbox), repos
-└── LinearAuthFeature         PKCE OAuth flow, user profile
+AppFeature                         tabs, sidebar, inspector, detail-pane routing
+├── MeisterFeature                 kanban board, Linear issue import/refresh
+├── WorktreeFeature                worktrees, queues (inbox→processing→outbox), repos, schedule
+├── LinearAuthFeature              PKCE OAuth flow, user profile
+├── StatusBarFeature               bottom status bar
+├── DebugPanelFeature              MCP diagnostics sheet
+├── TeamSettingsFeature (@Presents) team filter + state mapping
+├── CommandPaletteFeature          fuzzy-searchable command runner
+├── ShortcutCenterFeature (@Presents) customizable key bindings
+└── WorktreeSwitcherFeature        quick-switch overlay
 ```
 
 Cross-feature events use **TCA delegate actions** intercepted by `AppFeature`'s parent `Reduce` — features never reach into each other's state directly. Example: Meister emits `.delegate(.issueAssignedToWorktree)`, `AppFeature` catches it and re-dispatches as `.worktree(.issueAssignedToWorktree)`.
@@ -71,14 +78,31 @@ Cross-feature events use **TCA delegate actions** intercepted by `AppFeature`'s 
 ### Key modules
 
 **App shell + routing:**
-- `Klausemeister/KlausemeisterApp.swift` — `@main` entry, `WindowGroup`, `.commands` keyboard shortcuts (Cmd+T, Cmd+W, Cmd+1–9, etc.)
-- `Klausemeister/AppFeature.swift` — Root reducer, holds `tabs`, `activeTabID`, `showMeister`, composes child features via `Scope`
+- `Klausemeister/KlausemeisterApp.swift` — `@main` entry, `WindowGroup`, `.commands` keyboard shortcuts (wired through `AppCommand` + `KeyBindingsClient`)
+- `Klausemeister/AppFeature.swift` — Root reducer, holds `tabs`, `activeTabID`, `showMeister`, `inspector*`, `presentedScheduleId`, composes child features via `Scope`
 - `Klausemeister/TerminalContainerView.swift` — Three-way detail-pane switch (Meister / WorktreeDetail / Terminal)
 
 **TCA features:**
 - `Klausemeister/Linear/MeisterFeature.swift` — Kanban board state machine
-- `Klausemeister/Worktrees/WorktreeFeature.swift` — Worktree + queue state machine
+- `Klausemeister/Linear/StateMappingFeature.swift` + `TeamSettingsFeature.swift` — Team-to-kanban column mapping config
+- `Klausemeister/Worktrees/WorktreeFeature.swift` — Worktree + queue state machine, schedule overlay
 - `Klausemeister/Linear/LinearAuthFeature.swift` — OAuth flow
+- `Klausemeister/CommandPalette/CommandPaletteFeature.swift` — Fuzzy command search + execution
+- `Klausemeister/ShortcutCenter/ShortcutCenterFeature.swift` — Rebindable keyboard shortcuts UI
+- `Klausemeister/WorktreeSwitcher/WorktreeSwitcherFeature.swift` — Quick-switcher palette
+- `Klausemeister/StatusBar/StatusBarFeature.swift` — Bottom bar
+- `Klausemeister/Debug/DebugPanelFeature.swift` — MCP shim diagnostics
+- `Klausemeister/Inspector/` — Linear ticket detail pane (`TicketInspectorView`, `InspectorModels`, `MarkdownTextView`)
+
+**Workflow layer** (`Klausemeister/Workflow/`):
+- `ProductStateMachine.swift` — `WorkflowCommand` (`.define`, `.execute`, `.review`, `.openPR`, `.babysit`, `.complete`, `.pull`, `.push`) and the (kanban, worktree) transition table. The swimlane UI and the meister loop both consult this.
+- `QueuePosition.swift` — `inbox` / `processing` / `outbox`.
+
+**MCP server** (`Klausemeister/MCP/`):
+- `MCPSocketListener.swift` — Hosts a Unix-socket MCP server inside the app; `klause-mcp-shim` clients (one per Claude Code session) connect and forward JSON-RPC.
+- `SocketTransport.swift` + `HelloFrame.swift` — transport framing + handshake (identity check via `KLAUSE_MEISTER`, `KLAUSE_WORKTREE_ID`).
+- `ToolHandlers.swift`, `ScheduleToolHandlers.swift`, `ToolHandlers+reportActivity.swift` — business-logic tool handlers returning a plain `ToolResult`; the listener maps to the MCP SDK types.
+- `MCPServerEvent.swift` + `WorkflowStateResolver.swift` — event bridge back to `AppFeature` and state-machine resolution.
 
 **Dependency clients** (all under `Klausemeister/Dependencies/`):
 - `DatabaseClient` — GRDB queue + `imported_issues` CRUD
@@ -87,12 +111,28 @@ Cross-feature events use **TCA delegate actions** intercepted by `AppFeature`'s 
 - `OAuthClient` — PKCE flow
 - `KeychainClient` — access/refresh token storage
 - `GitClient` — `/usr/bin/git` subprocess wrapper
+- `GHClient` — `gh` CLI wrapper (PR creation / merge)
 - `TmuxClient` — `tmux` subprocess wrapper, session lifecycle bound 1:1 to worktrees
-- `SurfaceManager` + `GhosttyAppClient` — libghostty lifecycle and surface focus
+- `MeisterClient` — spawns/monitors meister Claude Code processes inside tmux windows
+- `ClaudeStatusClient` — reads meister activity state
+- `MCPServerClient` — starts the in-process MCP server, exposes an `AsyncStream` of events, discovers active shims
+- `ActionRegistry` — central registry of `AppCommand` → reducer action mappings (used by command palette + shortcut center)
+- `KeyBindingsClient` — load/save user-customized key bindings
+- `StateMappingClient` — persists team→column mapping
+- `UserDefaultsClient`, `PasteboardClient`, `FolderPickerClient` — small OS-integration clients
+- `SurfaceManager` + `SurfaceStore` + `GhosttyAppClient` — libghostty lifecycle and surface focus
 
 **Persistence** (`Klausemeister/Database/`): GRDB `FetchableRecord`/`PersistableRecord` structs + `DatabaseMigrations.swift` (sequential versioned migrations).
 
-**Terminal stack** (`Klausemeister/Terminal/`): `SurfaceView` (NSView + Metal), `GhosttyApp` (@MainActor singleton over `ghostty_app_t`), `KeyMapping` (NSEvent → ghostty C structs translation).
+**Terminal stack** (`Klausemeister/Terminal/`): `SurfaceView` (NSView + Metal), `GhosttyApp` (@MainActor singleton over `ghostty_app_t`), `KeyMapping` (NSEvent → ghostty C structs translation), `MouseCursorMapping`.
+
+**Keyboard shortcuts** (`Klausemeister/Shortcuts/`): `AppCommand` enum is the single source of truth for every rebindable command (displayName, helpText, category, defaultBinding). `View+KeyboardShortcut.swift` wires SwiftUI `.keyboardShortcut` to `[AppCommand: KeyBinding]`.
+
+**Theme** (`Klausemeister/Theme/`): `AppTheme` with six families (Everforest, Gruvbox, Catppuccin, Tokyo Night, Rosé Pine, Kanagawa). Switching themes hot-reloads libghostty config without tearing down the surface.
+
+**Companion targets** (outside the main app target):
+- `klause-workflow/` — Claude Code plugin (slash commands + meister-loop skill)
+- `klause-mcp-shim/` — tiny executable that bridges Claude Code's stdio MCP transport to Klausemeister's Unix-socket server
 
 ## Layer discipline
 
@@ -165,6 +205,22 @@ Runtime callbacks have **two different userdata types**. Getting this wrong comp
 
 Full API reference: `.notes/libghostty.md`
 
+## Workflow state machine + meister loop
+
+`Klausemeister/Workflow/ProductStateMachine.swift` defines `WorkflowCommand` and the allowed `(KanbanState, WorktreePosition) → (KanbanState, WorktreePosition)` transitions. Each command maps to exactly one edge; callers (the swimlane UI, the MCP server, the meister's slash commands) all consult the same table.
+
+Each `WorkflowCommand.slashCommand` is the namespaced command (`/klause-workflow:klause-define`, etc.) injected via `tmux send-keys` into a worktree's meister Claude Code session.
+
+The **meister loop** — how autonomous Claude Code agents drive tickets to PR — is documented in `klause-workflow/CLAUDE.md`. When adding or changing a workflow command, update **all four** call sites in lockstep: `ProductStateMachine`, the MCP tool handler, the slash-command markdown in `klause-workflow/commands/`, and the swimlane button in `Klausemeister/Worktrees/SwimlaneAdvanceButton.swift`.
+
+## MCP server
+
+Klausemeister hosts an **in-process MCP server over a Unix socket** (`MCPSocketListener`). Each meister Claude Code connects through `klause-mcp-shim`, which bridges stdio ↔ socket and passes through the `KLAUSE_WORKTREE_ID` env var as part of the handshake (`HelloFrame`). The server uses that ID to route tool calls to the right worktree.
+
+Tool handlers (`Klausemeister/MCP/ToolHandlers.swift`) are **free functions that return `ToolResult`** and resolve their dependencies via `@Dependency` at call time. They do **not** import the MCP SDK — `MCPSocketListener` translates between `ToolResult` and the SDK's `CallTool.Result`. This keeps the handlers unit-testable with `withDependencies` + `unimplemented(...)` test values.
+
+`MCPServerClient.events()` returns a **single-consumer** `AsyncStream` of `MCPServerEvent`. Only `AppFeature.onAppear` should consume it — forking a second `for await` loop will race and drop events.
+
 ## External dependencies
 
 Single SPM dependency: **libghostty-spm**, which wraps the libghostty C library. Provides `GhosttyKit` and `GhosttyTerminal` frameworks. All `ghostty_*` calls go through this package's C headers.
@@ -173,6 +229,7 @@ Non-SPM dependencies pulled in by the Xcode project:
 - **GRDB** — SQLite persistence (used by `DatabaseClient` and `WorktreeClient`)
 - **swift-composable-architecture** — TCA
 - **swift-dependencies** — `@Dependency` machinery
+- **MCP Swift SDK** — JSON-RPC + tool protocol for the in-process MCP server
 
 ## Working in git worktrees
 
