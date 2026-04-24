@@ -120,8 +120,12 @@ struct Worktree: Equatable, Identifiable {
     var meisterStatus: MeisterStatus = .none
     var claudeStatus: ClaudeSessionState = .offline
 
+    /// Pending work on this worktree: inbox + processing. Outbox is excluded
+    /// because items accumulate there until an explicit push/clear, which
+    /// would cause the sidebar badge to grow monotonically instead of
+    /// reflecting what's actually queued or in flight.
     var totalIssueCount: Int {
-        inbox.count + (processing != nil ? 1 : 0) + outbox.count
+        inbox.count + (processing != nil ? 1 : 0)
     }
 
     var isActive: Bool {
