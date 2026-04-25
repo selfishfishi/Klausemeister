@@ -395,6 +395,7 @@ struct WorktreeFeature {
         case mcpItemMovedToOutbox(worktreeId: String, issueLinearId: String)
         case mcpItemAddedToInbox(worktreeId: String, issueLinearId: String)
         case mcpItemAddedToInboxResolved(worktreeId: String, issue: LinearIssue)
+        case mcpItemRemovedFromInbox(worktreeId: String, issueLinearId: String)
 
         // Saved schedules (KLA-197)
         //
@@ -937,6 +938,10 @@ struct WorktreeFeature {
                             if !alreadyQueued, let issue = issuesByLinearId[issueLinearId] {
                                 state.worktrees[wtIndex].inbox.append(issue)
                             }
+                        }
+                    case let .itemRemovedFromInbox(worktreeId, issueLinearId):
+                        if let wtIndex = state.worktrees.index(id: worktreeId) {
+                            state.worktrees[wtIndex].inbox.removeAll { $0.id == issueLinearId }
                         }
                     default:
                         break
@@ -2134,6 +2139,16 @@ struct WorktreeFeature {
                         state.worktrees[wtIndex].inbox.append(issue)
                     }
                 }
+                return .none
+
+            case let .mcpItemRemovedFromInbox(worktreeId, issueLinearId):
+                guard state.worktrees.index(id: worktreeId) != nil else {
+                    state.pendingQueueEvents.append(
+                        .itemRemovedFromInbox(worktreeId: worktreeId, issueLinearId: issueLinearId)
+                    )
+                    return .none
+                }
+                state.worktrees[id: worktreeId]?.inbox.removeAll { $0.id == issueLinearId }
                 return .none
 
             // MARK: - Schedule live-progress (KLA-199)

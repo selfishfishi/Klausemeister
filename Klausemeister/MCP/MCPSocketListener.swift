@@ -481,6 +481,17 @@ extension MCPSocketListener {
                     targetWorktreeId: targetWorktreeId,
                     eventContinuation: eventContinuation
                 )
+            case "dequeueItem":
+                guard let issueLinearId = arguments?["issueLinearId"]?.stringValue,
+                      let targetWorktreeId = arguments?["targetWorktreeId"]?.stringValue
+                else {
+                    return errorResult("dequeueItem requires issueLinearId and targetWorktreeId")
+                }
+                result = try await ToolHandlers.dequeueItem(
+                    issueLinearId: issueLinearId,
+                    targetWorktreeId: targetWorktreeId,
+                    eventContinuation: eventContinuation
+                )
             case "saveSchedule":
                 do {
                     let input = try decodeArguments(
@@ -669,6 +680,26 @@ private enum ToolCatalog {
                     "targetWorktreeId": .object([
                         "type": .string("string"),
                         "description": .string("Klausemeister worktree ID to add the issue to")
+                    ])
+                ]),
+                "required": .array([.string("issueLinearId"), .string("targetWorktreeId")]),
+                "additionalProperties": .bool(false)
+            ])
+        ),
+        Tool(
+            name: "dequeueItem",
+            // swiftlint:disable:next line_length
+            description: "Remove an issue from a worktree's inbox without claiming it. Idempotent — no-op if the issue isn't queued on that worktree. Refuses if the issue is in processing (use completeItem instead) or outbox (out of scope).",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "issueLinearId": .object([
+                        "type": .string("string"),
+                        "description": .string("Linear UUID or human identifier (e.g. KLA-136) of the issue to remove")
+                    ]),
+                    "targetWorktreeId": .object([
+                        "type": .string("string"),
+                        "description": .string("Klausemeister worktree ID to remove the issue from")
                     ])
                 ]),
                 "required": .array([.string("issueLinearId"), .string("targetWorktreeId")]),

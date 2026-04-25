@@ -441,6 +441,13 @@ struct AppFeature {
                         ))),
                         debugEffect
                     )
+                case let .itemRemovedFromInbox(worktreeId, issueLinearId):
+                    return .merge(
+                        .send(.worktree(.mcpItemRemovedFromInbox(
+                            worktreeId: worktreeId, issueLinearId: issueLinearId
+                        ))),
+                        debugEffect
+                    )
                 case .scheduleSaved, .scheduleDeleted, .scheduleRun:
                     // Refetch all repos — none of these payloads carry repoId.
                     return .merge(
