@@ -18,12 +18,20 @@ struct ScheduleGanttView: View {
     let onClose: () -> Void
 
     @Environment(\.themeColors) private var themeColors
+    /// Cell the user has clicked. Drives the path-highlight overlay; `nil`
+    /// means everything renders normally. Lives in @State because selection
+    /// is a transient view-only concern with no business meaning.
+    @State private var selectedItemId: String?
 
     var body: some View {
         let rows = GanttLayout.rows(items: schedule.items, worktrees: worktrees)
         let frames = GanttLayout.frames(rows: rows)
         let totalSize = GanttLayout.totalSize(rows: rows, frames: frames)
         let edges = GanttLayout.connectorEdges(items: schedule.items, frames: frames)
+        let pathClosure: PathClosure? = selectedItemId.flatMap { id in
+            guard schedule.items.contains(where: { $0.id == id }) else { return nil }
+            return GanttLayout.pathClosure(selectedItemId: id, items: schedule.items)
+        }
 
         VStack(spacing: 0) {
             GanttHeader(
@@ -40,13 +48,32 @@ struct ScheduleGanttView: View {
 
             ScrollView([.horizontal, .vertical]) {
                 ZStack(alignment: .topLeading) {
+                    // Background tap target: clicking anywhere outside a cell
+                    // clears the selection so the user can dismiss the
+                    // path-highlight without hunting for a target.
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .frame(width: totalSize.width, height: totalSize.height)
+                        .onTapGesture {
+                            selectedItemId = nil
+                        }
                     ForEach(Array(rows.enumerated()), id: \.element.id) { rowIndex, row in
-                        GanttRowLayer(row: row, rowIndex: rowIndex, frames: frames)
+                        GanttRowLayer(
+                            row: row,
+                            rowIndex: rowIndex,
+                            frames: frames,
+                            selectedItemId: selectedItemId,
+                            pathClosure: pathClosure,
+                            onCellTapped: { itemId in
+                                selectedItemId = (selectedItemId == itemId) ? nil : itemId
+                            }
+                        )
                     }
                     GanttConnectorOverlay(
                         edges: edges,
                         accentColor: themeColors.accentColor,
-                        glowIntensity: themeColors.glowIntensity
+                        glowIntensity: themeColors.glowIntensity,
+                        highlightedEdgeKeys: pathClosure?.edgeKeys
                     )
                     .frame(width: totalSize.width, height: totalSize.height)
                     .allowsHitTesting(false)
@@ -145,15 +172,51 @@ private struct GanttHeader: View {
     }
 }
 
+/// Status legend + per-status count, rolled into one strip. Each entry shows
+/// the same `StatusPip` symbol that appears on the gantt cells, so the
+/// header doubles as the color/icon key. Zero-count statuses still appear
+/// (greyed) so the legend is stable as items move through statuses.
 private struct StatusSummary: View {
     let items: [ScheduleItem]
 
+    private let order: [ScheduleItemStatus] = [.planned, .queued, .inProgress, .done]
+
     var body: some View {
-        let inProgress = items.count(where: { $0.status == .inProgress })
-        let queued = items.count(where: { $0.status == .queued })
-        let planned = items.count(where: { $0.status == .planned })
-        let done = items.count(where: { $0.status == .done })
-        Text("\(inProgress) in progress · \(queued) queued · \(planned) planned · \(done) done")
+        HStack(spacing: 14) {
+            ForEach(order, id: \.self) { status in
+                let count = items.count(where: { $0.status == status })
+                LegendEntry(status: status, count: count)
+            }
+        }
+    }
+}
+
+private struct LegendEntry: View {
+    let status: ScheduleItemStatus
+    let count: Int
+
+    var body: some View {
+        let tint = status.tint
+        let isEmpty = count == 0
+        HStack(spacing: 5) {
+            StatusPip(status: status, tint: isEmpty ? .secondary : tint)
+                .opacity(isEmpty ? 0.4 : 1.0)
+            Text("\(count)")
+                .font(.caption.monospaced().weight(.semibold))
+                .foregroundStyle(isEmpty ? .secondary : .primary)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var label: String {
+        switch status {
+        case .planned: "planned"
+        case .queued: "queued"
+        case .inProgress: "in progress"
+        case .done: "done"
+        }
     }
 }
 
@@ -167,6 +230,9 @@ private struct GanttRowLayer: View {
     let row: GanttRow
     let rowIndex: Int
     let frames: [String: CGRect]
+    let selectedItemId: String?
+    let pathClosure: PathClosure?
+    let onCellTapped: (String) -> Void
 
     @Environment(\.themeColors) private var themeColors
 
@@ -206,9 +272,21 @@ private struct GanttRowLayer: View {
 
             ForEach(row.items) { item in
                 if let frame = frames[item.id] {
-                    GanttCellView(item: item)
-                        .frame(width: frame.width, height: frame.height)
-                        .offset(x: frame.origin.x, y: frame.origin.y)
+                    let isSelected = selectedItemId == item.id
+                    let isOnPath = pathClosure?.nodeIds.contains(item.id) ?? false
+                    let isDimmed = pathClosure != nil && !isOnPath
+                    GanttCellView(
+                        item: item,
+                        isSelected: isSelected,
+                        isOnHighlightedPath: isOnPath,
+                        isDimmed: isDimmed
+                    )
+                    .frame(width: frame.width, height: frame.height)
+                    .offset(x: frame.origin.x, y: frame.origin.y)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onCellTapped(item.id)
+                    }
                 }
             }
         }

@@ -20,13 +20,18 @@ struct GanttRow: Identifiable, Equatable {
 /// without anchor preferences.
 enum GanttLayout {
     /// Width per unit of `weight`. A `weight: 3` cell is 3× as wide as a
-    /// `weight: 1` cell.
-    static let weightUnit: CGFloat = 60
-    static let cellHeight: CGFloat = 56
-    static let cellSpacing: CGFloat = 8
-    static let rowSpacing: CGFloat = 14
-    static let labelWidth: CGFloat = 100
-    static let gridPadding: CGFloat = 18
+    /// `weight: 1` cell. Sized so a typical `weight: 2` cell holds two lines
+    /// of a real Linear title without aggressive truncation.
+    static let weightUnit: CGFloat = 120
+    static let cellHeight: CGFloat = 84
+    /// Horizontal gap between cells. Large enough that connector curves
+    /// routed through the gap don't visually intersect adjacent cells.
+    static let cellSpacing: CGFloat = 32
+    /// Vertical gap between worktree rows. Sized so cross-row curves have
+    /// clear "channel" space between rows to bend through.
+    static let rowSpacing: CGFloat = 40
+    static let labelWidth: CGFloat = 110
+    static let gridPadding: CGFloat = 24
 
     static func rows(items: [ScheduleItem], worktrees: [Worktree]) -> [GanttRow] {
         worktrees.map { worktree in
@@ -191,6 +196,71 @@ enum GanttLayout {
         }
         return edges
     }
+
+    /// Closure of nodes and edges "involving" `selectedItemId`: the union of
+    /// transitive blockers (ancestors), the selected item itself, and
+    /// transitive dependents (descendants). An edge is in the closure when
+    /// both endpoints are — so the click-to-highlight effect lights up the
+    /// full upstream + downstream subgraph anchored on the selection.
+    ///
+    /// Cross-side edges (an ancestor that ALSO blocks a descendant via a
+    /// path that bypasses the selection) are intentionally included — they
+    /// belong to the selection's neighborhood even if not strictly "through"
+    /// the selected node.
+    static func pathClosure(
+        selectedItemId: String,
+        items: [ScheduleItem]
+    ) -> PathClosure {
+        let itemIdByIssueId = Dictionary(uniqueKeysWithValues: items.map { ($0.issueLinearId, $0.id) })
+
+        // Forward: itemId → its blocker itemIds (resolved through issueLinearId).
+        // Reverse: itemId → its dependent itemIds.
+        var blockers: [String: [String]] = [:]
+        var dependents: [String: [String]] = [:]
+        for item in items {
+            let blockerItemIds = item.blockedByIssueLinearIds.compactMap { itemIdByIssueId[$0] }
+            blockers[item.id] = blockerItemIds
+            for blockerItemId in blockerItemIds {
+                dependents[blockerItemId, default: []].append(item.id)
+            }
+        }
+
+        let ancestors = traverse(from: selectedItemId, edges: blockers)
+        let descendants = traverse(from: selectedItemId, edges: dependents)
+        let nodes = ancestors.union(descendants).union([selectedItemId])
+
+        var edgeKeys: Set<String> = []
+        for item in items where nodes.contains(item.id) {
+            for blockerIssueId in item.blockedByIssueLinearIds {
+                guard let blockerItemId = itemIdByIssueId[blockerIssueId],
+                      nodes.contains(blockerItemId) else { continue }
+                edgeKeys.insert(GanttConnectorEdge.key(fromId: blockerItemId, toId: item.id))
+            }
+        }
+        return PathClosure(nodeIds: nodes, edgeKeys: edgeKeys)
+    }
+
+    /// BFS from `start` over `edges`. Excludes `start` from the result so the
+    /// caller can decide how to treat the selection vs its neighbors.
+    private static func traverse(from start: String, edges: [String: [String]]) -> Set<String> {
+        var visited: Set<String> = []
+        var queue: [String] = [start]
+        while let node = queue.popLast() {
+            for next in edges[node] ?? [] where visited.insert(next).inserted {
+                queue.append(next)
+            }
+        }
+        return visited
+    }
+}
+
+/// Result of `GanttLayout.pathClosure(...)`. Two sets the view layer can
+/// consult cheaply per cell / per edge during render.
+struct PathClosure: Equatable {
+    /// Item IDs in the closure (ancestors ∪ selected ∪ descendants).
+    let nodeIds: Set<String>
+    /// Edge keys (`"<fromId>->\(toId)"`) connecting two `nodeIds` members.
+    let edgeKeys: Set<String>
 }
 
 /// One blocker → blocked dependency edge whose endpoints are precomputed cell
@@ -201,16 +271,33 @@ struct GanttConnectorEdge: Equatable {
     let toId: String
     let start: CGPoint
     let end: CGPoint
+
+    /// Stable key matching `PathClosure.edgeKeys` so the overlay can decide
+    /// per-edge whether the user's selection includes it.
+    var key: String {
+        Self.key(fromId: fromId, toId: toId)
+    }
+
+    static func key(fromId: String, toId: String) -> String {
+        "\(fromId)->\(toId)"
+    }
 }
 
 /// Canvas overlay that draws all schedule connectors plus their particle
 /// flow. One `TimelineView` drives the entire canvas — particles for every
 /// edge are stepped in lock-step from the same `now`, which keeps the
 /// motion coherent across the whole graph rather than jittery per-edge.
+///
+/// When `highlightedEdgeKeys` is non-nil, edges in the set draw normally and
+/// edges outside it dim down to a faint trace. This is what powers the
+/// "click a cell to see all paths involving it" interaction.
 struct GanttConnectorOverlay: View {
     let edges: [GanttConnectorEdge]
     let accentColor: Color
     let glowIntensity: Double
+    /// `nil` = no selection; render all edges normally.
+    /// Non-nil = render edges in the set normally, dim the rest.
+    var highlightedEdgeKeys: Set<String>?
 
     /// Particles per edge.
     private let particleCount = 3
@@ -234,10 +321,18 @@ struct GanttConnectorOverlay: View {
         now: Double
     ) {
         let path = bezier(start: edge.start, end: edge.end)
+        // Three states: no-selection (full opacity), selected-and-on-path
+        // (boosted), selected-and-off-path (faded). Multipliers fold through
+        // the existing glowIntensity so themes that darken the gantt still
+        // honor that.
+        let opacityFactor: Double = {
+            guard let highlightedEdgeKeys else { return 1.0 }
+            return highlightedEdgeKeys.contains(edge.key) ? 1.6 : 0.18
+        }()
 
         context.stroke(
             path,
-            with: .color(accentColor.opacity(0.30 * glowIntensity)),
+            with: .color(accentColor.opacity(0.30 * glowIntensity * opacityFactor)),
             style: StrokeStyle(lineWidth: 0.75, lineCap: .round)
         )
 
@@ -245,7 +340,7 @@ struct GanttConnectorOverlay: View {
         haloContext.addFilter(.blur(radius: 1.5))
         haloContext.stroke(
             path,
-            with: .color(accentColor.opacity(0.18 * glowIntensity)),
+            with: .color(accentColor.opacity(0.18 * glowIntensity * opacityFactor)),
             style: StrokeStyle(lineWidth: 2.0, lineCap: .round)
         )
 
@@ -265,7 +360,7 @@ struct GanttConnectorOverlay: View {
             )
             context.fill(
                 Path(ellipseIn: rect),
-                with: .color(accentColor.opacity(alpha * glowIntensity))
+                with: .color(accentColor.opacity(alpha * glowIntensity * opacityFactor))
             )
         }
     }
@@ -280,14 +375,13 @@ struct GanttConnectorOverlay: View {
         return min(leadIn, leadOut)
     }
 
-    /// Bezier with control points pulled horizontally by ~40% of dx so the
-    /// curve eases out of the source cell horizontally before bending toward
-    /// the target — reads as "data flow" rather than a straight diagonal.
+    /// Bezier with control points pulled horizontally so the curve eases out
+    /// of the source cell horizontally before bending toward the target —
+    /// reads as "data flow" rather than a straight diagonal. Cross-row edges
+    /// get extra horizontal lead-time proportional to vertical distance so
+    /// the curve clears intermediate rows instead of slicing through them.
     private func bezier(start: CGPoint, end: CGPoint) -> Path {
-        let deltaX = end.x - start.x
-        let bend = max(40, abs(deltaX) * 0.4)
-        let control1 = CGPoint(x: start.x + bend, y: start.y)
-        let control2 = CGPoint(x: end.x - bend, y: end.y)
+        let (control1, control2) = Self.controlPoints(start: start, end: end)
         var path = Path()
         path.move(to: start)
         path.addCurve(to: end, control1: control1, control2: control2)
@@ -295,10 +389,7 @@ struct GanttConnectorOverlay: View {
     }
 
     private func pointOnBezier(start: CGPoint, end: CGPoint, progress: Double) -> CGPoint {
-        let deltaX = end.x - start.x
-        let bend = max(40, abs(deltaX) * 0.4)
-        let control1 = CGPoint(x: start.x + bend, y: start.y)
-        let control2 = CGPoint(x: end.x - bend, y: end.y)
+        let (control1, control2) = Self.controlPoints(start: start, end: end)
         let oneMinusT = 1 - progress
         let coordX = oneMinusT * oneMinusT * oneMinusT * start.x
             + 3 * oneMinusT * oneMinusT * progress * control1.x
@@ -309,5 +400,19 @@ struct GanttConnectorOverlay: View {
             + 3 * oneMinusT * progress * progress * control2.y
             + progress * progress * progress * end.y
         return CGPoint(x: coordX, y: coordY)
+    }
+
+    /// Shared control-point math so the path and the particle positions stay
+    /// in lock-step. Bend scales with both axes; clamped to half the
+    /// horizontal gap so short-dx edges don't form a crossover loop.
+    static func controlPoints(start: CGPoint, end: CGPoint) -> (CGPoint, CGPoint) {
+        let deltaX = end.x - start.x
+        let deltaY = end.y - start.y
+        let dynamicBend = max(60, abs(deltaY) * 0.45 + abs(deltaX) * 0.25)
+        let cap = max(40, abs(deltaX) / 2)
+        let bend = min(dynamicBend, cap)
+        let control1 = CGPoint(x: start.x + bend, y: start.y)
+        let control2 = CGPoint(x: end.x - bend, y: end.y)
+        return (control1, control2)
     }
 }
