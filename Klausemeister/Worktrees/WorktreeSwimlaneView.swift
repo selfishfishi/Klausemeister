@@ -220,6 +220,10 @@ struct WorktreeSwimlaneView: View {
             },
             onSwitchAgent: { agent in
                 store.send(.switchAgentTapped(worktreeId: worktree.id, agent: agent))
+            },
+            defaultAgent: store.defaultAgent,
+            onRelaunchWithDefaultAgent: {
+                store.send(.relaunchWithDefaultAgentTapped(worktreeId: worktree.id))
             }
         )
     }
