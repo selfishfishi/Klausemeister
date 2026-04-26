@@ -389,6 +389,13 @@ extension MCPSocketListener {
         )
 
         let registeredTools = ToolCatalog.tools
+        // Log the published tool list at every connection so a stale process
+        // (running an old binary that's missing a recently added tool) is
+        // diagnosable from `/tmp/klause-mcp-debug.log` without re-attaching.
+        // See KLA-221 — historically we discovered tools were missing only
+        // after a meister session failed to find them in ToolSearch.
+        debugLog("publishing \(registeredTools.count) MCP tools: " +
+            registeredTools.map(\.name).sorted().joined(separator: ","))
         await server.withMethodHandler(ListTools.self) { _ in
             ListTools.Result(tools: registeredTools)
         }
@@ -567,6 +574,24 @@ extension MCPSocketListener {
 
 // MARK: - Tool catalog (input schemas)
 
+/// The catalog of tools published to MCP `ListTools` callers.
+///
+/// **Adding a new tool requires rebuilding and relaunching Klausemeister.app
+/// before any caller session can see it.** Tool schemas are read once per
+/// MCP connection (see `withMethodHandler(ListTools.self)` above) from this
+/// static array, so a stale process keeps publishing whatever was compiled
+/// into its binary. The shim is a transparent stdio↔socket bridge — it does
+/// not cache. Symptom of a stale process: `ToolSearch` from a meister session
+/// can't find the new tool name, or `gh pr view`'s tool count differs from
+/// `ToolCatalog.tools.count`. Fix: rebuild (`xcodebuild`) and relaunch the app
+/// (Cmd+Q the running instance, then re-open). See KLA-221.
+///
+/// Each new tool needs three coordinated edits:
+///   1. The handler in `ToolHandlers.swift` (or `ScheduleToolHandlers.swift`).
+///   2. A `case "<name>":` branch in the `dispatchTool` switch above.
+///   3. A `Tool(name:description:inputSchema:)` entry in this catalog.
+/// Missing #3 is the single most common reason a "newly added" tool isn't
+/// callable from a meister session.
 private enum ToolCatalog {
     nonisolated static let tools: [Tool] = [
         Tool(

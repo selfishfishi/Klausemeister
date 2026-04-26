@@ -27,6 +27,15 @@ struct ToolResult: Equatable {
 /// Free-function tool handlers wrapping `WorktreeClient` + `LinearAPIClient`
 /// + `DatabaseClient`. Each handler is `async throws` and uses `@Dependency`
 /// at call time, so tests can stub clients via `withDependencies`.
+///
+/// **Adding a new tool requires three coordinated edits — and a rebuild +
+/// relaunch of Klausemeister.app.** A new handler here is invisible to
+/// caller sessions until you also (1) wire a `case "<name>":` branch in
+/// `MCPSocketListener.dispatchTool` and (2) register a `Tool(...)` entry
+/// in `MCPSocketListener.ToolCatalog.tools`. Stale-process symptom: the
+/// new tool name is missing from a meister session's `ToolSearch`. The
+/// shim is a pure byte bridge — it does not cache the catalog, so
+/// rebuilding and relaunching the app is sufficient. See KLA-221.
 enum ToolHandlers {
     // MARK: - getNextItem
 
