@@ -228,6 +228,135 @@ actor MCPSocketListener {
         registerClaudeMCPServer()
         registerCodexMCPServer()
         registerCodexHooks()
+        installCodexPluginMarketplace()
+    }
+
+    /// Bundled klause-workflow plugin path inside the app bundle. Copied in
+    /// by the `CopyKlauseWorkflowPlugin` build phase so the app ships with
+    /// the slash-command + skill set Codex needs.
+    static let bundledPluginPath: String? = Bundle.main.url(forResource: "klause-workflow", withExtension: nil)?.path
+
+    /// Stable on-disk marketplace root for Codex's plugin loader. We can't
+    /// hand Codex the path inside the app bundle directly: every rebuild
+    /// produces a new DerivedData path, and Codex's marketplace state would
+    /// drift to a stale location. Instead we set up
+    /// `~/.klausemeister/plugin-marketplace/` with a symlink to the bundled
+    /// plugin and re-create the symlink on every launch. Codex sees a
+    /// stable path and the symlink keeps it pointed at the current build.
+    static let pluginMarketplaceRoot: String = {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return home.appendingPathComponent(".klausemeister/plugin-marketplace").path
+    }()
+
+    /// Make the klause-workflow plugin discoverable to Codex without the
+    /// user running `codex plugin marketplace add` themselves. Three steps:
+    ///
+    ///   1. Build a stable marketplace root at
+    ///      `~/.klausemeister/plugin-marketplace/` containing
+    ///      `.agents/plugins/marketplace.json` and a `klause-workflow`
+    ///      symlink to the bundled plugin.
+    ///   2. Probe for a `codex` binary in the same locations
+    ///      `MeisterClient.resolveSpawnCommand(.codex,…)` checks. If
+    ///      missing, log and skip — non-codex users don't pay any cost.
+    ///   3. Run `codex plugin marketplace add <root>`. The CLI is
+    ///      idempotent (exits 0 with "already added" on repeat calls), so
+    ///      we do this unconditionally on every launch.
+    ///
+    /// Errors at any step are logged and swallowed: a missing `codex`,
+    /// stale config write, or unwritable home directory must never block
+    /// the rest of the listener from starting.
+    private static func installCodexPluginMarketplace() {
+        guard let bundledPlugin = bundledPluginPath else {
+            logger.info("klause-workflow plugin not bundled; codex marketplace registration skipped")
+            return
+        }
+        let fileManager = FileManager.default
+        let rootURL = URL(fileURLWithPath: pluginMarketplaceRoot)
+        let agentsPluginsDir = rootURL.appendingPathComponent(".agents/plugins")
+        let marketplaceJSONURL = agentsPluginsDir.appendingPathComponent("marketplace.json")
+        let pluginSymlinkURL = rootURL.appendingPathComponent("klause-workflow")
+        do {
+            try fileManager.createDirectory(at: agentsPluginsDir, withIntermediateDirectories: true)
+            // Always re-create the plugin symlink — see `installShimSymlink`
+            // for why `fileExists(atPath:)` is unsafe for symlinks.
+            try? fileManager.removeItem(at: pluginSymlinkURL)
+            try fileManager.createSymbolicLink(
+                at: pluginSymlinkURL,
+                withDestinationURL: URL(fileURLWithPath: bundledPlugin)
+            )
+            try canonicalMarketplaceJSON().write(
+                to: marketplaceJSONURL,
+                atomically: true,
+                encoding: .utf8
+            )
+        } catch {
+            logger.warning("Failed to set up codex plugin marketplace: \(error.localizedDescription)")
+            return
+        }
+        // Detached so app start doesn't wait on subprocess I/O.
+        Task.detached(priority: .background) {
+            await Self.runCodexMarketplaceAdd(rootPath: pluginMarketplaceRoot)
+        }
+    }
+
+    private static func canonicalMarketplaceJSON() -> String {
+        // Plugin source path is relative to the marketplace.json file,
+        // which lives at `<root>/.agents/plugins/marketplace.json`. So
+        // `../../klause-workflow` resolves to `<root>/klause-workflow`,
+        // which is the symlink to the bundled plugin.
+        """
+        {
+          "name": "klausemeister",
+          "interface": {
+            "displayName": "Klausemeister",
+            "shortDescription": "Klausemeister workflow plugins"
+          },
+          "plugins": [
+            {
+              "name": "klause-workflow",
+              "version": "0.0.1",
+              "description": "Meister-loop workflow plugin for Klausemeister sessions.",
+              "source": { "source": "local", "path": "../../klause-workflow" },
+              "category": "development"
+            }
+          ]
+        }
+        """
+    }
+
+    private static func resolveCodexBinary() -> String? {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let candidates = [
+            "\(home)/.codex/bin/codex",
+            "\(home)/.local/bin/codex",
+            "/opt/homebrew/bin/codex",
+            "/usr/local/bin/codex",
+            "\(home)/.npm/bin/codex"
+        ]
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    private static func runCodexMarketplaceAdd(rootPath: String) async {
+        guard let codexPath = resolveCodexBinary() else {
+            logger.info("codex binary not found; marketplace registration skipped")
+            return
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: codexPath)
+        process.arguments = ["plugin", "marketplace", "add", rootPath]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            if process.terminationStatus == 0 {
+                logger.info("codex marketplace registered: klausemeister at \(rootPath)")
+            } else {
+                logger.warning("codex plugin marketplace add exited \(process.terminationStatus)")
+            }
+        } catch {
+            logger.warning("Failed to run codex plugin marketplace add: \(error.localizedDescription)")
+        }
     }
 
     /// Re-create `~/.klausemeister/hooks/klause-status-hook.sh` as a symlink
