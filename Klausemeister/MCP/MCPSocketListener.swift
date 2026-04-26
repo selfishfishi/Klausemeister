@@ -55,6 +55,20 @@ actor MCPSocketListener {
             .path
     }()
 
+    /// Where the status-hook script is symlinked on first launch. Codex
+    /// references this absolute path in `~/.codex/config.toml` (Codex has no
+    /// `${CLAUDE_PLUGIN_ROOT}` token equivalent), so the path must be stable
+    /// across rebuilds and reinstalls. The symlink resolves to the copy
+    /// bundled inside `Klausemeister.app/Contents/Resources` — see the
+    /// `CopyStatusHook` build phase that pulls
+    /// `klause-workflow/hooks/klause-status-hook.sh` into the bundle.
+    static let statusHookSymlinkPath: String = {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return home
+            .appendingPathComponent(".klausemeister/hooks/klause-status-hook.sh")
+            .path
+    }()
+
     private static let logger = Logger(label: "klausemeister.mcp.listener")
 
     // MARK: - Per-worktree connection tracking (KLA-96)
@@ -152,24 +166,35 @@ actor MCPSocketListener {
     /// inside tmux) knows how to reach us, regardless of which agent the
     /// worktree uses.
     ///
-    /// Three things happen here:
+    /// Five things happen here:
     ///   1. A symlink at `~/.klausemeister/bin/klause-mcp-shim` is
     ///      (re-)created pointing to the binary inside the app bundle.
-    ///   2. The `klausemeister` MCP server entry is upserted into
+    ///   2. A symlink at `~/.klausemeister/hooks/klause-status-hook.sh` is
+    ///      (re-)created pointing to the script bundled inside the app's
+    ///      Resources directory by the `CopyStatusHook` build phase.
+    ///      Codex references this absolute path in its config.toml since
+    ///      it has no `${CLAUDE_PLUGIN_ROOT}` equivalent.
+    ///   3. The `klausemeister` MCP server entry is upserted into
     ///      `~/.claude/.mcp.json` with the fully resolved shim path.
     ///      Claude Code's MCP loader does NOT expand `${HOME}` or `~` in
     ///      command strings (they're passed directly to `spawn()`), so the
     ///      app must write the real absolute path.
-    ///   3. The `[mcp_servers.klausemeister]` table is upserted into
+    ///   4. The `[mcp_servers.klausemeister]` table is upserted into
     ///      `~/.codex/config.toml`. Codex spawns the shim via
     ///      `/bin/sh -c "exec ~/..."` so tilde expansion happens in the
     ///      shell.
+    ///   5. The bracketed `# klausemeister-hooks-managed-block` is
+    ///      upserted into `~/.codex/config.toml` with `[[hooks.X]]`
+    ///      entries pointing every supported hook event at the status-hook
+    ///      symlink. Claude's hooks remain wired via the plugin's
+    ///      `hooks.json`; this is purely the Codex side.
     ///
     /// The shim itself is safe to register globally — it exits immediately
     /// with code 2 when `KLAUSE_MEISTER` is not set, so non-meister agent
-    /// sessions are unaffected. Both registrations run unconditionally on
-    /// every launch (idempotent and cheap) so users can switch agents per
-    /// worktree without re-running setup.
+    /// sessions are unaffected. The status hook is also safe globally — it
+    /// no-ops when `KLAUSE_WORKTREE_ID` is unset. Both registrations run
+    /// unconditionally on every launch (idempotent and cheap) so users
+    /// can switch agents per worktree without re-running setup.
     private static func installShimSymlink() {
         let fileManager = FileManager.default
         let symlinkURL = URL(fileURLWithPath: shimSymlinkPath)
@@ -195,8 +220,36 @@ actor MCPSocketListener {
             logger.warning("Failed to create shim symlink: \(error.localizedDescription)")
             return
         }
+        installStatusHookSymlink()
         registerClaudeMCPServer()
         registerCodexMCPServer()
+        registerCodexHooks()
+    }
+
+    /// Re-create `~/.klausemeister/hooks/klause-status-hook.sh` as a symlink
+    /// pointing at the bundled copy. Skipped (with a warning) if the bundled
+    /// script is missing — Codex meister status updates will silently no-op
+    /// in that case, but the rest of the app still functions.
+    private static func installStatusHookSymlink() {
+        let fileManager = FileManager.default
+        let symlinkURL = URL(fileURLWithPath: statusHookSymlinkPath)
+        guard let scriptURL = Bundle.main.url(
+            forResource: "klause-status-hook",
+            withExtension: "sh"
+        ) else {
+            logger.warning("klause-status-hook.sh resource not found in app bundle; Codex hooks skipped")
+            return
+        }
+        do {
+            try fileManager.createDirectory(
+                at: symlinkURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try? fileManager.removeItem(at: symlinkURL)
+            try fileManager.createSymbolicLink(at: symlinkURL, withDestinationURL: scriptURL)
+        } catch {
+            logger.warning("Failed to create status-hook symlink: \(error.localizedDescription)")
+        }
     }
 
     /// Upsert the `klausemeister` MCP server into `~/.claude/.mcp.json`.
@@ -260,6 +313,140 @@ actor MCPSocketListener {
                 "Failed to register MCP server in ~/.codex/config.toml: \(error.localizedDescription)"
             )
         }
+    }
+
+    /// Upsert the canonical Codex hooks block into `~/.codex/config.toml`.
+    ///
+    /// Codex auto-discovers `[[hooks.X]]` array-of-tables in `config.toml` and
+    /// runs each entry's `command` for the corresponding event. Mapping (per
+    /// KLA-210 research):
+    ///
+    ///   * `SessionStart`, `Stop` → `idle`
+    ///   * `UserPromptSubmit`, `PreToolUse`, `PostToolUse` → `working`
+    ///   * `PermissionRequest` → `blocked`
+    ///
+    /// `Stop` doubles as the idle proxy because Codex has no
+    /// `Notification(idle_prompt)` analog. The `codex_hooks` feature flag is
+    /// not set — it is stable + default-enabled (openai/codex#19012).
+    ///
+    /// Upsert strategy: the block is bracketed by sentinel comments and
+    /// `upsertCodexHooksBlock(in:)` strips any prior block before re-appending,
+    /// so user-authored `[[hooks.X]]` entries elsewhere in the file are
+    /// preserved (Codex unions all matching entries from the parsed document).
+    /// The status-hook script no-ops when `KLAUSE_WORKTREE_ID` is unset, so
+    /// installing this globally is safe for non-meister Codex sessions.
+    private static func registerCodexHooks() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let configDir = home.appendingPathComponent(".codex")
+        let configURL = configDir.appendingPathComponent("config.toml")
+        do {
+            try FileManager.default.createDirectory(
+                at: configDir,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            logger.warning("Failed to create ~/.codex: \(error.localizedDescription)")
+            return
+        }
+        let existing: String = if let data = try? Data(contentsOf: configURL),
+                                  let text = String(data: data, encoding: .utf8)
+        {
+            text
+        } else {
+            ""
+        }
+        let updated = upsertCodexHooksBlock(in: existing)
+        do {
+            try updated.write(to: configURL, atomically: true, encoding: .utf8)
+        } catch {
+            logger.warning(
+                "Failed to register Codex hooks in ~/.codex/config.toml: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    /// Sentinel comments that mark the start and end of the canonical Codex
+    /// hooks block. Anything between them is owned by the app and is
+    /// rewritten verbatim on every launch.
+    private static let codexHooksBeginMarker =
+        "# klausemeister-hooks-managed-block:begin (do not edit — overwritten by app)"
+    private static let codexHooksEndMarker = "# klausemeister-hooks-managed-block:end"
+
+    /// Replace or append the canonical Codex hooks block in a TOML document,
+    /// preserving everything else verbatim.
+    ///
+    /// The target block runs from the begin-marker line through the end-marker
+    /// line (inclusive). The replacement block is canonical, so repeated
+    /// invocations produce identical output. User-authored content above and
+    /// below the block — including their own `[[hooks.X]]` entries — is left
+    /// untouched.
+    private static func upsertCodexHooksBlock(in existing: String) -> String {
+        let canonical = canonicalCodexHooksBlock()
+        let normalized = existing.replacingOccurrences(of: "\r\n", with: "\n")
+        let lines = normalized.components(separatedBy: "\n")
+        var output: [String] = []
+        var insideBlock = false
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if insideBlock {
+                if trimmed == codexHooksEndMarker {
+                    insideBlock = false
+                }
+                // else: drop — part of the old managed block
+            } else if trimmed == codexHooksBeginMarker {
+                insideBlock = true
+            } else {
+                output.append(line)
+            }
+        }
+
+        // Trim trailing blank lines, then append the canonical block separated
+        // by exactly one blank line so the file reads cleanly.
+        while let last = output.last,
+              last.trimmingCharacters(in: .whitespaces).isEmpty
+        {
+            output.removeLast()
+        }
+        if !output.isEmpty {
+            output.append("")
+        }
+        output.append(canonical)
+
+        var result = output.joined(separator: "\n")
+        if !result.hasSuffix("\n") {
+            result += "\n"
+        }
+        return result
+    }
+
+    /// Render the canonical Codex hooks block, with the absolute path to the
+    /// status-hook symlink baked in.
+    private static func canonicalCodexHooksBlock() -> String {
+        let path = statusHookSymlinkPath
+        let events = [
+            "SessionStart",
+            "UserPromptSubmit",
+            "PreToolUse",
+            "PostToolUse",
+            "PermissionRequest",
+            "Stop"
+        ]
+        var lines: [String] = [codexHooksBeginMarker]
+        for event in events {
+            lines.append("[[hooks.\(event)]]")
+            lines.append("[[hooks.\(event).hooks]]")
+            lines.append("type = \"command\"")
+            lines.append("command = \"\(path)\"")
+            lines.append("")
+        }
+        // Drop the trailing blank we just appended after the last event so
+        // the end-marker sits flush against the last entry.
+        if lines.last?.isEmpty == true {
+            lines.removeLast()
+        }
+        lines.append(codexHooksEndMarker)
+        return lines.joined(separator: "\n")
     }
 
     /// Replace or append the canonical `[mcp_servers.klausemeister]` table in

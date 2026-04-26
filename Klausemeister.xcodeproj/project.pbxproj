@@ -185,6 +185,7 @@
 				A869EEDC2F816B35005797B3 /* Sources */,
 				A869EEDD2F816B35005797B3 /* Frameworks */,
 				A869EEDE2F816B35005797B3 /* Resources */,
+				A8HK00012F816B35005797B3 /* CopyStatusHook */,
 				A8AAAA012F816B35005797B3 /* SwiftLint */,
 				A8FX00032FA9000100806034 /* CopyFiles */,
 			);
@@ -334,6 +335,26 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		A8HK00012F816B35005797B3 /* CopyStatusHook */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/klause-workflow/hooks/klause-status-hook.sh",
+			);
+			name = CopyStatusHook;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/klause-status-hook.sh",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nSRC=\"${SRCROOT}/klause-workflow/hooks/klause-status-hook.sh\"\nDST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/klause-status-hook.sh\"\nmkdir -p \"$(dirname \"$DST\")\"\ncp \"$SRC\" \"$DST\"\nchmod +x \"$DST\"\n";
+		};
 		A8AAAA012F816B35005797B3 /* SwiftLint */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
