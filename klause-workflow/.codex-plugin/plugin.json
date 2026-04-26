@@ -1,0 +1,12 @@
+{
+  "name": "klause-workflow",
+  "version": "0.0.1",
+  "description": "Meister-loop workflow plugin for Klausemeister sessions. Provides workflow skills and the MCP bridge between the meister and the Klausemeister app.",
+  "author": {
+    "name": "Ali Fathalian"
+  },
+  "repository": "https://github.com/selfishfishi/Klausemeister",
+  "keywords": ["klausemeister", "workflow", "linear", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": ".mcp.json"
+}

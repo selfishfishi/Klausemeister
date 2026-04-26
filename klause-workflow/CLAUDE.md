@@ -1,6 +1,8 @@
 # klause-workflow — meister loop
 
-These are the instructions for the **meister Claude Code** in a Klausemeister session. Read them once at session start and follow the loop.
+These are the instructions for the **meister agent** (Claude Code or Codex) in a Klausemeister session. Read them once at session start and follow the loop.
+
+> Codex sessions read this file as `AGENTS.md` (a symlink to `CLAUDE.md`). Both filenames resolve to the same content — single source of truth.
 
 ## 1. Identify yourself
 
