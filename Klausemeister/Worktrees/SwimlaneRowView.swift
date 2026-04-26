@@ -20,6 +20,15 @@ struct SwimlaneRowView: View {
     var onSendSlashCommand: ((_ slashCommand: String) -> Void)?
     var onMoveIssueStatus: ((_ issueId: String, _ target: MeisterState) -> Void)?
     var onSwitchAgent: ((_ agent: MeisterAgent) -> Void)?
+    /// App-wide default agent. The "Relaunch" menu item respawns this
+    /// worktree's meister using `defaultAgent`, switching the worktree's
+    /// agent first if it disagrees. Falls back to `worktree.agent` (i.e.
+    /// plain restart) when the parent doesn't supply a default.
+    var defaultAgent: MeisterAgent?
+    /// User picked "Relaunch as <default agent>" from the row context
+    /// menu — used to re-meister an existing worktree after the user
+    /// changed their default agent.
+    var onRelaunchWithDefaultAgent: (() -> Void)?
 
     @Environment(\.themeColors) private var themeColors
     @Environment(\.swimlaneAnimating) private var isAnimating
@@ -152,6 +161,13 @@ struct SwimlaneRowView: View {
                         }
                     }
                 }
+            }
+            if let onRelaunchWithDefaultAgent {
+                Button { onRelaunchWithDefaultAgent() } label: {
+                    Label(relaunchMenuLabel, systemImage: "arrow.clockwise")
+                }
+            }
+            if onSwitchAgent != nil || onRelaunchWithDefaultAgent != nil {
                 Divider()
             }
             if let onClearInbox {
@@ -190,6 +206,17 @@ struct SwimlaneRowView: View {
         case .claude: "Claude Code"
         case .codex: "Codex"
         }
+    }
+
+    /// "Relaunch meister" when the worktree is already on the default —
+    /// pure recovery semantics. "Relaunch as <name>" when the default has
+    /// changed and selecting this will switch the worktree first.
+    private var relaunchMenuLabel: String {
+        guard let defaultAgent else { return "Relaunch meister" }
+        if defaultAgent == worktree.agent {
+            return "Relaunch meister"
+        }
+        return "Relaunch as \(agentMenuLabel(defaultAgent))"
     }
 }
 

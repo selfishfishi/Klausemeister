@@ -352,7 +352,9 @@ struct WorktreeFeature {
         case defaultAgentHydrated(MeisterAgent)
         case defaultAgentChanged(MeisterAgent)
         /// User picked "Switch agent to ..." from a worktree row context menu.
-        /// Optimistic state mutation; persists via `worktreeClient.updateWorktreeAgent`.
+        /// Optimistic state mutation; persists via `worktreeClient.updateWorktreeAgent`,
+        /// then relaunches the meister so the running tmux session matches the
+        /// new agent (pre-relaunch, the DB and the live process disagreed).
         case switchAgentTapped(worktreeId: String, agent: MeisterAgent)
         /// Persistence succeeded — no state mutation, optimistic update already
         /// applied. Kept distinct from the failure case for symmetry with
@@ -365,6 +367,23 @@ struct WorktreeFeature {
             previousAgent: MeisterAgent,
             error: String
         )
+        /// User picked "Relaunch as <default agent>" from a worktree row menu.
+        /// If the worktree's agent already equals `state.defaultAgent`, this is
+        /// a relaunch-only path (useful recovery for a wedged meister).
+        /// Otherwise it switches the worktree's agent first (which itself
+        /// triggers the relaunch via `switchAgentTapped`).
+        case relaunchWithDefaultAgentTapped(worktreeId: String)
+        /// Tear down the meister's tmux session + libghostty surface and
+        /// re-spawn under the worktree's current `agent`. Issued automatically
+        /// after a successful `switchAgentTapped`, and via the explicit
+        /// "Relaunch as <default agent>" menu.
+        case relaunchMeisterRequested(worktreeId: String)
+        /// Internal continuation: teardown finished, ready to spawn fresh.
+        /// Routes to `terminalActivationEffect` if the user is currently
+        /// viewing this worktree's terminal (so a new surface materializes
+        /// in-place), otherwise to `ensureMeisterEffect` (no surface; the
+        /// next focus will create one).
+        case relaunchMeisterReady(worktreeId: String)
         case repoCollapseToggled(repoId: String)
         case renameWorktreeTapped(worktreeId: String, newName: String)
         case worktreeRenamed(worktreeId: String, newName: String)
@@ -901,6 +920,11 @@ struct WorktreeFeature {
                             worktreeId: worktreeId,
                             agent: agent
                         ))
+                        // The DB row and the live tmux process now disagree
+                        // (claude still running but row says codex, or vice
+                        // versa). Relaunch so the user actually gets the
+                        // agent they picked instead of a confusing mismatch.
+                        await send(.relaunchMeisterRequested(worktreeId: worktreeId))
                     } catch {
                         await send(.worktreeAgentUpdateFailed(
                             worktreeId: worktreeId,
@@ -921,6 +945,54 @@ struct WorktreeFeature {
                     TextState(error)
                 }
                 return .none
+
+            case let .relaunchWithDefaultAgentTapped(worktreeId):
+                guard let worktree = state.worktrees[id: worktreeId] else { return .none }
+                let target = state.defaultAgent
+                if worktree.agent == target {
+                    // Already on the default agent — interpret this as
+                    // "restart this meister" (recovery path).
+                    return .send(.relaunchMeisterRequested(worktreeId: worktreeId))
+                }
+                // Different agent — defer to switchAgentTapped, which
+                // updates the DB row and then relaunches.
+                return .send(.switchAgentTapped(worktreeId: worktreeId, agent: target))
+
+            case let .relaunchMeisterRequested(worktreeId):
+                guard let worktree = state.worktrees[id: worktreeId] else { return .none }
+                let sessionName = WorktreeConfig.tmuxSessionName(
+                    forWorktreeName: worktree.name,
+                    repoName: worktree.repoName
+                )
+                // Reset the in-memory lifecycle so `ensureMeisterEffect` /
+                // `terminalActivationEffect` will treat this as a fresh
+                // spawn after teardown completes.
+                state.worktrees[id: worktreeId]?.meisterStatus = .none
+                state.worktrees[id: worktreeId]?.meisterSessionState = .offline
+                return .merge(
+                    // The previous spawn's grace-period sleep would otherwise
+                    // fire `meisterSpawnFailed` against the new lifecycle.
+                    .cancel(id: CancelID.meisterSpawn(worktreeId)),
+                    .run { [meisterClient, surfaceManager] send in
+                        // Soft-fail: a missing or already-killed session
+                        // shouldn't block the relaunch path.
+                        try? await meisterClient.teardown(sessionName)
+                        await MainActor.run {
+                            // Drop the libghostty surface so its dead PTY is
+                            // not reused — `terminalActivationEffect` will
+                            // create a fresh one on the active worktree.
+                            surfaceManager.destroySurface(worktreeId)
+                        }
+                        await send(.relaunchMeisterReady(worktreeId: worktreeId))
+                    }
+                )
+
+            case let .relaunchMeisterReady(worktreeId):
+                guard let worktree = state.worktrees[id: worktreeId] else { return .none }
+                if state.selectedWorktreeId == worktreeId {
+                    return terminalActivationEffect(state: &state, worktree: worktree)
+                }
+                return ensureMeisterEffect(state: &state, worktreeId: worktreeId)
 
             case let .worktreesLoaded(repositories, worktreeSnapshots, queueItems, issues):
                 state.isLoading = false

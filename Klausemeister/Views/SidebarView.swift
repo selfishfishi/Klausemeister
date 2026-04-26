@@ -97,6 +97,12 @@ struct SidebarView: View {
                 store.send(.worktree(.switchAgentTapped(
                     worktreeId: worktree.id, agent: agent
                 )))
+            },
+            defaultAgent: store.worktree.defaultAgent,
+            onRelaunchWithDefaultAgent: {
+                store.send(.worktree(
+                    .relaunchWithDefaultAgentTapped(worktreeId: worktree.id)
+                ))
             }
         )
         // `SidebarWorktreeRow: Equatable` — SwiftUI short-circuits body
@@ -112,6 +118,12 @@ struct SidebarWorktreeRow: View, Equatable {
     let onSelect: () -> Void
     let onDelete: () -> Void
     var onSwitchAgent: ((MeisterAgent) -> Void)?
+    /// App-wide default agent. The "Relaunch" menu item respawns the
+    /// meister using this agent — switching the worktree first if it
+    /// disagrees, or restarting the current agent otherwise.
+    var defaultAgent: MeisterAgent?
+    /// User picked "Relaunch as <default>" from the row context menu.
+    var onRelaunchWithDefaultAgent: (() -> Void)?
 
     @Environment(\.themeColors) private var themeColors
     @Environment(\.keyBindings) private var bindings
@@ -119,10 +131,14 @@ struct SidebarWorktreeRow: View, Equatable {
 
     /// Equality ignores the action closures — they're captured anew on every
     /// parent body evaluation, so including them would defeat short-circuiting.
-    /// `isSelected` + the full `worktree` value cover every observable input
-    /// that affects rendering.
+    /// `isSelected` + the full `worktree` value + `defaultAgent` cover every
+    /// observable input that affects rendering. `defaultAgent` matters because
+    /// the relaunch-menu label switches between "Relaunch meister" and
+    /// "Relaunch as <name>" based on it.
     static func == (lhs: SidebarWorktreeRow, rhs: SidebarWorktreeRow) -> Bool {
-        lhs.worktree == rhs.worktree && lhs.isSelected == rhs.isSelected
+        lhs.worktree == rhs.worktree
+            && lhs.isSelected == rhs.isSelected
+            && lhs.defaultAgent == rhs.defaultAgent
     }
 
     var body: some View {
@@ -224,6 +240,13 @@ struct SidebarWorktreeRow: View, Equatable {
                         }
                     }
                 }
+            }
+            if let onRelaunchWithDefaultAgent {
+                Button { onRelaunchWithDefaultAgent() } label: {
+                    Label(relaunchMenuLabel, systemImage: "arrow.clockwise")
+                }
+            }
+            if onSwitchAgent != nil || onRelaunchWithDefaultAgent != nil {
                 Divider()
             }
             Button(role: .destructive) {
@@ -240,6 +263,14 @@ struct SidebarWorktreeRow: View, Equatable {
         case .claude: "Claude Code"
         case .codex: "Codex"
         }
+    }
+
+    private var relaunchMenuLabel: String {
+        guard let defaultAgent else { return "Relaunch meister" }
+        if defaultAgent == worktree.agent {
+            return "Relaunch meister"
+        }
+        return "Relaunch as \(agentMenuLabel(defaultAgent))"
     }
 
     /// Long-form narration shown as a scrolling marquee. Priority:
