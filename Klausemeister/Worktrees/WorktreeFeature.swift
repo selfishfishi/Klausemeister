@@ -716,11 +716,12 @@ struct WorktreeFeature {
             forWorktreeName: state.worktrees[wtIndex].name,
             repoName: state.worktrees[wtIndex].repoName
         )
+        let agent = state.worktrees[wtIndex].agent
         state.worktrees[wtIndex].meisterStatus = .spawning
         return .run { [meisterClient, clock] send in
             do {
                 try await meisterClient.ensureRunning(
-                    worktreeId, workingDirectory, sessionName
+                    worktreeId, workingDirectory, sessionName, agent
                 )
                 try await clock.sleep(for: Self.meisterHelloGracePeriod)
                 await send(.meisterSpawnFailed(worktreeId: worktreeId))
@@ -778,11 +779,12 @@ struct WorktreeFeature {
         }
 
         guard !workingDirectory.isEmpty else { return .none }
+        let agent = worktree.agent
         state.worktrees[id: worktreeId]?.meisterStatus = .spawning
         return .run { [meisterClient, surfaceManager, clock] send in
             do {
                 try await meisterClient.ensureRunning(
-                    worktreeId, workingDirectory, sessionName
+                    worktreeId, workingDirectory, sessionName, agent
                 )
                 Self.log.info("terminalActivationEffect: ensureRunning returned; creating surface")
                 let created = await MainActor.run {

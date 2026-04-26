@@ -25,7 +25,7 @@ import Testing
         resolvedTmuxPath: { "/opt/homebrew/bin/tmux" }
     )
     let client = MeisterClient.live(tmux: tmux)
-    try await client.ensureRunning("wt-1", "/tmp/worktree", "klause-example")
+    try await client.ensureRunning("wt-1", "/tmp/worktree", "klause-example", .claude)
 
     #expect(hasSessionCalls.value == ["klause-example"])
     #expect(createCalls.value == 0)
@@ -52,7 +52,7 @@ import Testing
         resolvedTmuxPath: { "/opt/homebrew/bin/tmux" }
     )
     let client = MeisterClient.live(tmux: tmux)
-    try await client.ensureRunning("wt-1", "/tmp/worktree", "klause-example")
+    try await client.ensureRunning("wt-1", "/tmp/worktree", "klause-example", .claude)
 
     #expect(createCalls.value == 0)
     #expect(sendKeysTarget.value == "=klause-example")
@@ -81,7 +81,7 @@ import Testing
         resolvedTmuxPath: { "/opt/homebrew/bin/tmux" }
     )
     let client = MeisterClient.live(tmux: tmux)
-    try await client.ensureRunning("wt-1", "/tmp/worktree", "klause-example")
+    try await client.ensureRunning("wt-1", "/tmp/worktree", "klause-example", .claude)
 
     #expect(sessionSeen.value == "klause-example")
     #expect(envSeen.value["KLAUSE_MEISTER"] == "1")

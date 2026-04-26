@@ -21,42 +21,92 @@ struct MeisterClient {
     var ensureRunning: @Sendable (
         _ worktreeId: String,
         _ workingDirectory: String,
-        _ sessionName: String
+        _ sessionName: String,
+        _ agent: MeisterAgent
     ) async throws -> Void
 
     var teardown: @Sendable (_ sessionName: String) async throws -> Void
 }
 
+/// Errors thrown by the live `MeisterClient`. `LocalizedError` so the message
+/// surfaces both in `os_log` (via `error.localizedDescription` at the catch
+/// site in `WorktreeFeature`) and any future user-facing status surface.
+enum MeisterClientError: LocalizedError {
+    case agentBinaryNotFound(MeisterAgent)
+
+    var errorDescription: String? {
+        switch self {
+        case .agentBinaryNotFound(.claude):
+            "claude binary not found — install Claude Code from https://claude.com/claude-code"
+        case .agentBinaryNotFound(.codex):
+            "codex binary not found — install with `npm i -g @openai/codex` or `brew install --cask codex`"
+        }
+    }
+}
+
 extension MeisterClient {
-    static func live(tmux: TmuxClient) -> Self {
-        // Resolve the `claude` binary once at construction time. When the app
-        // is launched from Finder/Dock the process PATH is the stripped
-        // `/usr/bin:/bin:...` — `claude` is almost always installed under
-        // the user's home. We probe common install locations and capture an
-        // absolute path when found. If none match we fall back to the bare
-        // name, trusting tmux's interactive shell to resolve it via the
-        // user's rc files.
-        let claudeCommand: String = {
-            let home = FileManager.default.homeDirectoryForCurrentUser.path
-            let candidates = [
+    /// Resolve the meister binary command for `agent`.
+    ///
+    /// When the app is launched from Finder/Dock the process PATH is the
+    /// stripped `/usr/bin:/bin:...` — meister binaries are almost always
+    /// installed under the user's home. We probe common install locations
+    /// per agent and capture an absolute path when found.
+    ///
+    /// `claude` falls back to the bare name on probe miss, trusting tmux's
+    /// interactive shell to resolve it via the user's rc files (preserves
+    /// pre-codex behavior).
+    ///
+    /// `codex` does NOT fall back: send-keysing a bare `codex` into a shell
+    /// that cannot resolve it produces a confusing tmux session rather than
+    /// an actionable error, which is exactly what the codex acceptance
+    /// criteria forbid. We throw with an install hint instead.
+    fileprivate static func resolveSpawnCommand(_ agent: MeisterAgent) throws -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let candidates: [String]
+        switch agent {
+        case .claude:
+            candidates = [
                 "\(home)/.claude/local/claude",
                 "\(home)/.local/bin/claude",
                 "\(home)/.npm/bin/claude",
                 "/opt/homebrew/bin/claude",
                 "/usr/local/bin/claude"
             ]
-            return candidates.first { FileManager.default.isExecutableFile(atPath: $0) } ?? "claude"
-        }()
+            let resolved = candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+            return resolved ?? "claude"
+        case .codex:
+            candidates = [
+                "\(home)/.codex/bin/codex",
+                "\(home)/.local/bin/codex",
+                "/opt/homebrew/bin/codex",
+                "/usr/local/bin/codex",
+                "\(home)/.npm/bin/codex"
+            ]
+            guard let resolved = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+                throw MeisterClientError.agentBinaryNotFound(.codex)
+            }
+            return "\(resolved) --full-auto"
+        }
+    }
 
+    static func live(tmux: TmuxClient) -> Self {
         // Foreground processes we treat as "shell waiting at a prompt" —
-        // safe targets for send-keys-ing the claude command. Anything else
-        // (node, claude, vim, ssh, etc.) is assumed to be doing something
-        // meaningful and must not be interrupted.
+        // safe targets for send-keys-ing the meister command. Anything else
+        // (node, claude, codex, vim, ssh, etc.) is assumed to be doing
+        // something meaningful and must not be interrupted.
         let shellProcesses: Set = ["bash", "zsh", "fish", "sh", "dash", "ksh"]
 
         return MeisterClient(
-            ensureRunning: { worktreeId, workingDirectory, sessionName in
+            ensureRunning: { worktreeId, workingDirectory, sessionName, agent in
                 MeisterClient.log.info("ensureRunning start wt=\(worktreeId, privacy: .public) session=\(sessionName, privacy: .public)")
+                let spawnCommand: String
+                do {
+                    spawnCommand = try resolveSpawnCommand(agent)
+                    MeisterClient.log.info("resolved agent=\(agent.rawValue, privacy: .public) command=\(spawnCommand, privacy: .public)")
+                } catch {
+                    MeisterClient.log.error("resolveSpawnCommand threw: \(error.localizedDescription, privacy: .public)")
+                    throw error
+                }
                 let exists: Bool
                 do {
                     exists = try await tmux.hasSession(sessionName)
@@ -89,9 +139,9 @@ extension MeisterClient {
                     }
                     MeisterClient.log.info("firstWindowCommand=\(currentCommand ?? "<nil>", privacy: .public)")
                     if let currentCommand, shellProcesses.contains(currentCommand) {
-                        MeisterClient.log.info("respawning claude into shell foreground: \(claudeCommand, privacy: .public)")
+                        MeisterClient.log.info("respawning meister into shell foreground: \(spawnCommand, privacy: .public)")
                         do {
-                            try await tmux.sendKeys(sessionName, claudeCommand)
+                            try await tmux.sendKeys(sessionName, spawnCommand)
                             MeisterClient.log.info("sendKeys succeeded")
                         } catch {
                             MeisterClient.log.error("sendKeys threw: \(error.localizedDescription, privacy: .public)")
@@ -116,8 +166,8 @@ extension MeisterClient {
                 // in user `.tmux.conf`) make window 0 non-existent — which
                 // would silently fail send-keys and leave the meister
                 // disconnected despite the session being up.
-                MeisterClient.log.info("spawning claude via sendKeys: \(claudeCommand, privacy: .public)")
-                try await tmux.sendKeys(sessionName, claudeCommand)
+                MeisterClient.log.info("spawning meister via sendKeys: \(spawnCommand, privacy: .public)")
+                try await tmux.sendKeys(sessionName, spawnCommand)
                 MeisterClient.log.info("ensureRunning done (fresh spawn)")
             },
             teardown: { sessionName in
