@@ -236,127 +236,151 @@ actor MCPSocketListener {
     /// the slash-command + skill set Codex needs.
     static let bundledPluginPath: String? = Bundle.main.url(forResource: "klause-workflow", withExtension: nil)?.path
 
-    /// Stable on-disk marketplace root for Codex's plugin loader. We can't
-    /// hand Codex the path inside the app bundle directly: every rebuild
-    /// produces a new DerivedData path, and Codex's marketplace state would
-    /// drift to a stale location. Instead we set up
-    /// `~/.klausemeister/plugin-marketplace/` with a symlink to the bundled
-    /// plugin and re-create the symlink on every launch. Codex sees a
-    /// stable path and the symlink keeps it pointed at the current build.
-    static let pluginMarketplaceRoot: String = {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return home.appendingPathComponent(".klausemeister/plugin-marketplace").path
-    }()
+    /// Skills we install into `~/.codex/skills/` from the bundled plugin.
+    /// Each tuple maps a `klause-workflow/skills/<source>/` directory in
+    /// the bundle to a `~/.codex/skills/<targetDir>/` install location,
+    /// rewriting the SKILL.md `name:` frontmatter to `displayName` so the
+    /// skill renders with proper capitalization in Codex's `$` menu.
+    ///
+    /// Without the rewrite Codex shows the raw `name:` value verbatim —
+    /// `klause-workflow` lowercase sorts past every uppercase-named skill
+    /// (ASCII order) and falls below the visible portion of the menu.
+    /// Title-case names group all three Klausemeister skills together
+    /// alphabetically with the curated skills (between Image Gen and
+    /// Linear MCP Server).
+    ///
+    /// Target dirs are also klause-prefixed so the install never collides
+    /// with any other plugin that ships an `open-pr` or `schedule` skill.
+    private struct CodexSkillInstall {
+        let source: String
+        let targetDir: String
+        let displayName: String
+    }
 
-    /// Make the klause-workflow plugin discoverable to Codex without the
-    /// user running `codex plugin marketplace add` themselves. Three steps:
+    private static let codexSkillInstalls: [CodexSkillInstall] = [
+        CodexSkillInstall(
+            source: "klause-workflow",
+            targetDir: "klause-workflow",
+            displayName: "Klausemeister Workflow"
+        ),
+        CodexSkillInstall(
+            source: "open-pr",
+            targetDir: "klause-open-pr",
+            displayName: "Klausemeister Open PR"
+        ),
+        CodexSkillInstall(
+            source: "schedule",
+            targetDir: "klause-schedule",
+            displayName: "Klausemeister Schedule"
+        )
+    ]
+
+    /// Make the klause-workflow plugin's skills available to every Codex
+    /// session — including plain `codex` invocations the user runs
+    /// outside Klausemeister. Codex auto-discovers skills in
+    /// `~/.codex/skills/<dir>/SKILL.md` (same place its built-in
+    /// `feature-dev`, `review-pr`, etc. live). Marketplace registration
+    /// alone does NOT cause skills to be installed there — only direct
+    /// copy does — so we skip the marketplace dance entirely.
     ///
-    ///   1. Build a stable marketplace root at
-    ///      `~/.klausemeister/plugin-marketplace/` containing
-    ///      `.agents/plugins/marketplace.json` and a `klause-workflow`
-    ///      symlink to the bundled plugin.
-    ///   2. Probe for a `codex` binary in the same locations
-    ///      `MeisterClient.resolveSpawnCommand(.codex,…)` checks. If
-    ///      missing, log and skip — non-codex users don't pay any cost.
-    ///   3. Run `codex plugin marketplace add <root>`. The CLI is
-    ///      idempotent (exits 0 with "already added" on repeat calls), so
-    ///      we do this unconditionally on every launch.
-    ///
-    /// Errors at any step are logged and swallowed: a missing `codex`,
-    /// stale config write, or unwritable home directory must never block
-    /// the rest of the listener from starting.
+    /// Idempotent: every launch rsync-replaces the target dirs so the
+    /// installed skills always reflect the current bundled copy.
+    /// Errors are logged and swallowed: a missing bundled plugin or
+    /// unwritable `~/.codex/skills/` must never block listener startup.
     private static func installCodexPluginMarketplace() {
         guard let bundledPlugin = bundledPluginPath else {
-            logger.info("klause-workflow plugin not bundled; codex marketplace registration skipped")
+            logger.info("klause-workflow plugin not bundled; codex skills install skipped")
             return
         }
         let fileManager = FileManager.default
-        let rootURL = URL(fileURLWithPath: pluginMarketplaceRoot)
-        let agentsPluginsDir = rootURL.appendingPathComponent(".agents/plugins")
-        let marketplaceJSONURL = agentsPluginsDir.appendingPathComponent("marketplace.json")
-        let pluginSymlinkURL = rootURL.appendingPathComponent("klause-workflow")
+        let bundledSkillsRoot = URL(fileURLWithPath: bundledPlugin)
+            .appendingPathComponent("skills")
+        let codexSkillsRoot = fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/skills")
         do {
-            try fileManager.createDirectory(at: agentsPluginsDir, withIntermediateDirectories: true)
-            // Always re-create the plugin symlink — see `installShimSymlink`
-            // for why `fileExists(atPath:)` is unsafe for symlinks.
-            try? fileManager.removeItem(at: pluginSymlinkURL)
-            try fileManager.createSymbolicLink(
-                at: pluginSymlinkURL,
-                withDestinationURL: URL(fileURLWithPath: bundledPlugin)
-            )
-            try canonicalMarketplaceJSON().write(
-                to: marketplaceJSONURL,
-                atomically: true,
-                encoding: .utf8
-            )
+            try fileManager.createDirectory(at: codexSkillsRoot, withIntermediateDirectories: true)
         } catch {
-            logger.warning("Failed to set up codex plugin marketplace: \(error.localizedDescription)")
+            logger.warning("Failed to ensure ~/.codex/skills/: \(error.localizedDescription)")
             return
         }
-        // Detached so app start doesn't wait on subprocess I/O.
-        Task.detached(priority: .background) {
-            await Self.runCodexMarketplaceAdd(rootPath: pluginMarketplaceRoot)
+        for entry in codexSkillInstalls {
+            let sourceDir = bundledSkillsRoot.appendingPathComponent(entry.source)
+            let targetDir = codexSkillsRoot.appendingPathComponent(entry.targetDir)
+            installCodexSkill(
+                sourceDir: sourceDir,
+                targetDir: targetDir,
+                displayName: entry.displayName
+            )
         }
     }
 
-    private static func canonicalMarketplaceJSON() -> String {
-        // Plugin source path is relative to the marketplace.json file,
-        // which lives at `<root>/.agents/plugins/marketplace.json`. So
-        // `../../klause-workflow` resolves to `<root>/klause-workflow`,
-        // which is the symlink to the bundled plugin.
-        """
-        {
-          "name": "klausemeister",
-          "interface": {
-            "displayName": "Klausemeister",
-            "shortDescription": "Klausemeister workflow plugins"
-          },
-          "plugins": [
-            {
-              "name": "klause-workflow",
-              "version": "0.0.1",
-              "description": "Meister-loop workflow plugin for Klausemeister sessions.",
-              "source": { "source": "local", "path": "../../klause-workflow" },
-              "category": "development"
-            }
-          ]
-        }
-        """
-    }
-
-    private static func resolveCodexBinary() -> String? {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let candidates = [
-            "\(home)/.codex/bin/codex",
-            "\(home)/.local/bin/codex",
-            "/opt/homebrew/bin/codex",
-            "/usr/local/bin/codex",
-            "\(home)/.npm/bin/codex"
-        ]
-        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
-    }
-
-    private static func runCodexMarketplaceAdd(rootPath: String) async {
-        guard let codexPath = resolveCodexBinary() else {
-            logger.info("codex binary not found; marketplace registration skipped")
+    /// Replace `targetDir` with a fresh copy of `sourceDir`, rewriting
+    /// the top-level `SKILL.md`'s `name:` frontmatter to `displayName`.
+    private static func installCodexSkill(
+        sourceDir: URL,
+        targetDir: URL,
+        displayName: String
+    ) {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: sourceDir.path) else {
+            logger.warning("bundled skill missing at \(sourceDir.path); skipped")
             return
         }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: codexPath)
-        process.arguments = ["plugin", "marketplace", "add", rootPath]
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        // Wipe the target so a removed file in the bundle doesn't
+        // linger as a stale entry in the installed copy.
+        try? fileManager.removeItem(at: targetDir)
+        // `cp -RL` instead of FileManager.copyItem so symlinks inside the
+        // skill dir (e.g. AGENTS.md → ../../CLAUDE.md) are dereferenced
+        // into real files at the destination — the flat install in
+        // ~/.codex/skills/ has no parent tree for relative symlinks to
+        // resolve against.
+        let copyProcess = Process()
+        copyProcess.executableURL = URL(fileURLWithPath: "/bin/cp")
+        copyProcess.arguments = ["-RL", sourceDir.path, targetDir.path]
         do {
-            try process.run()
-            process.waitUntilExit()
-            if process.terminationStatus == 0 {
-                logger.info("codex marketplace registered: klausemeister at \(rootPath)")
-            } else {
-                logger.warning("codex plugin marketplace add exited \(process.terminationStatus)")
-            }
+            try copyProcess.run()
+            copyProcess.waitUntilExit()
         } catch {
-            logger.warning("Failed to run codex plugin marketplace add: \(error.localizedDescription)")
+            logger.warning("Failed to install skill \(targetDir.lastPathComponent): \(error.localizedDescription)")
+            return
         }
+        guard copyProcess.terminationStatus == 0 else {
+            logger.warning("cp -RL exited \(copyProcess.terminationStatus) for \(targetDir.lastPathComponent)")
+            return
+        }
+        let skillMD = targetDir.appendingPathComponent("SKILL.md")
+        guard let original = try? String(contentsOf: skillMD, encoding: .utf8) else {
+            return
+        }
+        let rewritten = rewriteFrontmatterName(original, to: displayName)
+        try? rewritten.write(to: skillMD, atomically: true, encoding: .utf8)
+    }
+
+    /// Replace the single `name: …` line inside the leading YAML
+    /// frontmatter block (between the first two `---` fences). If the
+    /// frontmatter is malformed or the field is missing, returns the
+    /// original content unchanged — the install survives at the cost of
+    /// a less-than-ideal display name.
+    private static func rewriteFrontmatterName(_ content: String, to displayName: String) -> String {
+        let lines = content.components(separatedBy: "\n")
+        guard lines.first == "---" else { return content }
+        var result: [String] = []
+        var inFrontmatter = true
+        var nameRewritten = false
+        for (idx, line) in lines.enumerated() {
+            if inFrontmatter, idx > 0, line == "---" {
+                inFrontmatter = false
+                result.append(line)
+                continue
+            }
+            if inFrontmatter, !nameRewritten, line.hasPrefix("name:") {
+                result.append("name: \(displayName)")
+                nameRewritten = true
+                continue
+            }
+            result.append(line)
+        }
+        return result.joined(separator: "\n")
     }
 
     /// Re-create `~/.klausemeister/hooks/klause-status-hook.sh` as a symlink
