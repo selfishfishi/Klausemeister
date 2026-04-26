@@ -733,7 +733,7 @@ private enum ToolCatalog {
         Tool(
             name: "saveSchedule",
             // swiftlint:disable:next line_length
-            description: "Persist a named schedule: a set of issues assigned to worktrees with per-worktree ordering. The schedule is saved in the 'planned' state — no queue mutation happens until runSchedule fires. Returns the new scheduleId.",
+            description: "Persist a named schedule: a set of issues assigned to worktrees with per-worktree ordering. The schedule is saved in the 'planned' state — no queue mutation happens until runSchedule fires. Returns the new scheduleId. items[].issueLinearId and entries in items[].blockedByIssueLinearIds each accept either a Linear UUID or the human identifier (e.g. KLA-220), matching enqueueItem.",
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
@@ -756,14 +756,20 @@ private enum ToolCatalog {
                             "type": .string("object"),
                             "properties": .object([
                                 "worktreeId": .object(["type": .string("string")]),
-                                "issueLinearId": .object(["type": .string("string")]),
+                                "issueLinearId": .object([
+                                    "type": .string("string"),
+                                    "description": .string("Linear UUID or human identifier (e.g. KLA-220) of the issue to schedule")
+                                ]),
                                 "issueIdentifier": .object(["type": .string("string")]),
                                 "issueTitle": .object(["type": .string("string")]),
                                 "position": .object(["type": .string("integer")]),
                                 "weight": .object(["type": .string("integer")]),
                                 "blockedByIssueLinearIds": .object([
                                     "type": .string("array"),
-                                    "items": .object(["type": .string("string")])
+                                    "items": .object([
+                                        "type": .string("string"),
+                                        "description": .string("Linear UUID or human identifier of an in-set blocker")
+                                    ])
                                 ])
                             ]),
                             "required": .array([
