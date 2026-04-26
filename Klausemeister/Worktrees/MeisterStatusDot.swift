@@ -24,7 +24,7 @@ private struct NativeTooltipView: NSViewRepresentable {
 /// meister. Pulses when running (`.running`); shows a static error glow when
 /// disconnected; dims to a flat dot with no glow for `.none` and `.spawning`.
 /// Used standalone in the Debug panel; sidebar and swimlane rows use
-/// `WorktreeStatusDot` instead to fold in the Claude session signal.
+/// `WorktreeStatusDot` instead to fold in the agent session signal.
 struct MeisterStatusDot: View {
     let status: MeisterStatus
 
@@ -94,14 +94,14 @@ struct MeisterStatusDot: View {
 }
 
 /// Unified connectivity indicator for a worktree row. Folds the meister's MCP
-/// status and the Claude session's hook-reachability into a single traffic
+/// status and the agent session's hook-reachability into a single traffic
 /// light: green when both sides are connected, yellow when exactly one is,
 /// red when neither is. Hovering reveals which side is offline. "Green" is
-/// about connection health, not whether Claude is actively doing work — an
-/// idle-but-reachable session still counts as green.
+/// about connection health, not whether the agent is actively doing work —
+/// an idle-but-reachable session still counts as green.
 struct WorktreeStatusDot: View {
     let meisterStatus: MeisterStatus
-    let claudeStatus: ClaudeSessionState
+    let agentSessionState: MeisterSessionState
 
     @Environment(\.themeColors) private var themeColors
 
@@ -118,15 +118,15 @@ struct WorktreeStatusDot: View {
         meisterStatus == .running
     }
 
-    private var isClaudeConnected: Bool {
-        if case .offline = claudeStatus {
+    private var isAgentConnected: Bool {
+        if case .offline = agentSessionState {
             return isMeisterConnected
         }
         return true
     }
 
     private var connectedCount: Int {
-        (isMeisterConnected ? 1 : 0) + (isClaudeConnected ? 1 : 0)
+        (isMeisterConnected ? 1 : 0) + (isAgentConnected ? 1 : 0)
     }
 
     private var dotColor: Color {
@@ -138,7 +138,7 @@ struct WorktreeStatusDot: View {
     }
 
     private var tooltip: String {
-        "Meister: \(meisterLabel) · Claude: \(claudeLabel)"
+        "Meister: \(meisterLabel) · Agent: \(agentLabel)"
     }
 
     private var meisterLabel: String {
@@ -150,8 +150,8 @@ struct WorktreeStatusDot: View {
         }
     }
 
-    private var claudeLabel: String {
-        switch claudeStatus {
+    private var agentLabel: String {
+        switch agentSessionState {
         case .working: "working"
         case .idle: "idle"
         case .blocked: "blocked"

@@ -6,7 +6,7 @@
 
 A native macOS **terminal + project-management tool + agent orchestrator**, built around a simple idea: the path from *"here's a Linear ticket"* to *"PR merged"* should be one app — ideally one keyboard shortcut.
 
-Klausemeister pairs a [libghostty](https://github.com/ghostty-org/ghostty)-powered terminal with a Linear-backed kanban board, git worktree management, and an MCP server that can drive headless [Claude Code](https://claude.ai/code) "meister" agents through a formal workflow state machine. Pick a ticket, spawn a branch + worktree + tmux session, hand it to a meister, watch it cook.
+Klausemeister pairs a [libghostty](https://github.com/ghostty-org/ghostty)-powered terminal with a Linear-backed kanban board, git worktree management, and an MCP server that can drive headless meister agents — [Claude Code](https://claude.ai/code) or OpenAI Codex — through a formal workflow state machine. Pick a ticket, spawn a branch + worktree + tmux session, hand it to a meister, watch it cook.
 
 ## At a glance
 
@@ -41,13 +41,13 @@ The main window hosts three panels that share one detail pane:
 
 ### Meister loop (autonomous agents)
 
-Klausemeister can spawn a headless Claude Code — a "**meister**" — in each worktree's tmux session. The meister loads the [`klause-workflow`](klause-workflow/README.md) plugin and drives the ticket through a formal state machine:
+Klausemeister can spawn a headless meister agent (Claude Code or OpenAI Codex — pick per worktree, or set an app-wide default) in each worktree's tmux session. The meister loads the [`klause-workflow`](klause-workflow/README.md) plugin and drives the ticket through a formal state machine:
 
 ```
 Pull → Define → Execute → Review → Open PR → Babysit → Push
 ```
 
-Each transition is a slash command (`/klause-workflow:klause-define`, etc.) that maps to exactly one edge in `ProductStateMachine`. The app coordinates meisters through an **in-process MCP server** (Unix socket) and a **shim** (`klause-mcp-shim`) that bridges Claude Code's stdio transport to the socket. The shim forwards `getNextItem`, `reportProgress`, `reportActivity`, `completeItem`, etc. straight into the TCA store.
+Each transition is a slash command (`/klause-workflow:klause-define`, etc.) that maps to exactly one edge in `ProductStateMachine`. The app coordinates meisters through an **in-process MCP server** (Unix socket) and a **shim** (`klause-mcp-shim`) that bridges the agent's stdio MCP transport to the socket. The shim forwards `getNextItem`, `reportProgress`, `reportActivity`, `completeItem`, etc. straight into the TCA store, regardless of which agent is on the other end.
 
 This makes the whole board "pilotable" — kick a card over to a worktree, start a meister, and it will work the ticket end-to-end unless you intervene.
 
@@ -157,7 +157,7 @@ For the full walkthrough — data model, MCP plumbing, libghostty bridge, runtim
 ## Companion projects in this repo
 
 - **[`klause-workflow/`](klause-workflow/)** — Claude Code plugin shipped with the app. Provides the slash commands (`/klause-pull`, `/klause-execute`, `/klause-open-pr`, …) that drive the meister loop, plus the `open-pr` skill.
-- **`klause-mcp-shim/`** — tiny stdio↔Unix-socket bridge. Claude Code speaks MCP over stdio; Klausemeister hosts the MCP server on a socket. The shim glues them together and carries the `KLAUSE_WORKTREE_ID` env var through so the server knows which worktree is calling.
+- **`klause-mcp-shim/`** — tiny stdio↔Unix-socket bridge. Meister agents (Claude Code, Codex) speak MCP over stdio; Klausemeister hosts the MCP server on a socket. The shim glues them together and carries the `KLAUSE_WORKTREE_ID` env var through so the server knows which worktree is calling.
 
 ## Project tracking
 

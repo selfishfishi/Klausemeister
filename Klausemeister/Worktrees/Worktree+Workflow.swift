@@ -19,8 +19,8 @@ extension Worktree {
     /// — doing so inflates row height inconsistently across the sidebar.
     var tickerText: String? {
         if let text = recapText, !text.isEmpty { return text }
-        if let text = claudeActivityText, !text.isEmpty { return text }
-        if let text = claudeStatusText, !text.isEmpty { return text }
+        if let text = meisterActivityText, !text.isEmpty { return text }
+        if let text = meisterStatusText, !text.isEmpty { return text }
         return nil
     }
 

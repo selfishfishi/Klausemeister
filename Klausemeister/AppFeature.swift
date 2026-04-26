@@ -396,7 +396,7 @@ struct AppFeature {
                     )
                 case let .progressReported(worktreeId, _, statusText):
                     return .merge(
-                        .send(.worktree(.claudeStatusTextChanged(
+                        .send(.worktree(.meisterStatusTextChanged(
                             worktreeId: worktreeId,
                             text: statusText
                         ))),
@@ -404,7 +404,7 @@ struct AppFeature {
                     )
                 case let .activityReported(worktreeId, text):
                     return .merge(
-                        .send(.worktree(.claudeActivityTextChanged(
+                        .send(.worktree(.meisterActivityTextChanged(
                             worktreeId: worktreeId,
                             text: text
                         ))),

@@ -1,13 +1,14 @@
-// Klausemeister/Dependencies/ClaudeStatusClient.swift
+// Klausemeister/Dependencies/MeisterStatusClient.swift
 import Dependencies
 import Foundation
 import OSLog
 
 // MARK: - Model
 
-/// Live state of a meister's Claude Code session as inferred from the
-/// per-worktree status file written by the `klause-status-hook.sh` script.
-nonisolated enum ClaudeSessionState: Equatable {
+/// Live state of a meister agent's session as inferred from the per-worktree
+/// status file written by the `klause-status-hook.sh` script. Agent-neutral:
+/// applies equally to a Claude Code or Codex meister.
+nonisolated enum MeisterSessionState: Equatable {
     case working(tool: String?)
     case idle
     case blocked
@@ -17,20 +18,20 @@ nonisolated enum ClaudeSessionState: Equatable {
 
 // MARK: - Client
 
-struct ClaudeStatusClient {
+struct MeisterStatusClient {
     /// Point-in-time read for one worktree. Returns `.offline` for missing,
     /// stale (>60s), or malformed files.
-    var status: @Sendable (_ worktreeId: String) async -> ClaudeSessionState
+    var status: @Sendable (_ worktreeId: String) async -> MeisterSessionState
     /// Long-lived stream of `(worktreeId, state)` deltas across every
     /// worktree's status file. Emits the initial snapshot of all existing
     /// files on subscription, then one tuple per transition. A periodic
     /// rescan ensures staleness transitions still flow through even when
     /// the filesystem is quiet (e.g. a meister process exited without
     /// firing `SessionEnd`).
-    var stateChanges: @Sendable () -> AsyncStream<(worktreeId: String, state: ClaudeSessionState)>
+    var stateChanges: @Sendable () -> AsyncStream<(worktreeId: String, state: MeisterSessionState)>
 }
 
-extension ClaudeStatusClient: DependencyKey {
+extension MeisterStatusClient: DependencyKey {
     /// Maximum age of a status file before the writer is presumed dead and
     /// the state collapses to `.offline`.
     nonisolated private static let staleAfter: TimeInterval = 60
@@ -46,10 +47,10 @@ extension ClaudeStatusClient: DependencyKey {
         return home.appendingPathComponent(".klausemeister/status", isDirectory: true)
     }()
 
-    nonisolated static let liveValue: ClaudeStatusClient = {
-        let log = Logger(subsystem: "com.klausemeister", category: "ClaudeStatusClient")
+    nonisolated static let liveValue: MeisterStatusClient = {
+        let log = Logger(subsystem: "com.klausemeister", category: "MeisterStatusClient")
 
-        return ClaudeStatusClient(
+        return MeisterStatusClient(
             status: { worktreeId in
                 let url = Self.statusDirectory.appendingPathComponent("\(worktreeId).json")
                 return Self.readState(at: url, now: Date(), log: log)
@@ -64,13 +65,13 @@ extension ClaudeStatusClient: DependencyKey {
                     )
 
                     let queue = DispatchQueue(
-                        label: "com.klausemeister.claude-status-watcher",
+                        label: "com.klausemeister.meister-status-watcher",
                         qos: .utility
                     )
 
                     // Snapshot of the last state emitted per worktree id.
                     // Only mutated from `queue`, so no locking needed.
-                    var lastKnown: [String: ClaudeSessionState] = [:]
+                    var lastKnown: [String: MeisterSessionState] = [:]
 
                     func rescanAndEmit() {
                         let now = Date()
@@ -143,10 +144,10 @@ extension ClaudeStatusClient: DependencyKey {
         )
     }()
 
-    nonisolated static let testValue = ClaudeStatusClient(
-        status: unimplemented("ClaudeStatusClient.status", placeholder: .offline),
+    nonisolated static let testValue = MeisterStatusClient(
+        status: unimplemented("MeisterStatusClient.status", placeholder: .offline),
         stateChanges: unimplemented(
-            "ClaudeStatusClient.stateChanges",
+            "MeisterStatusClient.stateChanges",
             placeholder: AsyncStream { $0.finish() }
         )
     )
@@ -171,8 +172,8 @@ nonisolated private struct StatusFilePayload: Decodable {
     }
 }
 
-private extension ClaudeStatusClient {
-    nonisolated static func readState(at url: URL, now: Date, log: Logger) -> ClaudeSessionState {
+private extension MeisterStatusClient {
+    nonisolated static func readState(at url: URL, now: Date, log: Logger) -> MeisterSessionState {
         guard let data = try? Data(contentsOf: url) else { return .offline }
         let payload: StatusFilePayload
         do {
@@ -202,8 +203,8 @@ private extension ClaudeStatusClient {
 // MARK: - DependencyValues
 
 extension DependencyValues {
-    var claudeStatusClient: ClaudeStatusClient {
-        get { self[ClaudeStatusClient.self] }
-        set { self[ClaudeStatusClient.self] = newValue }
+    var meisterStatusClient: MeisterStatusClient {
+        get { self[MeisterStatusClient.self] }
+        set { self[MeisterStatusClient.self] = newValue }
     }
 }
