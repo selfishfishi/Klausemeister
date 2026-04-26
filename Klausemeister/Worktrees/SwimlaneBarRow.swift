@@ -11,10 +11,9 @@ struct SwimlaneBarRow: View {
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
     var onSelectIssue: ((_ issueId: String) -> Void)?
-    /// Inject a fully-qualified slash command (e.g. `"/klause-workflow:klause-next"`)
-    /// into the meister's tmux session. Commands must include the plugin
-    /// namespace because the meister's Claude Code only resolves short
-    /// forms for user-typed input, not injected input.
+    /// Inject a slash command into the meister's tmux session. Callers
+    /// build the agent-correct form using `worktree.agent.slashCommandPrefix`
+    /// (Claude wants `/klause-workflow:<name>`; Codex wants `/<name>`).
     var onSendSlashCommand: ((_ slashCommand: String) -> Void)?
     /// Kanban-style state jump for the active issue — Linear-only move, does
     /// not invoke any `/klause-*` command.
@@ -288,11 +287,11 @@ struct SwimlaneBarRow: View {
     ) -> some View {
         if let onSendSlashCommand {
             Button("Next (/klause-next)") {
-                onSendSlashCommand("/klause-workflow:klause-next")
+                onSendSlashCommand("\(worktree.agent.slashCommandPrefix)klause-next")
             }
         }
         let runnable = validCommands.compactMap { cmd -> (WorkflowCommand, String)? in
-            guard let slash = cmd.slashCommand else { return nil }
+            guard let slash = cmd.slashCommand(for: worktree.agent) else { return nil }
             return (cmd, slash)
         }
         if !runnable.isEmpty, let onSendSlashCommand {
