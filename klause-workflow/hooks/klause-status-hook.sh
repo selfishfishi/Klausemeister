@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 # Write per-worktree meister session state for Klausemeister's UI.
-# Invoked by Claude Code hooks; payload arrives on stdin as JSON.
-# No-op when KLAUSE_WORKTREE_ID is unset (the session is not a meister).
+# Invoked by Claude Code hooks AND Codex CLI hooks; payload arrives on stdin
+# as JSON. No-op when KLAUSE_WORKTREE_ID is unset (the session is not a
+# meister).
+#
+# Event coverage (per agent):
+#   * SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop — both.
+#   * StopFailure, Notification(*), SessionEnd — Claude only (Codex has no
+#     equivalent events; Stop covers idle-on-Codex via per-turn semantics —
+#     see KLA-210 research).
+#   * PermissionRequest — Codex only (replaces Claude's
+#     Notification(permission_prompt) for the `blocked` state).
 
 set -u
 
@@ -41,6 +50,12 @@ case "$EVENT" in
         ;;
     StopFailure)
         STATE="error"
+        ;;
+    PermissionRequest)
+        # Codex CLI: fires whenever Codex is about to ask for approval
+        # (shell escalation, managed-network, MCP elicitation, etc.).
+        # Direct equivalent of Claude's Notification(permission_prompt).
+        STATE="blocked"
         ;;
     Notification)
         case "$MATCHER" in
