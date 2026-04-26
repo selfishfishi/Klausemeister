@@ -45,6 +45,32 @@ enum MeisterClientError: LocalizedError {
 }
 
 extension MeisterClient {
+    /// Write a placeholder `idle` status file for `worktreeId` so the
+    /// agent half of `WorktreeStatusDot` renders connected from the moment
+    /// the meister is spawned. Best-effort: any I/O failure is logged and
+    /// swallowed — the status hook will populate the file once the agent
+    /// fires a real event.
+    fileprivate static func writeInitialIdleStatus(worktreeId: String) {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let statusDir = home.appendingPathComponent(".klausemeister/status")
+        let statusFile = statusDir.appendingPathComponent("\(worktreeId).json")
+        do {
+            try FileManager.default.createDirectory(at: statusDir, withIntermediateDirectories: true)
+        } catch {
+            log.warning("Failed to create status dir: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let payload = #"""
+        {"state":"idle","timestamp":\#(timestamp),"session_id":""}
+        """#
+        do {
+            try payload.write(to: statusFile, atomically: true, encoding: .utf8)
+        } catch {
+            log.warning("Failed to write initial idle status: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// Resolve the meister binary command for `agent`.
     ///
     /// When the app is launched from Finder/Dock the process PATH is the
@@ -178,6 +204,15 @@ extension MeisterClient {
                 ]
                 MeisterClient.log.info("creating new session \(sessionName, privacy: .public) at \(workingDirectory, privacy: .public)")
                 try await tmux.createSession(sessionName, workingDirectory, env)
+
+                // Seed an initial idle status file so the worktree's status
+                // dot can render the agent half as connected immediately.
+                // Codex's `SessionStart` hook does not fire at TUI startup —
+                // only after the first user prompt — so without this seed a
+                // fresh codex meister leaves the dot red until the user
+                // interacts with the pane. The status hook overwrites this
+                // file as soon as a real hook event fires.
+                writeInitialIdleStatus(worktreeId: worktreeId)
 
                 // Target the session by name and let tmux route to the
                 // newly-created first window. We deliberately do NOT pin to
