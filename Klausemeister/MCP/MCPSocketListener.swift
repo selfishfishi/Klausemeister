@@ -31,6 +31,7 @@ nonisolated private func debugLog(_ message: String) {
     handle.closeFile()
 }
 
+// swiftlint:disable:next type_body_length
 actor MCPSocketListener {
     /// Hard-coded socket path. Klausemeister assumes a single instance per
     /// machine; if you ever run two copies they will fight for this path.
@@ -146,21 +147,29 @@ actor MCPSocketListener {
     }
 
     /// Symlinks `Klausemeister.app/Contents/MacOS/klause-mcp-shim` to a
-    /// stable location and registers it as an MCP server in Claude Code's
-    /// user config so every `claude` instance (including meisters spawned
-    /// inside tmux) knows how to reach us.
+    /// stable location and registers it as an MCP server in both Claude
+    /// Code's and Codex's user config so every meister instance (spawned
+    /// inside tmux) knows how to reach us, regardless of which agent the
+    /// worktree uses.
     ///
-    /// Two things happen here:
+    /// Three things happen here:
     ///   1. A symlink at `~/.klausemeister/bin/klause-mcp-shim` is
     ///      (re-)created pointing to the binary inside the app bundle.
     ///   2. The `klausemeister` MCP server entry is upserted into
     ///      `~/.claude/.mcp.json` with the fully resolved shim path.
     ///      Claude Code's MCP loader does NOT expand `${HOME}` or `~` in
     ///      command strings (they're passed directly to `spawn()`), so the
-    ///      app must write the real absolute path. The shim itself is safe
-    ///      to register globally — it exits immediately with code 2 when
-    ///      `KLAUSE_MEISTER` is not set, so non-meister claude sessions
-    ///      are unaffected.
+    ///      app must write the real absolute path.
+    ///   3. The `[mcp_servers.klausemeister]` table is upserted into
+    ///      `~/.codex/config.toml`. Codex spawns the shim via
+    ///      `/bin/sh -c "exec ~/..."` so tilde expansion happens in the
+    ///      shell.
+    ///
+    /// The shim itself is safe to register globally — it exits immediately
+    /// with code 2 when `KLAUSE_MEISTER` is not set, so non-meister agent
+    /// sessions are unaffected. Both registrations run unconditionally on
+    /// every launch (idempotent and cheap) so users can switch agents per
+    /// worktree without re-running setup.
     private static func installShimSymlink() {
         let fileManager = FileManager.default
         let symlinkURL = URL(fileURLWithPath: shimSymlinkPath)
@@ -186,11 +195,12 @@ actor MCPSocketListener {
             logger.warning("Failed to create shim symlink: \(error.localizedDescription)")
             return
         }
-        registerMCPServer()
+        registerClaudeMCPServer()
+        registerCodexMCPServer()
     }
 
     /// Upsert the `klausemeister` MCP server into `~/.claude/.mcp.json`.
-    private static func registerMCPServer() {
+    private static func registerClaudeMCPServer() {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let mcpConfigURL = home.appendingPathComponent(".claude/.mcp.json")
         var root: [String: Any] = if let data = try? Data(contentsOf: mcpConfigURL),
@@ -213,6 +223,105 @@ actor MCPSocketListener {
         } catch {
             logger.warning("Failed to register MCP server in ~/.claude/.mcp.json: \(error.localizedDescription)")
         }
+    }
+
+    /// Upsert `[mcp_servers.klausemeister]` into `~/.codex/config.toml`.
+    ///
+    /// Codex stores its MCP server config in a TOML file. We hand-roll the
+    /// rewrite because the upsert only touches one named table — pulling in a
+    /// TOML library would be overkill. `upsertKlausemeisterTable(in:)`
+    /// preserves all other top-level keys and `[*]` tables verbatim, including
+    /// any user-authored content above or below the target.
+    private static func registerCodexMCPServer() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let configDir = home.appendingPathComponent(".codex")
+        let configURL = configDir.appendingPathComponent("config.toml")
+        do {
+            try FileManager.default.createDirectory(
+                at: configDir,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            logger.warning("Failed to create ~/.codex: \(error.localizedDescription)")
+            return
+        }
+        let existing: String = if let data = try? Data(contentsOf: configURL),
+                                  let text = String(data: data, encoding: .utf8)
+        {
+            text
+        } else {
+            ""
+        }
+        let updated = upsertKlausemeisterTable(in: existing)
+        do {
+            try updated.write(to: configURL, atomically: true, encoding: .utf8)
+        } catch {
+            logger.warning(
+                "Failed to register MCP server in ~/.codex/config.toml: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    /// Replace or append the canonical `[mcp_servers.klausemeister]` table in
+    /// a TOML document, preserving everything else verbatim.
+    ///
+    /// The target section runs from the `[mcp_servers.klausemeister]` header
+    /// to (but not including) the next line that starts with `[` (after
+    /// whitespace trimming) or EOF. The replacement block is canonical, so
+    /// repeated invocations produce identical output.
+    private static func upsertKlausemeisterTable(in existing: String) -> String {
+        let canonical = """
+        [mcp_servers.klausemeister]
+        command = "/bin/sh"
+        args = ["-c", "exec ~/.klausemeister/bin/klause-mcp-shim"]
+        """
+        let targetHeader = "[mcp_servers.klausemeister]"
+
+        if existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return canonical + "\n"
+        }
+
+        let normalized = existing.replacingOccurrences(of: "\r\n", with: "\n")
+        let lines = normalized.components(separatedBy: "\n")
+        var output: [String] = []
+        var foundTarget = false
+        var insideTarget = false
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if insideTarget {
+                if trimmed.hasPrefix("["), trimmed != targetHeader {
+                    output.append(canonical)
+                    output.append("")
+                    output.append(line)
+                    insideTarget = false
+                }
+                // else: drop — part of the old target block (incl. blank lines)
+            } else if trimmed == targetHeader {
+                insideTarget = true
+                foundTarget = true
+            } else {
+                output.append(line)
+            }
+        }
+
+        if !foundTarget || insideTarget {
+            while let last = output.last,
+                  last.trimmingCharacters(in: .whitespaces).isEmpty
+            {
+                output.removeLast()
+            }
+            if !output.isEmpty {
+                output.append("")
+            }
+            output.append(canonical)
+        }
+
+        var result = output.joined(separator: "\n")
+        if !result.hasSuffix("\n") {
+            result += "\n"
+        }
+        return result
     }
 
     /// Creates a POSIX Unix-domain-socket, binds, and listens. Returns the
