@@ -108,16 +108,16 @@ struct Worktree: Equatable, Identifiable {
     var repoId: String?
     var repoName: String?
     var currentBranch: String?
-    var claudeStatusText: String?
+    var meisterStatusText: String?
     /// Live narration from `reportActivity`. Wins over the static status label
     /// while fresh; the view treats anything older than ~30s as stale.
-    var claudeActivityText: String?
+    var meisterActivityText: String?
     /// Persistent recap from the meister — set when `reportActivity` is
     /// called with a `"recap: "` prefix. No TTL; persists until the next
     /// recap or session disconnect. Overrides activity/progress in the
     /// marquee so the user sees a summary of what the session has done.
     var recapText: String?
-    var claudeActivityUpdatedAt: Date?
+    var meisterActivityUpdatedAt: Date?
     var gitStats: GitStats?
     var inbox: [LinearIssue] = []
     var processing: LinearIssue?
@@ -125,7 +125,7 @@ struct Worktree: Equatable, Identifiable {
     var sortOrder: Int
     var tmuxSessionStatus: TmuxSessionStatus = .unknown
     var meisterStatus: MeisterStatus = .none
-    var claudeStatus: ClaudeSessionState = .offline
+    var meisterSessionState: MeisterSessionState = .offline
     var agent: MeisterAgent = .claude
 
     /// Pending work on this worktree: inbox + processing. Outbox is excluded
@@ -145,7 +145,7 @@ struct Worktree: Equatable, Identifiable {
     /// which lanes are in motion.
     var isMeisterWorking: Bool {
         guard meisterStatus == .running else { return false }
-        if case .working = claudeStatus { return true }
+        if case .working = meisterSessionState { return true }
         return false
     }
 
@@ -221,6 +221,12 @@ struct WorktreeFeature {
         /// showing on top of the terminal. Persisted via
         /// `@Dependency(\.userDefaultsClient)`; hydrated on `.onAppear`.
         var showBoardOverlay: Bool = false
+        /// App-wide default agent applied to newly-created worktrees.
+        /// Persisted via `@Dependency(\.userDefaultsClient)`; hydrated on
+        /// `.onAppear`. Existing worktrees keep whatever agent they were
+        /// created with — change one via the row context menu / ellipsis
+        /// menu.
+        var defaultAgent: MeisterAgent = .claude
 
         /// Hello events that arrived before worktrees were loaded from DB.
         /// Replayed once `worktreesLoaded` populates the worktree array.
@@ -304,13 +310,13 @@ struct WorktreeFeature {
     enum Action: BindableAction, Equatable {
         case binding(BindingAction<State>)
         case onAppear
-        case claudeStatusChanged(worktreeId: String, state: ClaudeSessionState)
-        case claudeStatusTextChanged(worktreeId: String, text: String)
-        case claudeActivityTextChanged(worktreeId: String, text: String)
-        /// Fired by the TTL effect scheduled in `claudeActivityTextChanged`
+        case meisterSessionStateChanged(worktreeId: String, state: MeisterSessionState)
+        case meisterStatusTextChanged(worktreeId: String, text: String)
+        case meisterActivityTextChanged(worktreeId: String, text: String)
+        /// Fired by the TTL effect scheduled in `meisterActivityTextChanged`
         /// to clear the activity slot once the UI ticker has hard-cut back
         /// to the static label.
-        case claudeActivityExpired(worktreeId: String)
+        case meisterActivityExpired(worktreeId: String)
         /// Inject `slashCommand` (e.g. `/klause-next`, `/klause-review`) into
         /// the worktree's tmux session via `TmuxClient.sendKeys`. The meister
         /// reads it as if the user typed it.
@@ -343,6 +349,22 @@ struct WorktreeFeature {
         case worktreeSelected(String?)
         case boardOverlayToggled
         case boardOverlayHydrated(Bool)
+        case defaultAgentHydrated(MeisterAgent)
+        case defaultAgentChanged(MeisterAgent)
+        /// User picked "Switch agent to ..." from a worktree row context menu.
+        /// Optimistic state mutation; persists via `worktreeClient.updateWorktreeAgent`.
+        case switchAgentTapped(worktreeId: String, agent: MeisterAgent)
+        /// Persistence succeeded — no state mutation, optimistic update already
+        /// applied. Kept distinct from the failure case for symmetry with
+        /// `worktreeRenamed`/`worktreeRenameFailed`.
+        case worktreeAgentUpdated(worktreeId: String, agent: MeisterAgent)
+        /// Persistence failed — revert the optimistic state mutation and
+        /// surface an alert.
+        case worktreeAgentUpdateFailed(
+            worktreeId: String,
+            previousAgent: MeisterAgent,
+            error: String
+        )
         case repoCollapseToggled(repoId: String)
         case renameWorktreeTapped(worktreeId: String, newName: String)
         case worktreeRenamed(worktreeId: String, newName: String)
@@ -468,15 +490,14 @@ struct WorktreeFeature {
         case gitFSWatcher(String)
         case refreshWorktreeStats(String)
         case prInfoPoll
-        case claudeStatusWatcher
-        case claudeActivityExpiry(String)
+        case meisterStatusWatcher
+        case meisterActivityExpiry(String)
         case runSchedule(String)
     }
 
     /// How long an activity line lives before the reducer wipes it so
     /// snapshots (`getStatus`, debug panel) don't leak stale narration.
-    /// Matches `ClaudeStatusLineView.freshness` — keep in sync.
-    nonisolated private static let claudeActivityTTL: Duration = .seconds(60)
+    nonisolated private static let meisterActivityTTL: Duration = .seconds(60)
 
     /// How long to wait for the meister's MCP HelloFrame after a spawn before
     /// declaring the meister disconnected. A real hello from the shim normally
@@ -485,6 +506,7 @@ struct WorktreeFeature {
     nonisolated private static let meisterHelloGracePeriod: Duration = .seconds(8)
 
     nonisolated fileprivate static let showBoardOverlayUserDefaultsKey = "showBoardOverlay"
+    nonisolated fileprivate static let defaultAgentUserDefaultsKey = "defaultMeisterAgent"
 
     @Dependency(\.worktreeClient) var worktreeClient
     @Dependency(\.databaseClient) var databaseClient
@@ -495,7 +517,7 @@ struct WorktreeFeature {
     @Dependency(\.surfaceManager) var surfaceManager
     @Dependency(\.continuousClock) var clock
     @Dependency(\.mcpServerClient) var mcpServerClient
-    @Dependency(\.claudeStatusClient) var claudeStatusClient
+    @Dependency(\.meisterStatusClient) var meisterStatusClient
     @Dependency(\.date) var date
     @Dependency(\.userDefaultsClient) var userDefaultsClient
     @Dependency(\.folderPickerClient) var folderPickerClient
@@ -822,6 +844,13 @@ struct WorktreeFeature {
                         )
                         await send(.boardOverlayHydrated(persisted))
                     },
+                    .run { [userDefaultsClient] send in
+                        let raw = userDefaultsClient.string(
+                            Self.defaultAgentUserDefaultsKey
+                        )
+                        let agent = raw.flatMap(MeisterAgent.init(rawValue:)) ?? .claude
+                        await send(.defaultAgentHydrated(agent))
+                    },
                     .run { send in
                         let repos = try await worktreeClient.fetchRepositories()
                         let worktrees = try await worktreeClient.fetchWorktrees()
@@ -845,6 +874,52 @@ struct WorktreeFeature {
 
             case let .boardOverlayHydrated(persisted):
                 state.showBoardOverlay = persisted
+                return .none
+
+            case let .defaultAgentHydrated(agent):
+                state.defaultAgent = agent
+                return .none
+
+            case let .defaultAgentChanged(agent):
+                state.defaultAgent = agent
+                return .run { [userDefaultsClient] _ in
+                    userDefaultsClient.setString(
+                        agent.rawValue,
+                        Self.defaultAgentUserDefaultsKey
+                    )
+                }
+
+            case let .switchAgentTapped(worktreeId, agent):
+                guard let previousAgent = state.worktrees[id: worktreeId]?.agent
+                else { return .none }
+                guard previousAgent != agent else { return .none }
+                state.worktrees[id: worktreeId]?.agent = agent
+                return .run { [worktreeClient] send in
+                    do {
+                        try await worktreeClient.updateWorktreeAgent(worktreeId, agent)
+                        await send(.worktreeAgentUpdated(
+                            worktreeId: worktreeId,
+                            agent: agent
+                        ))
+                    } catch {
+                        await send(.worktreeAgentUpdateFailed(
+                            worktreeId: worktreeId,
+                            previousAgent: previousAgent,
+                            error: error.localizedDescription
+                        ))
+                    }
+                }
+
+            case .worktreeAgentUpdated:
+                return .none
+
+            case let .worktreeAgentUpdateFailed(worktreeId, previousAgent, error):
+                state.worktrees[id: worktreeId]?.agent = previousAgent
+                state.alert = AlertState {
+                    TextState("Failed to switch agent")
+                } message: {
+                    TextState(error)
+                }
                 return .none
 
             case let .worktreesLoaded(repositories, worktreeSnapshots, queueItems, issues):
@@ -901,7 +976,7 @@ struct WorktreeFeature {
                         repoId: snapshot.repoId,
                         repoName: snapshot.repoId.flatMap { repoNames[$0] },
                         currentBranch: previous?.currentBranch,
-                        claudeStatusText: previous?.claudeStatusText,
+                        meisterStatusText: previous?.meisterStatusText,
                         recapText: previous?.recapText,
                         gitStats: previous?.gitStats,
                         inbox: inboxItems.compactMap { issuesByLinearId[$0.issueLinearId] },
@@ -910,7 +985,7 @@ struct WorktreeFeature {
                         sortOrder: snapshot.sortOrder,
                         tmuxSessionStatus: previous?.tmuxSessionStatus ?? .unknown,
                         meisterStatus: previous?.meisterStatus ?? .none,
-                        claudeStatus: previous?.claudeStatus ?? .offline,
+                        meisterSessionState: previous?.meisterSessionState ?? .offline,
                         agent: snapshot.agent
                     )
                 })
@@ -1009,15 +1084,15 @@ struct WorktreeFeature {
                         }
                     }
                     .cancellable(id: CancelID.prInfoPoll, cancelInFlight: true),
-                    .run(priority: .utility) { [claudeStatusClient] send in
-                        for await update in claudeStatusClient.stateChanges() {
-                            await send(.claudeStatusChanged(
+                    .run(priority: .utility) { [meisterStatusClient] send in
+                        for await update in meisterStatusClient.stateChanges() {
+                            await send(.meisterSessionStateChanged(
                                 worktreeId: update.worktreeId,
                                 state: update.state
                             ))
                         }
                     }
-                    .cancellable(id: CancelID.claudeStatusWatcher, cancelInFlight: true),
+                    .cancellable(id: CancelID.meisterStatusWatcher, cancelInFlight: true),
                     .send(.syncAllRepos),
                     .send(.reconcileTmuxSessions),
                     .send(.refreshSchedulesRequested),
@@ -1095,6 +1170,7 @@ struct WorktreeFeature {
                 guard !sanitized.isEmpty else { return .none }
                 state.isCreatingWorktree = true
                 let repoPath = repo.path
+                let agent = state.defaultAgent
                 return .run { [userDefaultsClient] send in
                     let basePath = userDefaultsClient.string(
                         WorktreeConfig.userDefaultsBasePathKey
@@ -1124,7 +1200,7 @@ struct WorktreeFeature {
                         )
                         do {
                             let snapshot = try await worktreeClient.createWorktree(
-                                sanitized, worktreePath, repoId
+                                sanitized, worktreePath, repoId, agent
                             )
                             await send(.worktreeCreated(.success(snapshot)))
                         } catch {
@@ -1941,9 +2017,9 @@ struct WorktreeFeature {
                 }
                 return .none
 
-            case let .claudeStatusChanged(worktreeId, claudeState):
-                state.worktrees[id: worktreeId]?.claudeStatus = claudeState
-                // Don't clear claudeStatusText on idle/blocked transitions —
+            case let .meisterSessionStateChanged(worktreeId, claudeState):
+                state.worktrees[id: worktreeId]?.meisterSessionState = claudeState
+                // Don't clear meisterStatusText on idle/blocked transitions —
                 // reportProgress is a deliberate step-level label ("klause-define
                 // — exploring codebase") that should persist until the next
                 // reportProgress call. Clearing on idle defeats its purpose
@@ -1951,47 +2027,47 @@ struct WorktreeFeature {
                 // working→idle on every single tool invocation. Only wipe on
                 // offline (session died — everything stale).
                 if claudeState == .offline {
-                    state.worktrees[id: worktreeId]?.claudeStatusText = nil
+                    state.worktrees[id: worktreeId]?.meisterStatusText = nil
                 }
                 // Activity text is session-scoped; only wipe it when the session
                 // itself goes away. Idle/blocked/error can still carry ambient
                 // narration ("waiting on user feedback"). Cancel the pending
                 // TTL timer so it doesn't fire into an already-empty slot.
                 if claudeState == .offline {
-                    state.worktrees[id: worktreeId]?.claudeActivityText = nil
-                    state.worktrees[id: worktreeId]?.claudeActivityUpdatedAt = nil
+                    state.worktrees[id: worktreeId]?.meisterActivityText = nil
+                    state.worktrees[id: worktreeId]?.meisterActivityUpdatedAt = nil
                     state.worktrees[id: worktreeId]?.recapText = nil
-                    return .cancel(id: CancelID.claudeActivityExpiry(worktreeId))
+                    return .cancel(id: CancelID.meisterActivityExpiry(worktreeId))
                 }
                 return .none
 
-            case let .claudeStatusTextChanged(worktreeId, text):
-                state.worktrees[id: worktreeId]?.claudeStatusText = text
+            case let .meisterStatusTextChanged(worktreeId, text):
+                state.worktrees[id: worktreeId]?.meisterStatusText = text
                 return .none
 
-            case let .claudeActivityTextChanged(worktreeId, text):
+            case let .meisterActivityTextChanged(worktreeId, text):
                 // Detect recap prefix: "recap: <summary>". Recaps persist
                 // with no TTL and override the normal marquee cascade until
                 // the next recap or session disconnect.
                 let recapPrefix = "recap: "
                 if text.hasPrefix(recapPrefix) {
                     state.worktrees[id: worktreeId]?.recapText = String(text.dropFirst(recapPrefix.count))
-                    return .cancel(id: CancelID.claudeActivityExpiry(worktreeId))
+                    return .cancel(id: CancelID.meisterActivityExpiry(worktreeId))
                 }
 
-                state.worktrees[id: worktreeId]?.claudeActivityText = text
-                state.worktrees[id: worktreeId]?.claudeActivityUpdatedAt = date.now
+                state.worktrees[id: worktreeId]?.meisterActivityText = text
+                state.worktrees[id: worktreeId]?.meisterActivityUpdatedAt = date.now
                 // Re-arm the TTL timer: cancelInFlight ensures each fresh
                 // narration resets the clock rather than stacking timers.
                 return .run { send in
-                    try? await clock.sleep(for: Self.claudeActivityTTL)
-                    await send(.claudeActivityExpired(worktreeId: worktreeId))
+                    try? await clock.sleep(for: Self.meisterActivityTTL)
+                    await send(.meisterActivityExpired(worktreeId: worktreeId))
                 }
-                .cancellable(id: CancelID.claudeActivityExpiry(worktreeId), cancelInFlight: true)
+                .cancellable(id: CancelID.meisterActivityExpiry(worktreeId), cancelInFlight: true)
 
-            case let .claudeActivityExpired(worktreeId):
-                state.worktrees[id: worktreeId]?.claudeActivityText = nil
-                state.worktrees[id: worktreeId]?.claudeActivityUpdatedAt = nil
+            case let .meisterActivityExpired(worktreeId):
+                state.worktrees[id: worktreeId]?.meisterActivityText = nil
+                state.worktrees[id: worktreeId]?.meisterActivityUpdatedAt = nil
                 return .none
 
             case let .sendSlashCommandRequested(worktreeId, slashCommand):

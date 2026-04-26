@@ -114,7 +114,7 @@ Cross-feature events use **TCA delegate actions** intercepted by `AppFeature`'s 
 - `GHClient` — `gh` CLI wrapper (PR creation / merge)
 - `TmuxClient` — `tmux` subprocess wrapper, session lifecycle bound 1:1 to worktrees
 - `MeisterClient` — spawns/monitors meister Claude Code processes inside tmux windows
-- `ClaudeStatusClient` — reads meister activity state
+- `MeisterStatusClient` — reads meister activity state
 - `MCPServerClient` — starts the in-process MCP server, exposes an `AsyncStream` of events, discovers active shims
 - `ActionRegistry` — central registry of `AppCommand` → reducer action mappings (used by command palette + shortcut center)
 - `KeyBindingsClient` — load/save user-customized key bindings

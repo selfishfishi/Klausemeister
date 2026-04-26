@@ -11,11 +11,12 @@ struct SwimlaneHeaderView: View {
             HStack(spacing: 6) {
                 WorktreeStatusDot(
                     meisterStatus: worktree.meisterStatus,
-                    claudeStatus: worktree.claudeStatus
+                    agentSessionState: worktree.meisterSessionState
                 )
                 Text(worktree.name)
                     .font(.body)
                     .lineLimit(1)
+                AgentBadge(agent: worktree.agent)
             }
             if let processing = worktree.processing {
                 Text(processing.identifier)

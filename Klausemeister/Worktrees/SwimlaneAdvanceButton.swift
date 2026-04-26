@@ -16,11 +16,11 @@ struct SwimlaneAdvanceButton: View {
             let (isEnabled, tooltip) = advanceAffordance(nextCommand: nextCommand)
             let isWorking: Bool = {
                 guard worktree.meisterStatus == .running else { return false }
-                if case .working = worktree.claudeStatus { return true }
+                if case .working = worktree.meisterSessionState { return true }
                 return false
             }()
             let isBlocked = worktree.meisterStatus == .running
-                && worktree.claudeStatus == .blocked
+                && worktree.meisterSessionState == .blocked
 
             Group {
                 if isWorking {
@@ -61,7 +61,7 @@ struct SwimlaneAdvanceButton: View {
     /// working state. Activity and progress go to the marquee ticker
     /// below the processing box, not here.
     private var currentToolName: String? {
-        if case let .working(tool) = worktree.claudeStatus,
+        if case let .working(tool) = worktree.meisterSessionState,
            let tool, !tool.isEmpty
         {
             return tool
@@ -88,8 +88,8 @@ struct SwimlaneAdvanceButton: View {
 
     /// Whether the Advance button should be enabled, plus a contextual
     /// tooltip. Primary gate is `meisterStatus` — a disconnected process
-    /// cannot receive `send-keys`. Secondary gate is `claudeStatus` for
-    /// working/blocked states where interrupting mid-tool would be harmful.
+    /// cannot receive `send-keys`. Secondary gate is `meisterSessionState`
+    /// for working/blocked states where interrupting mid-tool would be harmful.
     private func advanceAffordance(nextCommand _: WorkflowCommand) -> (Bool, String) {
         switch worktree.meisterStatus {
         case .none, .disconnected:
@@ -99,7 +99,7 @@ struct SwimlaneAdvanceButton: View {
         case .running:
             break
         }
-        switch worktree.claudeStatus {
+        switch worktree.meisterSessionState {
         case .working:
             return (false, "Meister is working…")
         case .blocked:
@@ -161,7 +161,7 @@ private struct WorkingProgressPill: View {
 // MARK: - Blocked (waiting for user input) state
 
 /// Replaces the Advance button when the meister is idle on a permission /
-/// elicitation prompt (`claudeStatus == .blocked`). Same rotating comet
+/// elicitation prompt (`meisterSessionState == .blocked`). Same rotating comet
 /// and colour cycle as the swimlane border, plus a centred `?` whose
 /// glyph is also masked by the rotating gradient — so the same light
 /// visibly sweeps across both the capsule border and the question mark

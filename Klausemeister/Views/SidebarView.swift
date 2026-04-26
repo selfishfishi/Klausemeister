@@ -92,6 +92,11 @@ struct SidebarView: View {
             },
             onDelete: {
                 store.send(.worktree(.removeWorktreeTapped(worktreeId: worktree.id)))
+            },
+            onSwitchAgent: { agent in
+                store.send(.worktree(.switchAgentTapped(
+                    worktreeId: worktree.id, agent: agent
+                )))
             }
         )
         // `SidebarWorktreeRow: Equatable` — SwiftUI short-circuits body
@@ -106,6 +111,7 @@ struct SidebarWorktreeRow: View, Equatable {
     let isSelected: Bool
     let onSelect: () -> Void
     let onDelete: () -> Void
+    var onSwitchAgent: ((MeisterAgent) -> Void)?
 
     @Environment(\.themeColors) private var themeColors
     @Environment(\.keyBindings) private var bindings
@@ -126,7 +132,7 @@ struct SidebarWorktreeRow: View, Equatable {
             HStack(spacing: 6) {
                 WorktreeStatusDot(
                     meisterStatus: worktree.meisterStatus,
-                    claudeStatus: worktree.claudeStatus
+                    agentSessionState: worktree.meisterSessionState
                 )
                 VStack(alignment: .leading, spacing: 3) {
                     if worktree.isMeisterWorking {
@@ -172,6 +178,7 @@ struct SidebarWorktreeRow: View, Equatable {
                     }
                 }
                 Spacer()
+                AgentBadge(agent: worktree.agent)
                 if worktree.totalIssueCount > 0 {
                     Text("\(worktree.totalIssueCount)")
                         .font(.caption2)
@@ -203,6 +210,22 @@ struct SidebarWorktreeRow: View, Equatable {
         .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
         .onHover { hovering in isHovering = hovering }
         .contextMenu {
+            if let onSwitchAgent {
+                Menu("Agent") {
+                    ForEach(MeisterAgent.allCases, id: \.self) { agent in
+                        Button {
+                            onSwitchAgent(agent)
+                        } label: {
+                            if agent == worktree.agent {
+                                Label(agentMenuLabel(agent), systemImage: "checkmark")
+                            } else {
+                                Text(agentMenuLabel(agent))
+                            }
+                        }
+                    }
+                }
+                Divider()
+            }
             Button(role: .destructive) {
                 onDelete()
             } label: {
@@ -212,21 +235,28 @@ struct SidebarWorktreeRow: View, Equatable {
         }
     }
 
+    private func agentMenuLabel(_ agent: MeisterAgent) -> String {
+        switch agent {
+        case .claude: "Claude Code"
+        case .codex: "Codex"
+        }
+    }
+
     /// Long-form narration shown as a scrolling marquee. Priority:
     /// 1. `reportActivity` — live narration (60s TTL)
     /// 2. `reportProgress` — step-boundary label (cleared on idle)
     /// Returns nil when only the bare tool name is available — those use
     /// the static `sidebarToolName` fallback below.
     private var sidebarNarrationText: String? {
-        if let text = worktree.claudeActivityText, !text.isEmpty { return text }
-        if let text = worktree.claudeStatusText, !text.isEmpty { return text }
+        if let text = worktree.meisterActivityText, !text.isEmpty { return text }
+        if let text = worktree.meisterStatusText, !text.isEmpty { return text }
         return nil
     }
 
     /// Hook-written tool name (e.g. "Bash", "Grep") — short enough to render
     /// as plain truncated text rather than a marquee.
     private var sidebarToolName: String? {
-        if case let .working(tool) = worktree.claudeStatus,
+        if case let .working(tool) = worktree.meisterSessionState,
            let tool, !tool.isEmpty
         {
             return tool

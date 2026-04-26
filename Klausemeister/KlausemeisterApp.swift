@@ -135,6 +135,29 @@ struct KlausemeisterApp: App {
                     }
                 }
             }
+            CommandMenu("Default Agent") {
+                let currentDefault = store.worktree.defaultAgent
+                Section("New worktrees use") {
+                    ForEach(MeisterAgent.allCases, id: \.self) { agent in
+                        Button {
+                            store.send(.worktree(.defaultAgentChanged(agent)))
+                        } label: {
+                            if agent == currentDefault {
+                                Label(agentDisplayName(agent), systemImage: "checkmark")
+                            } else {
+                                Text(agentDisplayName(agent))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func agentDisplayName(_ agent: MeisterAgent) -> String {
+        switch agent {
+        case .claude: "Claude Code"
+        case .codex: "Codex"
         }
     }
 }

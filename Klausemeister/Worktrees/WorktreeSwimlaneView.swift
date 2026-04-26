@@ -217,6 +217,9 @@ struct WorktreeSwimlaneView: View {
             },
             onMoveIssueStatus: { issueId, target in
                 store.send(.moveIssueStatusRequested(issueId: issueId, target: target))
+            },
+            onSwitchAgent: { agent in
+                store.send(.switchAgentTapped(worktreeId: worktree.id, agent: agent))
             }
         )
     }

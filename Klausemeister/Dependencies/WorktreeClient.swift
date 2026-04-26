@@ -34,9 +34,19 @@ struct WorktreeClient {
     // MARK: - Worktree CRUD
 
     var fetchWorktrees: @Sendable () async throws -> [WorktreesLoadedWorktree]
-    var createWorktree: @Sendable (_ name: String, _ gitWorktreePath: String, _ repoId: String) async throws -> WorktreesLoadedWorktree
+    var createWorktree: @Sendable (
+        _ name: String,
+        _ gitWorktreePath: String,
+        _ repoId: String,
+        _ agent: MeisterAgent
+    ) async throws -> WorktreesLoadedWorktree
     var deleteWorktree: @Sendable (_ worktreeId: String) async throws -> Void
     var renameWorktree: @Sendable (_ worktreeId: String, _ newName: String) async throws -> Void
+    /// Persist a per-worktree agent change. Takes effect on the next meister
+    /// spawn — running tmux sessions keep the agent they were started with
+    /// (next-spawn semantics is intentional; restarting in-flight sessions is
+    /// out of scope per KLA-217).
+    var updateWorktreeAgent: @Sendable (_ worktreeId: String, _ agent: MeisterAgent) async throws -> Void
     var updateWorktreeOrder: @Sendable (_ orderedIds: [String]) async throws -> Void
     var ignoreWorktreePath: @Sendable (_ path: String, _ repoId: String) async throws -> Void
 
@@ -154,7 +164,7 @@ extension WorktreeClient: DependencyKey {
                 }
             },
 
-            createWorktree: { name, gitWorktreePath, repoId in
+            createWorktree: { name, gitWorktreePath, repoId, agent in
                 try await dbQueue.write { db in
                     let maxSort = try Int.fetchOne(db, sql: "SELECT MAX(sortOrder) FROM worktrees") ?? -1
                     let record = WorktreeRecord(
@@ -164,7 +174,7 @@ extension WorktreeClient: DependencyKey {
                         gitWorktreePath: gitWorktreePath,
                         createdAt: ISO8601DateFormatter.shared.string(from: Date()),
                         repoId: repoId,
-                        meisterAgent: MeisterAgent.claude.rawValue
+                        meisterAgent: agent.rawValue
                     )
                     try record.save(db)
                     return WorktreesLoadedWorktree(from: record)
@@ -182,6 +192,15 @@ extension WorktreeClient: DependencyKey {
                     try db.execute(
                         sql: "UPDATE worktrees SET name = ? WHERE worktreeId = ?",
                         arguments: [newName, worktreeId]
+                    )
+                }
+            },
+
+            updateWorktreeAgent: { worktreeId, agent in
+                try await dbQueue.write { db in
+                    try db.execute(
+                        sql: "UPDATE worktrees SET meisterAgent = ? WHERE worktreeId = ?",
+                        arguments: [agent.rawValue, worktreeId]
                     )
                 }
             },
@@ -497,6 +516,7 @@ extension WorktreeClient: DependencyKey {
         createWorktree: unimplemented("WorktreeClient.createWorktree"),
         deleteWorktree: unimplemented("WorktreeClient.deleteWorktree"),
         renameWorktree: unimplemented("WorktreeClient.renameWorktree"),
+        updateWorktreeAgent: unimplemented("WorktreeClient.updateWorktreeAgent"),
         updateWorktreeOrder: unimplemented("WorktreeClient.updateWorktreeOrder"),
         ignoreWorktreePath: unimplemented("WorktreeClient.ignoreWorktreePath"),
         fetchQueueItems: unimplemented("WorktreeClient.fetchQueueItems"),

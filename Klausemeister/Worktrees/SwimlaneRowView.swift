@@ -19,6 +19,7 @@ struct SwimlaneRowView: View {
     var onSelectIssue: ((_ issueId: String) -> Void)?
     var onSendSlashCommand: ((_ slashCommand: String) -> Void)?
     var onMoveIssueStatus: ((_ issueId: String, _ target: MeisterState) -> Void)?
+    var onSwitchAgent: ((_ agent: MeisterAgent) -> Void)?
 
     @Environment(\.themeColors) private var themeColors
     @Environment(\.swimlaneAnimating) private var isAnimating
@@ -137,6 +138,22 @@ struct SwimlaneRowView: View {
 
     private var ellipsisMenu: some View {
         Menu {
+            if let onSwitchAgent {
+                Menu("Agent") {
+                    ForEach(MeisterAgent.allCases, id: \.self) { agent in
+                        Button {
+                            onSwitchAgent(agent)
+                        } label: {
+                            if agent == worktree.agent {
+                                Label(agentMenuLabel(agent), systemImage: "checkmark")
+                            } else {
+                                Text(agentMenuLabel(agent))
+                            }
+                        }
+                    }
+                }
+                Divider()
+            }
             if let onClearInbox {
                 Button { onClearInbox() } label: {
                     Label("Clear inbox", systemImage: "tray")
@@ -166,6 +183,13 @@ struct SwimlaneRowView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private func agentMenuLabel(_ agent: MeisterAgent) -> String {
+        switch agent {
+        case .claude: "Claude Code"
+        case .codex: "Codex"
+        }
     }
 }
 
