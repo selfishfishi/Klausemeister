@@ -6,25 +6,35 @@ import SwiftUI
 /// edge for `.queued`; rotating comet trail for `.inProgress`). `done`
 /// renders desaturated and dimmed via `displayIntensity` so completed work
 /// recedes in the user's eye relative to in-flight and pending cells.
+///
+/// **Selection states** (set when the user clicks a cell to inspect its
+/// dependency paths):
+/// - `isSelected`: the cell the user clicked. Strong selection ring.
+/// - `isOnHighlightedPath`: the cell is in the selected cell's transitive
+///   blocker/dependent closure. Renders normally — the dimming on
+///   non-path cells does the work.
+/// - `isDimmed`: a selection exists somewhere AND this cell isn't on its
+///   path. Renders desaturated + low-opacity so the path stands out.
 struct GanttCellView: View {
     let item: ScheduleItem
+    var isSelected: Bool = false
+    var isOnHighlightedPath: Bool = false
+    var isDimmed: Bool = false
 
     @Environment(\.themeColors) private var themeColors
 
     var body: some View {
         let tint = item.status.tint
-        let intensity = item.status.displayIntensity
+        let baseIntensity = item.status.displayIntensity
+        let intensity = isDimmed ? baseIntensity * 0.30 : baseIntensity
         let isDone = item.status == .done
 
         HStack(alignment: .center, spacing: 6) {
+            // Status pip — always visible, gives the status a glanceable
+            // chip even for users who can't read the tint difference.
+            StatusPip(status: item.status, tint: tint)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    if isDone {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(tint)
-                            .accessibilityLabel("Done")
-                    }
                     Text(item.issueIdentifier)
                         .font(.caption.monospaced().weight(.semibold))
                         .foregroundStyle(tint.opacity(0.95 * intensity))
@@ -34,27 +44,27 @@ struct GanttCellView: View {
                     .font(.caption2)
                     .foregroundStyle(.primary.opacity(intensity))
                     .strikethrough(isDone, color: .primary.opacity(intensity))
-                    .lineLimit(2)
+                    .lineLimit(3)
                     .truncationMode(.tail)
             }
             Spacer(minLength: 4)
             if isDone {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(tint)
+                    .foregroundStyle(tint.opacity(intensity))
             } else {
                 WeightDots(weight: item.weight, tint: tint, intensity: intensity)
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(tint.opacity((isDone ? 0.22 : 0.12) * intensity))
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(tint.opacity((isDone ? 0.22 : 0.14) * intensity))
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(
                     tint.opacity((isDone ? 0.85 : 0.55) * intensity),
                     lineWidth: isDone ? 1.25 : 0.75
@@ -63,10 +73,21 @@ struct GanttCellView: View {
         .overlay {
             statusMotionOverlay(tint: tint)
         }
-        .saturation(isDone ? 0.8 : 1.0)
+        .overlay {
+            // Selection ring renders ON TOP of motion overlays so it stays
+            // visible even on `inProgress` cells with their comet trail.
+            if isSelected {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(tint, lineWidth: 2.0)
+                    .shadow(color: tint.opacity(0.6), radius: 6)
+            }
+        }
+        .saturation(isDimmed ? 0.5 : (isDone ? 0.8 : 1.0))
         .shadow(
-            color: tint.opacity(item.status == .inProgress ? 0.35 : 0.0),
-            radius: 8
+            color: tint.opacity(
+                isSelected ? 0.5 : (item.status == .inProgress ? 0.35 : 0.0)
+            ),
+            radius: isSelected ? 10 : 8
         )
     }
 
@@ -104,6 +125,40 @@ private struct WeightDots: View {
                     .fill(tint.opacity(0.85 * intensity))
                     .frame(width: 4, height: 4)
             }
+        }
+    }
+}
+
+/// Small leading status indicator. Combines a colored dot with an SF Symbol
+/// so the status reads at a glance even for users who can't distinguish the
+/// status tints (color-blind safety + faster scan).
+struct StatusPip: View {
+    let status: ScheduleItemStatus
+    let tint: Color
+
+    var body: some View {
+        Image(systemName: symbolName)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .frame(width: 14, height: 14)
+            .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var symbolName: String {
+        switch status {
+        case .planned: "circle.dotted"
+        case .queued: "circle"
+        case .inProgress: "circle.lefthalf.filled"
+        case .done: "checkmark.circle.fill"
+        }
+    }
+
+    private var accessibilityLabel: String {
+        switch status {
+        case .planned: "Planned"
+        case .queued: "Queued"
+        case .inProgress: "In progress"
+        case .done: "Done"
         }
     }
 }

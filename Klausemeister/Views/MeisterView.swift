@@ -111,12 +111,12 @@ struct MeisterView: View {
             .padding(.bottom, 6)
 
             if let onScheduleTapped, !schedules.isEmpty {
-                RepoScheduleStripView(
+                MeisterScheduleStripView(
                     schedules: schedules,
                     onScheduleTapped: onScheduleTapped
                 )
-                .padding(.horizontal, 12)
-                .padding(.bottom, 4)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
             }
 
             // Kanban board
