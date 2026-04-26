@@ -163,7 +163,8 @@ extension WorktreeClient: DependencyKey {
                         sortOrder: maxSort + 1,
                         gitWorktreePath: gitWorktreePath,
                         createdAt: ISO8601DateFormatter.shared.string(from: Date()),
-                        repoId: repoId
+                        repoId: repoId,
+                        meisterAgent: MeisterAgent.claude.rawValue
                     )
                     try record.save(db)
                     return WorktreesLoadedWorktree(from: record)
@@ -374,7 +375,8 @@ extension WorktreeClient: DependencyKey {
                             sortOrder: maxSort,
                             gitWorktreePath: entry.path,
                             createdAt: ISO8601DateFormatter.shared.string(from: Date()),
-                            repoId: repoId
+                            repoId: repoId,
+                            meisterAgent: MeisterAgent.claude.rawValue
                         )
                         try record.save(db)
                         inserted.append(WorktreesLoadedWorktree(from: record))
