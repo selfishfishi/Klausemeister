@@ -33,28 +33,35 @@ struct WorktreesLoadedWorktree: Equatable, Identifiable {
     let sortOrder: Int
     let gitWorktreePath: String
     let repoId: String?
+    let agent: MeisterAgent
 
     nonisolated init(
         id: String,
         name: String,
         sortOrder: Int,
         gitWorktreePath: String,
-        repoId: String?
+        repoId: String?,
+        agent: MeisterAgent
     ) {
         self.id = id
         self.name = name
         self.sortOrder = sortOrder
         self.gitWorktreePath = gitWorktreePath
         self.repoId = repoId
+        self.agent = agent
     }
 
     nonisolated init(from record: WorktreeRecord) {
+        // Forward-compat: an unknown raw value (hand-edited DB, future
+        // agent stamped by another build) degrades to `.claude` rather
+        // than crashing the sidebar load.
         self.init(
             id: record.worktreeId,
             name: record.name,
             sortOrder: record.sortOrder,
             gitWorktreePath: record.gitWorktreePath,
-            repoId: record.repoId
+            repoId: record.repoId,
+            agent: MeisterAgent(rawValue: record.meisterAgent) ?? .claude
         )
     }
 }
@@ -119,6 +126,7 @@ struct Worktree: Equatable, Identifiable {
     var tmuxSessionStatus: TmuxSessionStatus = .unknown
     var meisterStatus: MeisterStatus = .none
     var claudeStatus: ClaudeSessionState = .offline
+    var agent: MeisterAgent = .claude
 
     /// Pending work on this worktree: inbox + processing. Outbox is excluded
     /// because items accumulate there until an explicit push/clear, which
@@ -900,7 +908,8 @@ struct WorktreeFeature {
                         sortOrder: snapshot.sortOrder,
                         tmuxSessionStatus: previous?.tmuxSessionStatus ?? .unknown,
                         meisterStatus: previous?.meisterStatus ?? .none,
-                        claudeStatus: previous?.claudeStatus ?? .offline
+                        claudeStatus: previous?.claudeStatus ?? .offline,
+                        agent: snapshot.agent
                     )
                 })
                 state.worktrees.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -1147,7 +1156,8 @@ struct WorktreeFeature {
                     repoName: repoName,
                     currentBranch: branch,
                     sortOrder: snapshot.sortOrder,
-                    tmuxSessionStatus: .needsCreation
+                    tmuxSessionStatus: .needsCreation,
+                    agent: snapshot.agent
                 ))
                 state.worktrees.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
                 return .none
@@ -1802,7 +1812,8 @@ struct WorktreeFeature {
                         gitWorktreePath: snapshot.gitWorktreePath,
                         repoId: snapshot.repoId,
                         repoName: repoName,
-                        sortOrder: snapshot.sortOrder
+                        sortOrder: snapshot.sortOrder,
+                        agent: snapshot.agent
                     ))
                 }
                 if !result.inserted.isEmpty {

@@ -200,5 +200,13 @@ enum DatabaseMigrations {
                 t.add(column: "createdAt", .text).notNull().defaults(to: "")
             }
         }
+
+        migrator.registerMigration("v16-worktrees-meister-agent") { db in
+            try db.alter(table: "worktrees") { t in
+                t.add(column: "meisterAgent", .text)
+                    .notNull()
+                    .defaults(to: "claude")
+            }
+        }
     }
 }
