@@ -47,11 +47,11 @@ Build the input JSON for the scheduling script:
 {
   "tickets": [
     {
-      "id": "<linear UUID>",
+      "id": "<linear UUID or KLA-XXX identifier>",
       "identifier": "<KLA-123>",
       "title": "<issue title>",
       "weight": <1|2|3>,
-      "blockedBy": ["<linear UUID>", ...]
+      "blockedBy": ["<linear UUID or KLA-XXX identifier>", ...]
     }
   ],
   "worktrees": [
@@ -63,6 +63,11 @@ Build the input JSON for the scheduling script:
   ]
 }
 ```
+
+`id` and `blockedBy` entries can be either Linear UUIDs or human identifiers
+(e.g. `KLA-220`) — `saveSchedule` resolves both via `imported_issues`. The
+algorithm itself only cares about identity, so passing the `KLA-XXX` strings
+straight from `list_issues` is fine; no UUID-substitution dance required.
 
 **Weight mapping** from Linear estimate or complexity label:
 - `simple` label or estimate <= 1 -> weight 1
@@ -140,12 +145,26 @@ Before making any MCP calls, determine the schedule name:
 1. Call `saveSchedule` with the assignment plan. The payload shape is:
    ```json
    {
+     "repoId": "<repo id>",
      "name": "<schedule name>",
-     "assignments": [
-       { "issueLinearId": "<UUID>", "targetWorktreeId": "<worktreeId>", "queuePosition": <int> }
+     "linearProjectId": "<optional linear project id>",
+     "items": [
+       {
+         "worktreeId": "<klausemeister worktree id>",
+         "issueLinearId": "<linear UUID or KLA-XXX identifier>",
+         "issueIdentifier": "<KLA-123>",
+         "issueTitle": "<issue title>",
+         "position": <int>,
+         "weight": <1|2|3>,
+         "blockedByIssueLinearIds": ["<linear UUID or KLA-XXX identifier>", ...]
+       }
      ]
    }
    ```
+   `issueLinearId` and entries in `blockedByIssueLinearIds` accept either a
+   Linear UUID or the human identifier (e.g. `KLA-220`) — pass whichever the
+   Linear MCP gave you. No need to enqueue/listWorktrees/dequeue to coerce
+   identifiers into UUIDs first.
 2. Report: `Saved as schedule "<name>" (<id>). Open it from the sidebar pill under <repo-name> to view the gantt or run it later.`
 
 ### On `run`

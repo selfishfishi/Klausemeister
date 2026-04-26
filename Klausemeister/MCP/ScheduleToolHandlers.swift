@@ -11,28 +11,58 @@ extension ToolHandlers {
     /// Persist a fresh schedule + its items in a single transaction.
     /// Returns `{ "scheduleId": ... }` so callers can immediately reference
     /// the new plan without a follow-up `listSchedules`.
+    ///
+    /// `items[].issueLinearId` and entries in `items[].blockedByIssueLinearIds`
+    /// accept either the Linear UUID or the human identifier (e.g. `KLA-220`),
+    /// matching `enqueueItem` / `dequeueItem`. Both inputs are normalised to
+    /// the canonical UUID before persisting so downstream queries don't need
+    /// to know which form the caller used.
     static func saveSchedule(
         input: SaveScheduleInput,
         eventContinuation: AsyncStream<MCPServerEvent>.Continuation
     ) async throws -> ToolResult {
         @Dependency(\.worktreeClient) var worktreeClient
+        @Dependency(\.databaseClient) var databaseClient
 
         let scheduleId = UUID().uuidString
         let createdAt = ISO8601DateFormatter.shared.string(from: Date())
 
-        let items: [ScheduleItem] = input.items.map { item in
-            ScheduleItem(
+        // Resolve every issue reference (item ids + blocker ids) to canonical
+        // UUIDs up front. A single missing issue aborts the whole save —
+        // partial schedules are worse than none, since `runSchedule` can't
+        // recover from a bad reference.
+        var items: [ScheduleItem] = []
+        items.reserveCapacity(input.items.count)
+        for item in input.items {
+            guard let resolvedIssueId = try await Self.resolveIssueLinearId(
+                item.issueLinearId, databaseClient: databaseClient
+            ) else {
+                return .failure("Issue \(item.issueLinearId) not found in local cache — import it first")
+            }
+
+            var resolvedBlockers: [String] = []
+            resolvedBlockers.reserveCapacity(item.blockedByIssueLinearIds.count)
+            for blocker in item.blockedByIssueLinearIds {
+                guard let resolvedBlockerId = try await Self.resolveIssueLinearId(
+                    blocker, databaseClient: databaseClient
+                ) else {
+                    return .failure("Blocker issue \(blocker) not found in local cache — import it first")
+                }
+                resolvedBlockers.append(resolvedBlockerId)
+            }
+
+            items.append(ScheduleItem(
                 id: UUID().uuidString,
                 scheduleId: scheduleId,
                 worktreeId: item.worktreeId,
-                issueLinearId: item.issueLinearId,
+                issueLinearId: resolvedIssueId,
                 issueIdentifier: item.issueIdentifier,
                 issueTitle: item.issueTitle,
                 position: item.position,
                 weight: item.weight,
-                blockedByIssueLinearIds: item.blockedByIssueLinearIds,
+                blockedByIssueLinearIds: resolvedBlockers,
                 status: .planned
-            )
+            ))
         }
         let schedule = Schedule(
             id: scheduleId,
@@ -182,6 +212,24 @@ extension ToolHandlers {
     }
 
     // MARK: - Helpers
+
+    /// Dual lookup: try the input as a Linear UUID first, then as a human
+    /// identifier (e.g. `KLA-220`). Mirrors the contract of `enqueueItem` /
+    /// `dequeueItem` so callers can hand the same value to any of the
+    /// queue-mutation tools. Returns `nil` if the issue isn't in the local
+    /// cache; callers turn that into a `.failure` ToolResult.
+    private static func resolveIssueLinearId(
+        _ raw: String,
+        databaseClient: DatabaseClient
+    ) async throws -> String? {
+        if let issue = try await databaseClient.fetchImportedIssue(raw) {
+            return issue.id
+        }
+        if let issue = try await databaseClient.fetchImportedIssueByIdentifier(raw) {
+            return issue.id
+        }
+        return nil
+    }
 
     nonisolated private static let scheduleEncoder: JSONEncoder = {
         let enc = JSONEncoder()
