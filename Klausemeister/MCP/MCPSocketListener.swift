@@ -189,12 +189,16 @@ actor MCPSocketListener {
     ///      symlink. Claude's hooks remain wired via the plugin's
     ///      `hooks.json`; this is purely the Codex side.
     ///
-    /// The shim itself is safe to register globally — it exits immediately
-    /// with code 2 when `KLAUSE_MEISTER` is not set, so non-meister agent
-    /// sessions are unaffected. The status hook is also safe globally — it
-    /// no-ops when `KLAUSE_WORKTREE_ID` is unset. Both registrations run
-    /// unconditionally on every launch (idempotent and cheap) so users
-    /// can switch agents per worktree without re-running setup.
+    /// The shim itself is safe to register globally — when `KLAUSE_MEISTER`
+    /// is not set the shim runs an MCP-protocol stub server that
+    /// advertises zero tools and stays alive on stdin (see
+    /// `klause-mcp-shim/StubMCPServer.swift`). Pre-stub it exited 2 and
+    /// Codex surfaced "MCP startup failed: connection closed: initialize
+    /// response" on every non-meister `codex` invocation. The status
+    /// hook is also safe globally — it no-ops when `KLAUSE_WORKTREE_ID`
+    /// is unset. Both registrations run unconditionally on every launch
+    /// (idempotent and cheap) so users can switch agents per worktree
+    /// without re-running setup.
     private static func installShimSymlink() {
         let fileManager = FileManager.default
         let symlinkURL = URL(fileURLWithPath: shimSymlinkPath)
