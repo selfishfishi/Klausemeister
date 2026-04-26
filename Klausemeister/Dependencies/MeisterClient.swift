@@ -60,7 +60,20 @@ extension MeisterClient {
     /// that cannot resolve it produces a confusing tmux session rather than
     /// an actionable error, which is exactly what the codex acceptance
     /// criteria forbid. We throw with an install hint instead.
-    fileprivate static func resolveSpawnCommand(_ agent: MeisterAgent) throws -> String {
+    ///
+    /// For `codex`, we also forward `KLAUSE_MEISTER` / `KLAUSE_WORKTREE_ID`
+    /// to the MCP-server child via `-c mcp_servers.klausemeister.env.X=Y`
+    /// inline config overrides. Codex strips inherited env when launching
+    /// MCP servers (verified empirically: the codex process itself sees
+    /// the vars via the tmux session env, but the shim spawned by codex's
+    /// MCP launcher does not). Setting them in the per-spawn config block
+    /// makes the shim see the env regardless of codex's inheritance
+    /// policy. See `klause-mcp-shim/StubMCPServer.swift` for the
+    /// non-meister fallback path.
+    fileprivate static func resolveSpawnCommand(
+        _ agent: MeisterAgent,
+        worktreeId: String
+    ) throws -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let candidates: [String]
         switch agent {
@@ -85,7 +98,13 @@ extension MeisterClient {
             guard let resolved = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
                 throw MeisterClientError.agentBinaryNotFound(.codex)
             }
-            return "\(resolved) --full-auto"
+            // Single-quote each `-c` argument so the user's shell parses
+            // the embedded double-quoted TOML strings verbatim. WorktreeId
+            // is a UUID — no shell metacharacters to worry about.
+            let mcpEnvOverrides =
+                " -c 'mcp_servers.klausemeister.env.KLAUSE_MEISTER=\"1\"'"
+                    + " -c 'mcp_servers.klausemeister.env.KLAUSE_WORKTREE_ID=\"\(worktreeId)\"'"
+            return "\(resolved) --full-auto\(mcpEnvOverrides)"
         }
     }
 
@@ -101,7 +120,7 @@ extension MeisterClient {
                 MeisterClient.log.info("ensureRunning start wt=\(worktreeId, privacy: .public) session=\(sessionName, privacy: .public)")
                 let spawnCommand: String
                 do {
-                    spawnCommand = try resolveSpawnCommand(agent)
+                    spawnCommand = try resolveSpawnCommand(agent, worktreeId: worktreeId)
                     MeisterClient.log.info("resolved agent=\(agent.rawValue, privacy: .public) command=\(spawnCommand, privacy: .public)")
                 } catch {
                     MeisterClient.log.error("resolveSpawnCommand threw: \(error.localizedDescription, privacy: .public)")
