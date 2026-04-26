@@ -40,6 +40,19 @@ let meisterFlag = env["KLAUSE_MEISTER"] ?? "<nil>"
 let worktreeFlag = env["KLAUSE_WORKTREE_ID"] ?? "<nil>"
 debugLog("started, WORKER=\(workerFlag), MEISTER=\(meisterFlag), WT=\(worktreeFlag)")
 
+// Codex registers `klausemeister` globally in `~/.codex/config.toml`, so
+// it tries to spawn the shim on every Codex session — including plain
+// `codex` invocations outside any meister context. In that path
+// `KLAUSE_MEISTER` is unset; pre-fix, the shim exited 2 here and Codex
+// surfaced "MCP startup failed: connection closed: initialize response".
+// Take the stub-server branch instead so non-meister sessions see a
+// healthy 0-tool MCP server. Skips wrapper/worker entirely — no real
+// socket bridge to babysit.
+if env["KLAUSE_MEISTER"] != "1" {
+    debugLog("KLAUSE_MEISTER missing/!=1, entering stub MCP server")
+    StubMCPServer.run()
+}
+
 if env["KLAUSE_SHIM_WORKER"] == nil {
     debugLog("entering wrapper mode")
     runWrapper()
@@ -51,11 +64,8 @@ debugLog("entering worker mode")
 
 // MARK: - Env validation
 
-guard env["KLAUSE_MEISTER"] == "1" else {
-    FileHandle.standardError.write(Data("klause-mcp-shim: KLAUSE_MEISTER must be \"1\"\n".utf8))
-    exit(2)
-}
-
+// `KLAUSE_MEISTER` was already verified at the top to be "1"; here we
+// validate the worktree id which is required for the socket bridge.
 guard let worktreeId = env["KLAUSE_WORKTREE_ID"], !worktreeId.isEmpty else {
     FileHandle.standardError.write(Data("klause-mcp-shim: KLAUSE_WORKTREE_ID must be set\n".utf8))
     exit(2)
