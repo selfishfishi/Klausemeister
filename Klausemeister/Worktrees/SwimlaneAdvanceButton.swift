@@ -38,7 +38,7 @@ struct SwimlaneAdvanceButton: View {
                     .help(tooltip)
                 } else {
                     Button {
-                        onSendSlashCommand("/klause-workflow:klause-next")
+                        onSendSlashCommand("\(worktree.agent.slashCommandPrefix)klause-next")
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "play")
