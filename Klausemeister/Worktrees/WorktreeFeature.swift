@@ -485,6 +485,7 @@ struct WorktreeFeature {
             case confirmRemoveRepoAndKillTmux(repoId: String)
         }
 
+        @CasePathable
         // swiftlint:disable:next nesting
         enum Delegate: Equatable {
             case issueReturnedToMeister(issue: LinearIssue)

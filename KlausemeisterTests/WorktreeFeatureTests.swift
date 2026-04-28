@@ -17,8 +17,8 @@ private func makeWorktree(
     var worktree = Worktree(
         id: id,
         name: "Alpha",
-        sortOrder: 0,
-        gitWorktreePath: "/tmp/\(id)"
+        gitWorktreePath: "/tmp/\(id)",
+        sortOrder: 0
     )
     worktree.meisterSessionState = meisterSessionState
     worktree.meisterStatusText = meisterStatusText
@@ -54,8 +54,8 @@ private func makeStore(
         $0.worktrees[id: "w1"]?.meisterActivityUpdatedAt = fixedDate
     }
 
-    // TTL effect clears the slot once 30s elapse on the injected clock.
-    await clock.advance(by: .seconds(31))
+    // TTL effect clears the slot once it elapses on the injected clock.
+    await clock.advance(by: .seconds(61))
     await store.receive(\.meisterActivityExpired) {
         $0.worktrees[id: "w1"]?.meisterActivityText = nil
         $0.worktrees[id: "w1"]?.meisterActivityUpdatedAt = nil
@@ -84,10 +84,10 @@ private func makeStore(
     }
 }
 
-// MARK: - Non-offline transitions preserve activity
+// MARK: - Non-offline transitions preserve progress and activity
 
 @Test(arguments: [MeisterSessionState.idle, .blocked, .error])
-func `non-offline transitions clear progressText but preserve activity`(nextState: MeisterSessionState) async {
+func `non-offline transitions preserve progressText and activity`(nextState: MeisterSessionState) async {
     let clock = TestClock()
     let store = makeStore(
         worktree: makeWorktree(
@@ -101,7 +101,38 @@ func `non-offline transitions clear progressText but preserve activity`(nextStat
 
     await store.send(.meisterSessionStateChanged(worktreeId: "w1", state: nextState)) {
         $0.worktrees[id: "w1"]?.meisterSessionState = nextState
-        $0.worktrees[id: "w1"]?.meisterStatusText = nil
-        // meisterActivityText and meisterActivityUpdatedAt intentionally unchanged.
+        // Progress and activity text intentionally remain visible for
+        // idle/blocked/error transitions; only offline clears them.
     }
+}
+
+// MARK: - sendSlashCommandRequested
+
+@Test func `sendSlashCommandRequested forwards raw slash command to tmux session`() async {
+    var worktree = makeWorktree(id: "w1", meisterSessionState: .idle)
+    worktree.repoName = "Main Repo"
+    let sentTarget = LockIsolated<String?>(nil)
+    let sentKeys = LockIsolated<String?>(nil)
+    let store = makeStore(worktree: worktree)
+    store.dependencies.tmuxClient = TmuxClient(
+        createSession: { _, _, _ in },
+        sendKeys: { target, keys in
+            sentTarget.setValue(target)
+            sentKeys.setValue(keys)
+        },
+        hasSession: { _ in false },
+        killSession: { _ in },
+        listSessions: { [] },
+        firstWindowCommand: { _ in nil },
+        resolvedTmuxPath: { "/opt/homebrew/bin/tmux" }
+    )
+
+    await store.send(.sendSlashCommandRequested(
+        worktreeId: "w1",
+        slashCommand: "/klause-next"
+    ))
+    await store.finish()
+
+    #expect(sentTarget.value == "klause-main-repo-alpha")
+    #expect(sentKeys.value == "/klause-next")
 }

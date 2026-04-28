@@ -28,6 +28,15 @@ struct TmuxClient {
     var resolvedTmuxPath: @Sendable () -> String?
 }
 
+extension TmuxClient {
+    nonisolated static func sendKeysArguments(target: String, keys: String) -> [[String]] {
+        [
+            ["send-keys", "-t", target, "-l", keys],
+            ["send-keys", "-t", target, "C-m"]
+        ]
+    }
+}
+
 enum TmuxClientError: Error, Equatable, LocalizedError {
     case tmuxNotFound
     case commandFailed(command: String, exitCode: Int32, stderr: String)
@@ -174,10 +183,11 @@ extension TmuxClient: DependencyKey {
                 _ = try await shell(arguments)
             },
             sendKeys: { target, keys in
-                // Two args: the key string and a literal `Enter` so the shell
-                // actually executes the command instead of leaving it on the
-                // prompt.
-                _ = try await shell(["send-keys", "-t", target, keys, "Enter"])
+                // Send the payload literally so slash commands cannot be
+                // interpreted as tmux key names, then submit with Ctrl-M.
+                for arguments in TmuxClient.sendKeysArguments(target: target, keys: keys) {
+                    _ = try await shell(arguments)
+                }
             },
             hasSession: { name in
                 // tmux exits non-zero when the session does not exist OR when no

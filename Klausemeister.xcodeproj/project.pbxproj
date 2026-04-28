@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		A869F53A2F817984005797B3 /* GhosttyKit in Frameworks */ = {isa = PBXBuildFile; productRef = A8GHOST012F816B35005797B3 /* GhosttyKit */; };
 		A869F53B2F817984005797B3 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = A8GHOST022F816B35005797B3 /* GhosttyTerminal */; };
+		A8C100022F816B35005797B3 /* Clocks in Frameworks */ = {isa = PBXBuildFile; productRef = A8C100012F816B35005797B3 /* Clocks */; };
 		A8CP00022F816B35005797B3 /* CasePathsCore in Frameworks */ = {isa = PBXBuildFile; productRef = A8CP00012F816B35005797B3 /* CasePathsCore */; };
 		A8DP00022F816B35005797B3 /* Dependencies in Frameworks */ = {isa = PBXBuildFile; productRef = A8DP00012F816B35005797B3 /* Dependencies */; };
 		A8E7306B2F85392500806034 /* MCP in Frameworks */ = {isa = PBXBuildFile; productRef = A8E7306A2F85392500806034 /* MCP */; };
@@ -119,6 +120,7 @@
 				A8CP00022F816B35005797B3 /* CasePathsCore in Frameworks */,
 				A8PC00022F816B35005797B3 /* PerceptionCore in Frameworks */,
 				A8DP00022F816B35005797B3 /* Dependencies in Frameworks */,
+				A8C100022F816B35005797B3 /* Clocks in Frameworks */,
 				A8E731002F88B4B700806034 /* SwiftUINavigation in Frameworks */,
 				A8GR00022F816B35005797B3 /* GRDB in Frameworks */,
 				A8SN00022F816B35005797B3 /* SwiftNavigation in Frameworks */,
@@ -207,6 +209,7 @@
 				A8CP00012F816B35005797B3 /* CasePathsCore */,
 				A8PC00012F816B35005797B3 /* PerceptionCore */,
 				A8DP00012F816B35005797B3 /* Dependencies */,
+				A8C100012F816B35005797B3 /* Clocks */,
 				A8GR00012F816B35005797B3 /* GRDB */,
 				A8SN00012F816B35005797B3 /* SwiftNavigation */,
 				A8E7306A2F85392500806034 /* MCP */,
@@ -784,6 +787,10 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		A8C100012F816B35005797B3 /* Clocks */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Clocks;
+		};
 		A8CP00012F816B35005797B3 /* CasePathsCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CasePathsCore;
