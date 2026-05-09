@@ -9,7 +9,7 @@ Push a completed Klausemeister processing item to the outbox using the same
 workflow as the `/klause-push` command.
 
 The canonical workflow lives in this plugin's command spec at
-`../../commands/klause-push.md`.
+`./command.md`.
 
 Read that file now, then follow it exactly. It is the source of truth for:
 

@@ -9,7 +9,7 @@ Pull a Klausemeister inbox item into processing using the same workflow as the
 `/klause-pull` command.
 
 The canonical workflow lives in this plugin's command spec at
-`../../commands/klause-pull.md`.
+`./command.md`.
 
 Read that file now, then follow it exactly. It is the source of truth for:
 
