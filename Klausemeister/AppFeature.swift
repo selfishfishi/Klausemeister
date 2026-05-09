@@ -191,7 +191,7 @@ struct AppFeature {
 
             case let .worktree(.delegate(.scheduleTapped(scheduleId))):
                 state.presentedScheduleId = scheduleId
-                return .none
+                return .send(.worktree(.scheduleDescriptionsRequested(scheduleId: scheduleId)))
 
             case .ganttOverlayDismissed:
                 state.presentedScheduleId = nil

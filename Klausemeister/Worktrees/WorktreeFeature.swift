@@ -248,6 +248,10 @@ struct WorktreeFeature {
         /// Most-recent per-item errors from `runScheduleTapped`, keyed by
         /// `Schedule.ID`. Consumed by the gantt overlay for toast display.
         var scheduleRunErrors: [String: [String]] = [:]
+        /// Cached issue descriptions keyed by `issueLinearId`. Populated when
+        /// a schedule gantt overlay is opened so each cell's popover can
+        /// show the ticket's description without an additional async hop.
+        var scheduleDescriptionsByLinearId: [String: String] = [:]
         /// Presented create-worktree sheet state, or nil when the sheet is hidden.
         var createSheet: CreateWorktreeSheetState?
         @Presents var alert: AlertState<Action.Alert>?
@@ -455,6 +459,11 @@ struct WorktreeFeature {
         case refreshSchedulesRequested
         case schedulesLoaded(repoId: String, schedules: [Schedule])
         case scheduleTapped(scheduleId: String)
+        /// Fetch local-DB descriptions for every issue in the schedule so each
+        /// gantt cell's popover can render its ticket description. Triggered
+        /// when the gantt overlay is presented (see AppFeature.scheduleTapped).
+        case scheduleDescriptionsRequested(scheduleId: String)
+        case scheduleDescriptionsLoaded(descriptions: [String: String])
         /// A `scheduleItemStatusChanged` MCP event arrived — update the
         /// matching item in `schedulesByRepoId` without a DB re-fetch.
         case mcpScheduleItemStatusChanged(scheduleItemId: String, status: String)
@@ -1933,6 +1942,31 @@ struct WorktreeFeature {
 
             case let .scheduleTapped(scheduleId):
                 return .send(.delegate(.scheduleTapped(scheduleId: scheduleId)))
+
+            case let .scheduleDescriptionsRequested(scheduleId):
+                let linearIds = state.schedulesByRepoId.values
+                    .flatMap(\.self)
+                    .first(where: { $0.id == scheduleId })?
+                    .items
+                    .map(\.issueLinearId) ?? []
+                let unique = Array(Set(linearIds))
+                guard !unique.isEmpty else { return .none }
+                return .run { send in
+                    var result: [String: String] = [:]
+                    for linearId in unique {
+                        if let issue = try? await databaseClient.fetchImportedIssue(linearId),
+                           let description = issue.description,
+                           !description.isEmpty
+                        {
+                            result[linearId] = description
+                        }
+                    }
+                    await send(.scheduleDescriptionsLoaded(descriptions: result))
+                }
+
+            case let .scheduleDescriptionsLoaded(descriptions):
+                state.scheduleDescriptionsByLinearId.merge(descriptions) { _, new in new }
+                return .none
 
             // MARK: - Discovery / sync handlers
 
