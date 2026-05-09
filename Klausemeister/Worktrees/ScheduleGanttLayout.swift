@@ -186,48 +186,135 @@ enum GanttLayout {
                       let fromFrame = frames[blocker.id] else { continue }
                 let start = CGPoint(x: fromFrame.maxX, y: fromFrame.midY)
                 let end = CGPoint(x: toFrame.minX, y: toFrame.midY)
+                let points = connectorRoute(
+                    fromFrame: fromFrame,
+                    toFrame: toFrame,
+                    frames: Array(frames.values)
+                )
                 edges.append(GanttConnectorEdge(
                     fromId: blocker.id,
                     toId: item.id,
                     start: start,
-                    end: end
+                    end: end,
+                    points: points
                 ))
             }
         }
         return edges
     }
 
-    /// Closure of nodes and edges "involving" `selectedItemId`: the union of
-    /// transitive blockers (ancestors), the selected item itself, and
-    /// transitive dependents (descendants). An edge is in the closure when
-    /// both endpoints are — so the click-to-highlight effect lights up the
-    /// full upstream + downstream subgraph anchored on the selection.
-    ///
-    /// Cross-side edges (an ancestor that ALSO blocks a descendant via a
-    /// path that bypasses the selection) are intentionally included — they
-    /// belong to the selection's neighborhood even if not strictly "through"
-    /// the selected node.
-    static func pathClosure(
+    /// Route dependencies through the gutters between rows instead of drawing
+    /// straight through the middle of the schedule lane. Short edge stubs leave
+    /// and enter through the guaranteed cell spacing on each side; long travel
+    /// happens in row gutters, and the cross-row vertical lane is scanned for a
+    /// clear x-coordinate so it doesn't pass through intervening boxes.
+    static func connectorRoute(
+        fromFrame: CGRect,
+        toFrame: CGRect,
+        frames: [CGRect]
+    ) -> [CGPoint] {
+        let start = CGPoint(x: fromFrame.maxX, y: fromFrame.midY)
+        let end = CGPoint(x: toFrame.minX, y: toFrame.midY)
+        let exitX = fromFrame.maxX + cellSpacing / 2
+        let entryX = toFrame.minX - cellSpacing / 2
+        let sourceGutterY: CGFloat
+        let targetGutterY: CGFloat
+
+        if toFrame.midY < fromFrame.midY {
+            sourceGutterY = fromFrame.minY - rowSpacing / 2
+            targetGutterY = toFrame.maxY + rowSpacing / 2
+        } else if toFrame.midY > fromFrame.midY {
+            sourceGutterY = fromFrame.maxY + rowSpacing / 2
+            targetGutterY = toFrame.minY - rowSpacing / 2
+        } else {
+            sourceGutterY = fromFrame.maxY + rowSpacing / 2
+            targetGutterY = sourceGutterY
+        }
+
+        let preferredLaneX = (exitX + entryX) / 2
+        let laneX = verticalLaneX(
+            preferred: preferredLaneX,
+            verticalRange: min(sourceGutterY, targetGutterY) ... max(sourceGutterY, targetGutterY),
+            frames: frames
+        )
+
+        return compactedRoute([
+            start,
+            CGPoint(x: exitX, y: start.y),
+            CGPoint(x: exitX, y: sourceGutterY),
+            CGPoint(x: laneX, y: sourceGutterY),
+            CGPoint(x: laneX, y: targetGutterY),
+            CGPoint(x: entryX, y: targetGutterY),
+            CGPoint(x: entryX, y: end.y),
+            end
+        ])
+    }
+
+    private static func verticalLaneX(
+        preferred: CGFloat,
+        verticalRange: ClosedRange<CGFloat>,
+        frames: [CGRect]
+    ) -> CGFloat {
+        let paddedFrames = frames.map { $0.insetBy(dx: -8, dy: -4) }
+        let maxFrameX = paddedFrames.map(\.maxX).max() ?? preferred
+        let minSearchX = labelWidth + cellSpacing / 2
+        let maxSearchX = max(maxFrameX + cellSpacing, preferred)
+
+        func isClear(_ laneX: CGFloat) -> Bool {
+            paddedFrames.allSatisfy { frame in
+                guard frame.maxY >= verticalRange.lowerBound,
+                      frame.minY <= verticalRange.upperBound else { return true }
+                return laneX < frame.minX || laneX > frame.maxX
+            }
+        }
+
+        if isClear(preferred) { return preferred }
+
+        let stride: CGFloat = 12
+        var offset = stride
+        while offset <= maxSearchX - minSearchX + stride {
+            let left = preferred - offset
+            if left >= minSearchX, isClear(left) {
+                return left
+            }
+
+            let right = preferred + offset
+            if right <= maxSearchX, isClear(right) {
+                return right
+            }
+
+            offset += stride
+        }
+
+        return maxFrameX + cellSpacing
+    }
+
+    private static func compactedRoute(_ points: [CGPoint]) -> [CGPoint] {
+        points.reduce(into: []) { result, point in
+            guard result.last != point else { return }
+            result.append(point)
+        }
+    }
+
+    /// Closure of nodes and edges that must complete before `selectedItemId`:
+    /// the selected item plus its transitive blockers. An edge is highlighted
+    /// only when it connects two nodes in that upstream dependency graph, so
+    /// selecting a cell dims downstream dependents and unrelated branches.
+    static func dependencyClosure(
         selectedItemId: String,
         items: [ScheduleItem]
     ) -> PathClosure {
         let itemIdByIssueId = Dictionary(uniqueKeysWithValues: items.map { ($0.issueLinearId, $0.id) })
 
-        // Forward: itemId → its blocker itemIds (resolved through issueLinearId).
-        // Reverse: itemId → its dependent itemIds.
+        // itemId -> its blocker itemIds, resolved through issueLinearId.
         var blockers: [String: [String]] = [:]
-        var dependents: [String: [String]] = [:]
         for item in items {
             let blockerItemIds = item.blockedByIssueLinearIds.compactMap { itemIdByIssueId[$0] }
             blockers[item.id] = blockerItemIds
-            for blockerItemId in blockerItemIds {
-                dependents[blockerItemId, default: []].append(item.id)
-            }
         }
 
         let ancestors = traverse(from: selectedItemId, edges: blockers)
-        let descendants = traverse(from: selectedItemId, edges: dependents)
-        let nodes = ancestors.union(descendants).union([selectedItemId])
+        let nodes = ancestors.union([selectedItemId])
 
         var edgeKeys: Set<String> = []
         for item in items where nodes.contains(item.id) {
@@ -254,23 +341,24 @@ enum GanttLayout {
     }
 }
 
-/// Result of `GanttLayout.pathClosure(...)`. Two sets the view layer can
-/// consult cheaply per cell / per edge during render.
+/// Result of `GanttLayout.dependencyClosure(...)`. Two sets the view layer
+/// can consult cheaply per cell / per edge during render.
 struct PathClosure: Equatable {
-    /// Item IDs in the closure (ancestors ∪ selected ∪ descendants).
+    /// Item IDs in the closure (transitive blockers plus the selection).
     let nodeIds: Set<String>
     /// Edge keys (`"<fromId>->\(toId)"`) connecting two `nodeIds` members.
     let edgeKeys: Set<String>
 }
 
 /// One blocker → blocked dependency edge whose endpoints are precomputed cell
-/// frames. Drawn by `GanttConnectorOverlay` as a Bezier curve with particles
-/// flowing in dependency direction.
+/// frames. Drawn by `GanttConnectorOverlay` as a routed connector with
+/// particles flowing in dependency direction.
 struct GanttConnectorEdge: Equatable {
     let fromId: String
     let toId: String
     let start: CGPoint
     let end: CGPoint
+    let points: [CGPoint]
 
     /// Stable key matching `PathClosure.edgeKeys` so the overlay can decide
     /// per-edge whether the user's selection includes it.
@@ -320,7 +408,7 @@ struct GanttConnectorOverlay: View {
         context: inout GraphicsContext,
         now: Double
     ) {
-        let path = bezier(start: edge.start, end: edge.end)
+        let path = connectorPath(points: edge.points)
         // Three states: no-selection (full opacity), selected-and-on-path
         // (boosted), selected-and-off-path (faded). Multipliers fold through
         // the existing glowIntensity so themes that darken the gantt still
@@ -333,7 +421,7 @@ struct GanttConnectorOverlay: View {
         context.stroke(
             path,
             with: .color(accentColor.opacity(0.30 * glowIntensity * opacityFactor)),
-            style: StrokeStyle(lineWidth: 0.75, lineCap: .round)
+            style: StrokeStyle(lineWidth: 0.75, lineCap: .round, lineJoin: .round)
         )
 
         var haloContext = context
@@ -341,7 +429,7 @@ struct GanttConnectorOverlay: View {
         haloContext.stroke(
             path,
             with: .color(accentColor.opacity(0.18 * glowIntensity * opacityFactor)),
-            style: StrokeStyle(lineWidth: 2.0, lineCap: .round)
+            style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round)
         )
 
         let phaseStep = 1.0 / Double(particleCount)
@@ -349,7 +437,7 @@ struct GanttConnectorOverlay: View {
             let raw = (now / traversalPeriod + Double(index) * phaseStep)
                 .truncatingRemainder(dividingBy: 1)
             let progress = raw < 0 ? raw + 1 : raw
-            let point = pointOnBezier(start: edge.start, end: edge.end, progress: progress)
+            let point = pointOnRoute(edge.points, progress: progress)
             let alpha = particleAlpha(progress: progress)
             let radius = 2.5
             let rect = CGRect(
@@ -375,44 +463,36 @@ struct GanttConnectorOverlay: View {
         return min(leadIn, leadOut)
     }
 
-    /// Bezier with control points pulled horizontally so the curve eases out
-    /// of the source cell horizontally before bending toward the target —
-    /// reads as "data flow" rather than a straight diagonal. Cross-row edges
-    /// get extra horizontal lead-time proportional to vertical distance so
-    /// the curve clears intermediate rows instead of slicing through them.
-    private func bezier(start: CGPoint, end: CGPoint) -> Path {
-        let (control1, control2) = Self.controlPoints(start: start, end: end)
+    private func connectorPath(points: [CGPoint]) -> Path {
         var path = Path()
-        path.move(to: start)
-        path.addCurve(to: end, control1: control1, control2: control2)
+        guard let first = points.first else { return path }
+        path.move(to: first)
+        for point in points.dropFirst() {
+            path.addLine(to: point)
+        }
         return path
     }
 
-    private func pointOnBezier(start: CGPoint, end: CGPoint, progress: Double) -> CGPoint {
-        let (control1, control2) = Self.controlPoints(start: start, end: end)
-        let oneMinusT = 1 - progress
-        let coordX = oneMinusT * oneMinusT * oneMinusT * start.x
-            + 3 * oneMinusT * oneMinusT * progress * control1.x
-            + 3 * oneMinusT * progress * progress * control2.x
-            + progress * progress * progress * end.x
-        let coordY = oneMinusT * oneMinusT * oneMinusT * start.y
-            + 3 * oneMinusT * oneMinusT * progress * control1.y
-            + 3 * oneMinusT * progress * progress * control2.y
-            + progress * progress * progress * end.y
-        return CGPoint(x: coordX, y: coordY)
-    }
+    private func pointOnRoute(_ points: [CGPoint], progress: Double) -> CGPoint {
+        guard let first = points.first else { return .zero }
+        let segments = zip(points, points.dropFirst()).map { start, end in
+            (start: start, end: end, length: hypot(end.x - start.x, end.y - start.y))
+        }
+        let totalLength = segments.reduce(0) { $0 + $1.length }
+        guard totalLength > 0 else { return first }
 
-    /// Shared control-point math so the path and the particle positions stay
-    /// in lock-step. Bend scales with both axes; clamped to half the
-    /// horizontal gap so short-dx edges don't form a crossover loop.
-    static func controlPoints(start: CGPoint, end: CGPoint) -> (CGPoint, CGPoint) {
-        let deltaX = end.x - start.x
-        let deltaY = end.y - start.y
-        let dynamicBend = max(60, abs(deltaY) * 0.45 + abs(deltaX) * 0.25)
-        let cap = max(40, abs(deltaX) / 2)
-        let bend = min(dynamicBend, cap)
-        let control1 = CGPoint(x: start.x + bend, y: start.y)
-        let control2 = CGPoint(x: end.x - bend, y: end.y)
-        return (control1, control2)
+        var remaining = CGFloat(progress) * totalLength
+        for segment in segments {
+            guard segment.length > 0 else { continue }
+            if remaining <= segment.length {
+                let t = remaining / segment.length
+                return CGPoint(
+                    x: segment.start.x + (segment.end.x - segment.start.x) * t,
+                    y: segment.start.y + (segment.end.y - segment.start.y) * t
+                )
+            }
+            remaining -= segment.length
+        }
+        return points.last ?? first
     }
 }

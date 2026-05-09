@@ -34,7 +34,7 @@ struct ScheduleGanttView: View {
         let edges = GanttLayout.connectorEdges(items: schedule.items, frames: frames)
         let pathClosure: PathClosure? = selectedItemId.flatMap { id in
             guard schedule.items.contains(where: { $0.id == id }) else { return nil }
-            return GanttLayout.pathClosure(selectedItemId: id, items: schedule.items)
+            return GanttLayout.dependencyClosure(selectedItemId: id, items: schedule.items)
         }
 
         VStack(spacing: 0) {
@@ -61,6 +61,14 @@ struct ScheduleGanttView: View {
                         .onTapGesture {
                             selectedItemId = nil
                         }
+                    GanttConnectorOverlay(
+                        edges: edges,
+                        accentColor: themeColors.accentColor,
+                        glowIntensity: themeColors.glowIntensity,
+                        highlightedEdgeKeys: pathClosure?.edgeKeys
+                    )
+                    .frame(width: totalSize.width, height: totalSize.height)
+                    .allowsHitTesting(false)
                     ForEach(Array(rows.enumerated()), id: \.element.id) { rowIndex, row in
                         GanttRowLayer(
                             row: row,
@@ -76,14 +84,6 @@ struct ScheduleGanttView: View {
                             onPopoverDismiss: { selectedItemId = nil }
                         )
                     }
-                    GanttConnectorOverlay(
-                        edges: edges,
-                        accentColor: themeColors.accentColor,
-                        glowIntensity: themeColors.glowIntensity,
-                        highlightedEdgeKeys: pathClosure?.edgeKeys
-                    )
-                    .frame(width: totalSize.width, height: totalSize.height)
-                    .allowsHitTesting(false)
                 }
                 .frame(width: totalSize.width, height: totalSize.height, alignment: .topLeading)
                 .padding(GanttLayout.gridPadding)
@@ -258,13 +258,15 @@ private struct GanttRowLayer: View {
         // Index-based palette pick keeps the same worktree on the same tint
         // across launches (String.hashValue is randomized per process).
         let rowTint = tints[rowIndex % max(1, tints.count)]
+        let rowIsDimmed = pathClosure != nil
+            && !row.items.contains { pathClosure?.nodeIds.contains($0.id) == true }
 
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(rowTint.opacity(0.04))
+                .fill(rowTint.opacity(rowIsDimmed ? 0.015 : 0.04))
                 .overlay(alignment: .leading) {
                     Rectangle()
-                        .fill(rowTint.opacity(0.4))
+                        .fill(rowTint.opacity(rowIsDimmed ? 0.14 : 0.4))
                         .frame(width: 2)
                 }
                 .frame(
@@ -275,7 +277,7 @@ private struct GanttRowLayer: View {
 
             Text(row.worktree.name)
                 .font(.callout.weight(.medium))
-                .foregroundStyle(rowTint)
+                .foregroundStyle(rowTint.opacity(rowIsDimmed ? 0.35 : 1.0))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .padding(.horizontal, 10)
