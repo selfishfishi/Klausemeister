@@ -20,6 +20,44 @@ private let sampleDetail = InspectorTicketDetail(
     attachedPRs: []
 )
 
+private let currentSessionIssue = LinearIssue(
+    id: "current-issue",
+    identifier: "KLA-99",
+    title: "Current session ticket",
+    status: "In Progress",
+    statusId: "state-in-progress",
+    statusType: "started",
+    teamId: "team-1",
+    projectName: "Klausemeister",
+    labels: [],
+    description: nil,
+    url: "https://linear.app/team/issue/KLA-99/current-session-ticket",
+    createdAt: "2026-05-01",
+    updatedAt: "2026-05-02"
+)
+
+private let currentWorktree = Worktree(
+    id: "worktree-1",
+    name: "delta",
+    gitWorktreePath: "/tmp/delta",
+    repoId: "repo-1",
+    repoName: "Klausemeister",
+    currentBranch: "feature/current",
+    meisterStatusText: nil,
+    meisterActivityText: nil,
+    recapText: nil,
+    meisterActivityUpdatedAt: nil,
+    gitStats: nil,
+    inbox: [],
+    processing: currentSessionIssue,
+    outbox: [],
+    sortOrder: 0,
+    tmuxSessionStatus: .sessionExists,
+    meisterStatus: .running,
+    meisterSessionState: .working(tool: nil),
+    agent: .codex
+)
+
 // MARK: - AppFeature inspector reducer
 
 @Test func `inspectorSelectionRequested success path transitions loading then loaded`() async {
@@ -82,6 +120,50 @@ private let sampleDetail = InspectorTicketDetail(
     }
     await store.send(.toggleInspector) {
         $0.showInspector = false
+    }
+}
+
+@Test func `toggleInspector opens current session ticket when worktree is selected`() async {
+    var state = AppFeature.State()
+    state.showMeister = false
+    state.worktree.selectedWorktreeId = currentWorktree.id
+    state.worktree.worktrees = [currentWorktree]
+
+    let store = TestStore(initialState: state) {
+        AppFeature()
+    } withDependencies: {
+        $0.linearAPIClient.fetchTicketDetail = { id in
+            #expect(id == currentSessionIssue.id)
+            return sampleDetail
+        }
+    }
+    store.exhaustivity = .off
+
+    await store.send(.toggleInspector)
+    await store.receive(\.inspectorSelectionRequested) {
+        $0.showInspector = true
+        $0.inspectorSelection = .ticket(id: currentSessionIssue.id)
+        $0.inspectorDetail = .loading
+    }
+    await store.receive(\.inspectorDetailFetched) {
+        $0.inspectorDetail = .loaded(sampleDetail)
+    }
+}
+
+@Test func `toggleInspector clears stale content when no current session ticket exists`() async {
+    var state = AppFeature.State()
+    state.inspectorSelection = .ticket(id: "stale")
+    state.inspectorDetail = .loaded(sampleDetail)
+
+    let store = TestStore(initialState: state) {
+        AppFeature()
+    }
+    store.exhaustivity = .off
+
+    await store.send(.toggleInspector) {
+        $0.showInspector = true
+        $0.inspectorSelection = nil
+        $0.inspectorDetail = .empty
     }
 }
 

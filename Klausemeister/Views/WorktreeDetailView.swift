@@ -15,6 +15,15 @@ struct WorktreeDetailView: View {
         !teamsByID.isEmpty
     }
 
+    private var selectedWorktree: Worktree? {
+        guard let worktreeId = store.selectedWorktreeId else { return nil }
+        return store.worktrees[id: worktreeId]
+    }
+
+    private var currentTicket: LinearIssue? {
+        selectedWorktree?.processing
+    }
+
     var body: some View {
         Group {
             if let worktreeId = store.selectedWorktreeId,
@@ -60,6 +69,10 @@ struct WorktreeDetailView: View {
                     }
                     .help(store.showBoardOverlay ? "Hide Board" : "Show Board")
 
+                    if let currentTicket {
+                        CurrentTicketToolbarTitle(issue: currentTicket)
+                    }
+
                     Button {
                         onToggleSidebar()
                     } label: {
@@ -71,6 +84,24 @@ struct WorktreeDetailView: View {
         }
         .tint(themeColors.accentColor)
         .alert($store.scope(state: \.alert, action: \.alert))
+    }
+}
+
+private struct CurrentTicketToolbarTitle: View {
+    let issue: LinearIssue
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(issue.identifier)
+                .font(.system(.caption, design: .monospaced).weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(issue.title)
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: 520, alignment: .leading)
+        .help("\(issue.identifier) · \(issue.title)")
     }
 }
 

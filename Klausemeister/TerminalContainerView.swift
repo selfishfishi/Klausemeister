@@ -5,6 +5,12 @@ struct TerminalContainerView: View {
     @Bindable var store: StoreOf<AppFeature>
     let surfaceStore: SurfaceStore
 
+    private enum Layout {
+        static let sidebarMinWidth: CGFloat = 480
+        static let sidebarIdealWidth: CGFloat = 560
+        static let sidebarMaxWidth: CGFloat = 760
+    }
+
     @Environment(\.themeColors) private var themeColors
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var didSeedInspectorPref = false
@@ -26,7 +32,16 @@ struct TerminalContainerView: View {
         ZStack {
             NavigationSplitView(columnVisibility: $columnVisibility) {
                 SidebarView(store: store)
-                    .navigationSplitViewColumnWidth(min: 405, ideal: 495, max: 720)
+                    .frame(
+                        minWidth: Layout.sidebarMinWidth,
+                        idealWidth: Layout.sidebarIdealWidth,
+                        maxWidth: Layout.sidebarMaxWidth
+                    )
+                    .navigationSplitViewColumnWidth(
+                        min: Layout.sidebarMinWidth,
+                        ideal: Layout.sidebarIdealWidth,
+                        max: Layout.sidebarMaxWidth
+                    )
                     .background {
                         ZStack {
                             Color(hexString: themeColors.background)

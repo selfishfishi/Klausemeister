@@ -216,8 +216,17 @@ struct AppFeature {
                 return .none
 
             case .toggleInspector:
-                state.showInspector.toggle()
-                return .none
+                if state.showInspector {
+                    state.showInspector = false
+                    return .none
+                }
+                guard let issueId = currentSessionIssueId(in: state) else {
+                    state.inspectorSelection = nil
+                    state.inspectorDetail = .empty
+                    state.showInspector = true
+                    return .none
+                }
+                return .send(.inspectorSelectionRequested(issueId: issueId))
 
             case let .inspectorSelectionRequested(issueId):
                 state.inspectorSelection = .ticket(id: issueId)
@@ -511,5 +520,12 @@ struct AppFeature {
             // Contextual — handled directly by context menu closures
             return .none
         }
+    }
+
+    private func currentSessionIssueId(in state: State) -> String? {
+        guard let worktreeId = state.worktree.selectedWorktreeId,
+              let worktree = state.worktree.worktrees[id: worktreeId]
+        else { return nil }
+        return worktree.processing?.id
     }
 }
