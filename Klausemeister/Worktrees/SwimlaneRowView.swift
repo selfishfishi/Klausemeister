@@ -17,7 +17,7 @@ struct SwimlaneRowView: View {
     var onDropToProcessing: ((_ issueId: String) -> Void)?
     var onDropToOutbox: ((_ issueId: String) -> Void)?
     var onSelectIssue: ((_ issueId: String) -> Void)?
-    var onSendSlashCommand: ((_ slashCommand: String) -> Void)?
+    var onSendMeisterCommand: ((_ command: MeisterCommand) -> Void)?
     var onMoveIssueStatus: ((_ issueId: String, _ target: MeisterState) -> Void)?
     var onSwitchAgent: ((_ agent: MeisterAgent) -> Void)?
     /// App-wide default agent. The "Relaunch" menu item respawns this
@@ -94,14 +94,14 @@ struct SwimlaneRowView: View {
         VStack(alignment: .leading, spacing: 10) {
             SwimlaneAdvanceButton(
                 worktree: worktree,
-                onSendSlashCommand: onSendSlashCommand
+                onSendMeisterCommand: onSendMeisterCommand
             )
             SwimlaneBarRow(
                 worktree: worktree,
                 onMarkComplete: onMarkComplete,
                 onReturnToMeister: onReturnToMeister,
                 onSelectIssue: onSelectIssue,
-                onSendSlashCommand: onSendSlashCommand,
+                onSendMeisterCommand: onSendMeisterCommand,
                 onMoveIssueStatus: onMoveIssueStatus,
                 onDropToInbox: onDropToInbox,
                 onDropToProcessing: onDropToProcessing,

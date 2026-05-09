@@ -209,10 +209,10 @@ struct WorktreeSwimlaneView: View {
             onSelectIssue: { issueId in
                 store.send(.queueRowTapped(issueId: issueId))
             },
-            onSendSlashCommand: { slashCommand in
-                store.send(.sendSlashCommandRequested(
+            onSendMeisterCommand: { command in
+                store.send(.sendMeisterCommandRequested(
                     worktreeId: worktree.id,
-                    slashCommand: slashCommand
+                    command: command
                 ))
             },
             onMoveIssueStatus: { issueId, target in

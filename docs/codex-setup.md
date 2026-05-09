@@ -103,7 +103,7 @@ upgrading Codex CLI. The meister cannot run this from inside a tmux pane
 | 3 | Schedule or pull a Backlog ticket via the swimlane UI. | A new worktree is created; its row shows the **Codex** badge (`Klausemeister/Worktrees/AgentBadge.swift`). |
 | 4 | In the host shell, `cat ~/.codex/config.toml`. | `[mcp_servers.klausemeister]` table present with `command = "/bin/sh"` and `args = ["-c", "exec ~/.klausemeister/bin/klause-mcp-shim"]`. The sentinel-fenced hooks block contains six `[[hooks.X]]` entries (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`), each pointing at `~/.klausemeister/hooks/klause-status-hook.sh`. |
 | 5 | Look at the worktree row. | Status dot transitions: launching (gray) → idle (green) once the meister settles. |
-| 6 | Press the swimlane **Advance** button. | `tmux send-keys` dispatches `/klause-next` (un-namespaced — Codex form, per `MeisterAgent.slashCommandPrefix`). The meister picks it up and runs the appropriate `/klause-*` skill. |
+| 6 | Press the swimlane **Advance** button. | `tmux send-keys` dispatches `$Klausemeister Next` (Codex skill form, per `MeisterAgent.commandText(for:)`). The meister picks it up and runs the appropriate Klausemeister skill. |
 | 7 | Watch the status dot during work. | working (yellow) → blocked (red, on a permission prompt) → working → idle. The `blocked` state on Codex comes from `PermissionRequest`, not `Notification(permission_prompt)` — see KLA-210 research. |
 | 8 | Confirm an MCP tool call lands. | The meister's call to `getProductState` (or any tool) returns real state. If it errors with "tool not registered", you skipped the rebuild-relaunch caveat above. |
 | 9 | Run `/klause-open-pr` from the meister; let it push and create a PR. | The ticket reaches **Testing**; the PR appears on GitHub. |
@@ -182,7 +182,7 @@ or it sticks on `working` after the meister goes idle.
 
 ### Skills not discovered
 
-**Symptom:** the meister boots but doesn't know what `/klause-next`
+**Symptom:** the meister boots but doesn't know what `$Klausemeister Next`
 means, or the meister-loop skill doesn't auto-load at session start.
 
 **Causes & fixes:**
@@ -201,23 +201,23 @@ means, or the meister-loop skill doesn't auto-load at session start.
    `codex plugin install` against the bumped version, or rely on the
    `.agents/skills` repo-walk path which is always live.
 
-### Slash command sent but no-op
+### Agent command sent but no-op
 
 **Symptom:** pressing the swimlane Advance button visibly types into the
 meister's tmux pane, but the meister doesn't react.
 
-**Cause:** the wrong dispatch prefix was sent. Per KLA-216 and
-`MeisterAgent.slashCommandPrefix`:
+**Cause:** the wrong dispatch form was sent. Per KLA-216 and
+`MeisterAgent.commandText(for:)`:
 
 | Agent | Form sent |
 |---|---|
 | Claude Code | `/klause-workflow:klause-next` |
-| Codex | `/klause-next` (un-namespaced — Codex doesn't bundle plugin slash commands) |
+| Codex | `$Klausemeister Next` (Codex installed-skill invocation) |
 
 **Fix:** confirm `worktree.agent` is `.codex` for the worktree in
-question. The dispatch is computed at the call site in
-`SwimlaneAdvanceButton.swift:41` and `SwimlaneBarRow.swift:290`. If you
-manually overrode the agent post-spawn, the meister itself may still be
+question. The dispatch is rendered centrally by
+`MeisterAgent.commandText(for:)`. If you manually overrode the agent
+post-spawn, the meister itself may still be
 the wrong binary — destroy and recreate the worktree.
 
 ### MCP tool list out of date
@@ -263,5 +263,5 @@ What landed for the multiagent project, by ticket:
 | KLA-213 | `Klausemeister/MCP/MCPSocketListener.swift` `registerCodexMCPServer()` — `~/.codex/config.toml` `[mcp_servers.klausemeister]` upsert. |
 | KLA-214 | `Klausemeister/MCP/MCPSocketListener.swift` `registerCodexHooks()` + the canonical `[[hooks.X]]` block; shared `klause-workflow/hooks/klause-status-hook.sh` extended with the `PermissionRequest` event. |
 | KLA-215 | `klause-workflow/.codex-plugin/plugin.json`, `klause-workflow/AGENTS.md` symlink → `CLAUDE.md`, `.agents/skills` symlink, `.agents/plugins/marketplace.json`. |
-| KLA-216 | `Klausemeister/Worktrees/MeisterAgent.swift` `slashCommandPrefix`; call sites at `SwimlaneAdvanceButton.swift:41` and `SwimlaneBarRow.swift:290`. |
+| KLA-216 | `Klausemeister/Worktrees/MeisterAgent.swift` `commandText(for:)`; semantic dispatch through `WorktreeFeature.sendMeisterCommandRequested`. |
 | KLA-217 | `Klausemeister/Dependencies/MeisterStatusClient.swift` (renamed); the Default Agent menu in `KlausemeisterApp.swift:138`; the `Klausemeister/Worktrees/AgentBadge.swift` row badge. |

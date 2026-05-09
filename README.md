@@ -37,7 +37,7 @@ The main window hosts three panels that share one detail pane:
 - **Inbox → Processing → Outbox queues** — each worktree has three swimlanes. Pull an issue into *Processing* to start work; push it to *Outbox* when done. Returning an issue from a worktree puts it back on the kanban board in the correct column.
 - **Multi-repo aware** — register several repositories; organize worktrees under them.
 - **Schedule Gantt overlay** — visualize scheduled work across worktrees as a gantt strip (MVP).
-- **Swimlane actions** — inline buttons per lane to advance the workflow (Define / Execute / Review / Open PR / Babysit / Push) via slash commands injected into the worktree's tmux session.
+- **Swimlane actions** — inline buttons per lane to advance the workflow (Define / Execute / Review / Open PR / Babysit / Push) via agent-aware commands injected into the worktree's tmux session.
 
 ### Meister loop (autonomous agents)
 
@@ -47,7 +47,7 @@ Klausemeister can spawn a headless meister agent (Claude Code or OpenAI Codex �
 Pull → Define → Execute → Review → Open PR → Babysit → Push
 ```
 
-Each transition is a slash command (`/klause-workflow:klause-define`, etc.) that maps to exactly one edge in `ProductStateMachine`. The app coordinates meisters through an **in-process MCP server** (Unix socket) and a **shim** (`klause-mcp-shim`) that bridges the agent's stdio MCP transport to the socket. The shim forwards `getNextItem`, `reportProgress`, `reportActivity`, `completeItem`, etc. straight into the TCA store, regardless of which agent is on the other end.
+Each transition is an agent-specific command (Claude slash commands such as `/klause-workflow:klause-define`, Codex skills such as `$Klausemeister Define`) that maps to exactly one edge in `ProductStateMachine`. The app coordinates meisters through an **in-process MCP server** (Unix socket) and a **shim** (`klause-mcp-shim`) that bridges the agent's stdio MCP transport to the socket. The shim forwards `getNextItem`, `reportProgress`, `reportActivity`, `completeItem`, etc. straight into the TCA store, regardless of which agent is on the other end.
 
 This makes the whole board "pilotable" — kick a card over to a worktree, start a meister, and it will work the ticket end-to-end unless you intervene.
 
@@ -156,7 +156,7 @@ For the full walkthrough — data model, MCP plumbing, libghostty bridge, runtim
 
 ## Companion projects in this repo
 
-- **[`klause-workflow/`](klause-workflow/)** — Claude Code plugin shipped with the app. Provides the slash commands (`/klause-pull`, `/klause-execute`, `/klause-open-pr`, …) that drive the meister loop, plus the `open-pr` skill.
+- **[`klause-workflow/`](klause-workflow/)** — workflow plugin shipped with the app. Provides Claude slash commands and Codex skills that drive the meister loop, plus the `open-pr` skill.
 - **`klause-mcp-shim/`** — tiny stdio↔Unix-socket bridge. Meister agents (Claude Code, Codex) speak MCP over stdio; Klausemeister hosts the MCP server on a socket. The shim glues them together and carries the `KLAUSE_WORKTREE_ID` env var through so the server knows which worktree is calling.
 
 ## Project tracking

@@ -1,7 +1,7 @@
 // Klausemeister/Workflow/ProductStateMachine.swift
 import Foundation
 
-/// A slash command that drives state transitions in the product state machine.
+/// A meister command that drives state transitions in the product state machine.
 ///
 /// Each command maps to exactly one transition with preconditions on the
 /// current `ProductState`. Commands that mutate worktree state: `.pull`,
@@ -30,20 +30,17 @@ enum WorkflowCommand: String, CaseIterable, Equatable, Hashable {
         }
     }
 
-    /// The slash command the meister recognises for this transition, or
+    /// The agent command the meister recognises for this transition, or
     /// `nil` for machine-internal commands with no user-facing equivalent.
-    /// Used by the swimlane UI to inject via `tmux send-keys`. The exact
-    /// form depends on the agent — see `MeisterAgent.slashCommandPrefix`
-    /// (Claude uses `/klause-workflow:<name>`, Codex uses `/<name>`).
+    /// Used by the swimlane UI to inject via `tmux send-keys`.
     ///
     /// `.complete` is internal — it's applied by `/klause-open-pr` when the
     /// branch has no commits, and there's no direct `complete` skill.
-    func slashCommand(for agent: MeisterAgent) -> String? {
-        guard let name = bareSlashCommandName else { return nil }
-        return "\(agent.slashCommandPrefix)\(name)"
+    func meisterCommandText(for agent: MeisterAgent) -> String? {
+        agent.commandText(for: .workflow(self))
     }
 
-    private var bareSlashCommandName: String? {
+    var claudeSlashCommandName: String? {
         switch self {
         case .define: "klause-define"
         case .execute: "klause-execute"
@@ -52,6 +49,19 @@ enum WorkflowCommand: String, CaseIterable, Equatable, Hashable {
         case .babysit: "klause-babysit"
         case .pull: "klause-pull"
         case .push: "klause-push"
+        case .complete: nil
+        }
+    }
+
+    var codexSkillName: String? {
+        switch self {
+        case .define: "Klausemeister Define"
+        case .execute: "Klausemeister Execute"
+        case .review: "Klausemeister Review"
+        case .openPR: "Klausemeister Open PR"
+        case .babysit: "Klausemeister Babysit"
+        case .pull: "Klausemeister Pull"
+        case .push: "Klausemeister Push"
         case .complete: nil
         }
     }

@@ -150,6 +150,7 @@ struct SidebarWorktreeRow: View, Equatable {
                     meisterStatus: worktree.meisterStatus,
                     agentSessionState: worktree.meisterSessionState
                 )
+                .frame(width: 14, alignment: .center)
                 VStack(alignment: .leading, spacing: 3) {
                     if worktree.isMeisterWorking {
                         // Reuse the pre-computed swimlane row tints rather
@@ -193,8 +194,7 @@ struct SidebarWorktreeRow: View, Equatable {
                             .truncationMode(.tail)
                     }
                 }
-                Spacer()
-                AgentBadge(agent: worktree.agent)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if worktree.totalIssueCount > 0 {
                     Text("\(worktree.totalIssueCount)")
                         .font(.caption2)
