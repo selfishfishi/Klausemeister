@@ -533,10 +533,9 @@ actor MCPSocketListener {
     /// `Notification(idle_prompt)` analog. The `codex_hooks` feature flag is
     /// not set — it is stable + default-enabled (openai/codex#19012).
     ///
-    /// Upsert strategy: the block is bracketed by sentinel comments and
-    /// `upsertCodexHooksBlock(in:)` strips any prior block before re-appending,
-    /// so user-authored `[[hooks.X]]` entries elsewhere in the file are
-    /// preserved (Codex unions all matching entries from the parsed document).
+    /// Upsert strategy: remove only hook tables that invoke Klausemeister's
+    /// status hook, then append one canonical set. This keeps Codex's
+    /// `[hooks.state]` approval records and any user-authored hooks intact.
     /// The status-hook script no-ops when `KLAUSE_WORKTREE_ID` is unset, so
     /// installing this globally is safe for non-meister Codex sessions.
     private static func registerCodexHooks() {
@@ -569,40 +568,57 @@ actor MCPSocketListener {
         }
     }
 
-    /// Sentinel comments that mark the start and end of the canonical Codex
-    /// hooks block. Anything between them is owned by the app and is
-    /// rewritten verbatim on every launch.
+    /// Marker left above the canonical Codex hooks so users can identify which
+    /// hook entries are installed by Klausemeister.
     private static let codexHooksBeginMarker =
         "# klausemeister-hooks-managed-block:begin (do not edit — overwritten by app)"
+    /// Legacy marker from the old bracketed block format. It is stripped when
+    /// rewriting hooks because Codex may place `[hooks.state]` approvals near
+    /// managed hook entries.
     private static let codexHooksEndMarker = "# klausemeister-hooks-managed-block:end"
 
-    /// Replace or append the canonical Codex hooks block in a TOML document,
-    /// preserving everything else verbatim.
-    ///
-    /// The target block runs from the begin-marker line through the end-marker
-    /// line (inclusive). The replacement block is canonical, so repeated
-    /// invocations produce identical output. User-authored content above and
-    /// below the block — including their own `[[hooks.X]]` entries — is left
-    /// untouched.
-    private static func upsertCodexHooksBlock(in existing: String) -> String {
+    private static let codexHookEvents = [
+        "SessionStart",
+        "UserPromptSubmit",
+        "PreToolUse",
+        "PostToolUse",
+        "PermissionRequest",
+        "Stop"
+    ]
+
+    /// Replace or append the canonical Klausemeister Codex hooks in a TOML
+    /// document, preserving everything else verbatim.
+    static func upsertCodexHooksBlock(in existing: String) -> String {
         let canonical = canonicalCodexHooksBlock()
         let normalized = existing.replacingOccurrences(of: "\r\n", with: "\n")
         let lines = normalized.components(separatedBy: "\n")
         var output: [String] = []
-        var insideBlock = false
 
-        for line in lines {
+        var index = 0
+        while index < lines.count {
+            let line = lines[index]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if insideBlock {
-                if trimmed == codexHooksEndMarker {
-                    insideBlock = false
-                }
-                // else: drop — part of the old managed block
-            } else if trimmed == codexHooksBeginMarker {
-                insideBlock = true
-            } else {
-                output.append(line)
+            if trimmed == codexHooksBeginMarker || trimmed == codexHooksEndMarker {
+                index += 1
+                continue
             }
+
+            if let event = codexHookEvent(forHeader: trimmed) {
+                let endIndex = codexHookGroupEndIndex(
+                    in: lines,
+                    startIndex: index,
+                    event: event
+                )
+                let group = Array(lines[index ..< endIndex])
+                if !isKlausemeisterCodexHookGroup(group) {
+                    output.append(contentsOf: group)
+                }
+                index = endIndex
+                continue
+            }
+
+            output.append(line)
+            index += 1
         }
 
         // Trim trailing blank lines, then append the canonical block separated
@@ -624,32 +640,48 @@ actor MCPSocketListener {
         return result
     }
 
+    private static func codexHookEvent(forHeader trimmed: String) -> String? {
+        codexHookEvents.first { trimmed == "[[hooks.\($0)]]" }
+    }
+
+    private static func codexHookGroupEndIndex(
+        in lines: [String],
+        startIndex: Int,
+        event: String
+    ) -> Int {
+        var index = startIndex + 1
+        while index < lines.count {
+            let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("["),
+               trimmed != "[[hooks.\(event).hooks]]"
+            {
+                break
+            }
+            index += 1
+        }
+        return index
+    }
+
+    private static func isKlausemeisterCodexHookGroup(_ lines: [String]) -> Bool {
+        let command = "command = \"\(statusHookSymlinkPath)\""
+        return lines.contains { $0.trimmingCharacters(in: .whitespaces) == command }
+    }
+
     /// Render the canonical Codex hooks block, with the absolute path to the
     /// status-hook symlink baked in.
     private static func canonicalCodexHooksBlock() -> String {
         let path = statusHookSymlinkPath
-        let events = [
-            "SessionStart",
-            "UserPromptSubmit",
-            "PreToolUse",
-            "PostToolUse",
-            "PermissionRequest",
-            "Stop"
-        ]
         var lines: [String] = [codexHooksBeginMarker]
-        for event in events {
+        for event in codexHookEvents {
             lines.append("[[hooks.\(event)]]")
             lines.append("[[hooks.\(event).hooks]]")
             lines.append("type = \"command\"")
             lines.append("command = \"\(path)\"")
             lines.append("")
         }
-        // Drop the trailing blank we just appended after the last event so
-        // the end-marker sits flush against the last entry.
         if lines.last?.isEmpty == true {
             lines.removeLast()
         }
-        lines.append(codexHooksEndMarker)
         return lines.joined(separator: "\n")
     }
 
