@@ -26,7 +26,7 @@ struct TerminalContainerView: View {
         ZStack {
             NavigationSplitView(columnVisibility: $columnVisibility) {
                 SidebarView(store: store)
-                    .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
+                    .navigationSplitViewColumnWidth(min: 270, ideal: 330, max: 480)
                     .background {
                         ZStack {
                             Color(hexString: themeColors.background)

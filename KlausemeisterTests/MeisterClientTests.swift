@@ -3,17 +3,56 @@ import Foundation
 import Testing
 @testable import Klausemeister
 
-@Test func `codex spawn command uses current full auto flag and forwards mcp env`() {
+@Test func `codex spawn command uses current full auto flag forwards mcp env and grants repo root`() throws {
+    let worktree = try makeLinkedWorktreeFixture()
     let command = MeisterClient.codexSpawnCommand(
         resolvedBinary: "/opt/homebrew/bin/codex",
-        worktreeId: "BA651B59-D29F-428C-BAB9-E48A3A84A3CA"
+        worktreeId: "BA651B59-D29F-428C-BAB9-E48A3A84A3CA",
+        workingDirectory: worktree.path
     )
-    let expected = "/opt/homebrew/bin/codex --ask-for-approval never --sandbox workspace-write"
+    let expected = "'/opt/homebrew/bin/codex' --ask-for-approval never --sandbox workspace-write"
+        + " --add-dir '\(worktree.repoRoot)'"
         + " -c 'mcp_servers.klausemeister.env.KLAUSE_MEISTER=\"1\"'"
         + " -c 'mcp_servers.klausemeister.env.KLAUSE_WORKTREE_ID=\"BA651B59-D29F-428C-BAB9-E48A3A84A3CA\"'"
 
     #expect(command == expected)
     #expect(command.contains("--full-auto") == false)
+}
+
+@Test func `codex writable root falls back to worktrees parent when git file is unavailable`() {
+    let root = MeisterClient.codexWritableRepoRoot(
+        for: "/Users/alifathalian/github/selfishfishi/some-repo/.worktrees/zeta"
+    )
+
+    #expect(root == "/Users/alifathalian/github/selfishfishi/some-repo")
+}
+
+private func makeLinkedWorktreeFixture() throws -> (path: String, repoRoot: String) {
+    let fixtureRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("KlausemeisterTests-\(UUID().uuidString)")
+    let repoRoot = fixtureRoot.appendingPathComponent("repo")
+    let worktree = repoRoot
+        .appendingPathComponent(WorktreeConfig.defaultBasePath)
+        .appendingPathComponent("zeta")
+    let gitDir = repoRoot
+        .appendingPathComponent(".git")
+        .appendingPathComponent("worktrees")
+        .appendingPathComponent("zeta")
+
+    try FileManager.default.createDirectory(at: worktree, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: gitDir, withIntermediateDirectories: true)
+    try "gitdir: \(gitDir.path)\n".write(
+        to: worktree.appendingPathComponent(".git"),
+        atomically: true,
+        encoding: .utf8
+    )
+    try "../..".write(
+        to: gitDir.appendingPathComponent("commondir"),
+        atomically: true,
+        encoding: .utf8
+    )
+
+    return (worktree.path, repoRoot.path)
 }
 
 @Test func `ensureRunning skips respawn when session exists with non-shell foreground`() async throws {
