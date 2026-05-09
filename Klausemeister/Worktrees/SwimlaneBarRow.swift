@@ -11,10 +11,10 @@ struct SwimlaneBarRow: View {
     var onMarkComplete: (() -> Void)?
     var onReturnToMeister: ((_ issueId: String) -> Void)?
     var onSelectIssue: ((_ issueId: String) -> Void)?
-    /// Inject a slash command into the meister's tmux session. Callers
-    /// build the agent-correct form using `worktree.agent.slashCommandPrefix`
-    /// (Claude wants `/klause-workflow:<name>`; Codex wants `/<name>`).
-    var onSendSlashCommand: ((_ slashCommand: String) -> Void)?
+    /// Inject a command into the meister's tmux session. The reducer renders
+    /// the semantic command for the worktree's current agent immediately
+    /// before tmux injection.
+    var onSendMeisterCommand: ((_ command: MeisterCommand) -> Void)?
     /// Kanban-style state jump for the active issue — Linear-only move, does
     /// not invoke any `/klause-*` command.
     var onMoveIssueStatus: ((_ issueId: String, _ target: MeisterState) -> Void)?
@@ -285,19 +285,21 @@ struct SwimlaneBarRow: View {
         issue: LinearIssue,
         validCommands: [WorkflowCommand]
     ) -> some View {
-        if let onSendSlashCommand {
-            Button("Next (/klause-next)") {
-                onSendSlashCommand("\(worktree.agent.slashCommandPrefix)klause-next")
+        if let onSendMeisterCommand {
+            Button("Next") {
+                onSendMeisterCommand(.next)
             }
         }
-        let runnable = validCommands.compactMap { cmd -> (WorkflowCommand, String)? in
-            guard let slash = cmd.slashCommand(for: worktree.agent) else { return nil }
-            return (cmd, slash)
+        let runnable = validCommands.compactMap { cmd -> WorkflowCommand? in
+            guard worktree.agent.commandText(for: .workflow(cmd)) != nil else { return nil }
+            return cmd
         }
-        if !runnable.isEmpty, let onSendSlashCommand {
+        if !runnable.isEmpty, let onSendMeisterCommand {
             Menu("Run command") {
-                ForEach(runnable, id: \.0) { pair in
-                    Button(pair.0.verbLabel) { onSendSlashCommand(pair.1) }
+                ForEach(runnable, id: \.self) { command in
+                    Button(command.verbLabel) {
+                        onSendMeisterCommand(.workflow(command))
+                    }
                 }
             }
         }

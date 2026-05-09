@@ -1,7 +1,7 @@
 // Klausemeister/Views/RepoScheduleStripView.swift
 import SwiftUI
 
-/// Horizontal strip of saved-schedule pills placed as the first child inside
+/// Vertical stack of saved-schedule pills placed as the first child inside
 /// each repo's DisclosureGroup in the sidebar (KLA-197). Pure presentation —
 /// takes a list of `Schedule` values plus a tap closure and renders nothing
 /// when the list is empty so collapsed/empty repos don't grow an empty row.
@@ -21,18 +21,15 @@ struct RepoScheduleStripView: View {
         if schedules.isEmpty {
             EmptyView()
         } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(schedules) { schedule in
-                        pill(for: schedule)
-                    }
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(schedules) { schedule in
+                    pill(for: schedule)
                 }
-                .padding(.horizontal, 4)
             }
-            .frame(height: 20)
+            .padding(.horizontal, 4)
             .padding(.leading, 22)
             .padding(.trailing, 4)
-            .padding(.vertical, 2)
+            .padding(.vertical, 4)
         }
     }
 
@@ -46,16 +43,18 @@ struct RepoScheduleStripView: View {
             onScheduleTapped(schedule.id)
         } label: {
             HStack(spacing: 4) {
-                Text(schedule.name)
+                Text(displayName(for: schedule))
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                Spacer(minLength: 6)
                 if total > 0 {
                     ProgressBar(fraction: fraction, tint: themeColors.accentColor)
                         .frame(width: 18, height: 3)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
@@ -69,7 +68,19 @@ struct RepoScheduleStripView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("\(schedule.name) · \(done)/\(total) done")
+        .help("\(displayName(for: schedule)) · \(done)/\(total) done")
+    }
+
+    private func displayName(for schedule: Schedule) -> String {
+        let name = schedule.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.lowercased().hasPrefix("agent "),
+           let colon = name.firstIndex(of: ":")
+        {
+            let suffix = name[name.index(after: colon)...]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !suffix.isEmpty { return suffix }
+        }
+        return name
     }
 }
 

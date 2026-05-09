@@ -7,12 +7,12 @@ import SwiftUI
 /// the queue bar.
 struct SwimlaneAdvanceButton: View {
     let worktree: Worktree
-    var onSendSlashCommand: ((_ slashCommand: String) -> Void)?
+    var onSendMeisterCommand: ((_ command: MeisterCommand) -> Void)?
 
     @Environment(\.themeColors) private var themeColors
 
     var body: some View {
-        if let nextCommand, let onSendSlashCommand {
+        if let nextCommand, let onSendMeisterCommand {
             let (isEnabled, tooltip) = advanceAffordance(nextCommand: nextCommand)
             let isWorking: Bool = {
                 guard worktree.meisterStatus == .running else { return false }
@@ -39,7 +39,7 @@ struct SwimlaneAdvanceButton: View {
                     .help(tooltip)
                 } else {
                     Button {
-                        onSendSlashCommand("\(worktree.agent.slashCommandPrefix)klause-next")
+                        onSendMeisterCommand(.next)
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "play")
@@ -80,7 +80,8 @@ struct SwimlaneAdvanceButton: View {
         }
     }
 
-    /// The command the meister will run on `/klause-next`. Delegates to
+    /// The command the meister will run on the agent-specific "next"
+    /// invocation. Delegates to
     /// `Worktree.nextWorkflowCommand` so workflow logic stays in the
     /// domain layer and the view remains a pure presentation component.
     private var nextCommand: WorkflowCommand? {
@@ -106,7 +107,7 @@ struct SwimlaneAdvanceButton: View {
         case .blocked:
             return (false, "Meister is waiting for approval")
         case .idle, .error, .offline:
-            return (true, "Run /klause-next in \(worktree.name)")
+            return (true, "Run Next in \(worktree.name)")
         }
     }
 }

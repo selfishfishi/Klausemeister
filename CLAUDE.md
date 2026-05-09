@@ -131,7 +131,7 @@ Cross-feature events use **TCA delegate actions** intercepted by `AppFeature`'s 
 **Theme** (`Klausemeister/Theme/`): `AppTheme` with six families (Everforest, Gruvbox, Catppuccin, Tokyo Night, Rosé Pine, Kanagawa). Switching themes hot-reloads libghostty config without tearing down the surface.
 
 **Companion targets** (outside the main app target):
-- `klause-workflow/` — Claude Code plugin (slash commands + meister-loop skill)
+- `klause-workflow/` — workflow plugin (Claude slash commands, Codex skills, meister-loop skill)
 - `klause-mcp-shim/` — tiny executable that bridges Claude Code's stdio MCP transport to Klausemeister's Unix-socket server
 
 ## Layer discipline
@@ -207,9 +207,9 @@ Full API reference: `.notes/libghostty.md`
 
 ## Workflow state machine + meister loop
 
-`Klausemeister/Workflow/ProductStateMachine.swift` defines `WorkflowCommand` and the allowed `(KanbanState, WorktreePosition) → (KanbanState, WorktreePosition)` transitions. Each command maps to exactly one edge; callers (the swimlane UI, the MCP server, the meister's slash commands) all consult the same table.
+`Klausemeister/Workflow/ProductStateMachine.swift` defines `WorkflowCommand` and the allowed `(KanbanState, WorktreePosition) → (KanbanState, WorktreePosition)` transitions. Each command maps to exactly one edge; callers (the swimlane UI, the MCP server, the meister's agent commands) all consult the same table.
 
-Each `WorkflowCommand.slashCommand` is the namespaced command (`/klause-workflow:klause-define`, etc.) injected via `tmux send-keys` into a worktree's meister Claude Code session.
+`MeisterAgent.commandText(for:)` renders semantic commands into the runtime-specific text injected via `tmux send-keys`: Claude receives `/klause-workflow:<name>` slash commands, while Codex receives `$Klausemeister <Name>` skill invocations.
 
 The **meister loop** — how autonomous Claude Code agents drive tickets to PR — is documented in `klause-workflow/CLAUDE.md`. When adding or changing a workflow command, update **all four** call sites in lockstep: `ProductStateMachine`, the MCP tool handler, the slash-command markdown in `klause-workflow/commands/`, and the swimlane button in `Klausemeister/Worktrees/SwimlaneAdvanceButton.swift`.
 

@@ -12,7 +12,8 @@ private func makeWorktree(
     meisterSessionState: MeisterSessionState = .working(tool: nil),
     meisterStatusText: String? = nil,
     meisterActivityText: String? = nil,
-    meisterActivityUpdatedAt: Date? = nil
+    meisterActivityUpdatedAt: Date? = nil,
+    agent: MeisterAgent = .claude
 ) -> Worktree {
     var worktree = Worktree(
         id: id,
@@ -24,6 +25,7 @@ private func makeWorktree(
     worktree.meisterStatusText = meisterStatusText
     worktree.meisterActivityText = meisterActivityText
     worktree.meisterActivityUpdatedAt = meisterActivityUpdatedAt
+    worktree.agent = agent
     return worktree
 }
 
@@ -106,10 +108,19 @@ func `non-offline transitions preserve progressText and activity`(nextState: Mei
     }
 }
 
-// MARK: - sendSlashCommandRequested
+// MARK: - command rendering
 
-@Test func `sendSlashCommandRequested forwards raw slash command to tmux session`() async {
-    var worktree = makeWorktree(id: "w1", meisterSessionState: .idle)
+@Test func `meister command rendering is agent aware`() {
+    #expect(MeisterAgent.claude.commandText(for: .next) == "/klause-workflow:klause-next")
+    #expect(MeisterAgent.codex.commandText(for: .next) == "$Klausemeister Next")
+    #expect(MeisterAgent.claude.commandText(for: .workflow(.openPR)) == "/klause-workflow:klause-open-pr")
+    #expect(MeisterAgent.codex.commandText(for: .workflow(.openPR)) == "$Klausemeister Open PR")
+    #expect(MeisterAgent.claude.commandText(for: .workflow(.complete)) == nil)
+    #expect(MeisterAgent.codex.commandText(for: .workflow(.complete)) == nil)
+}
+
+@Test func `sendMeisterCommandRequested renders Codex next skill and forwards to tmux session`() async {
+    var worktree = makeWorktree(id: "w1", meisterSessionState: .idle, agent: .codex)
     worktree.repoName = "Main Repo"
     let sentTarget = LockIsolated<String?>(nil)
     let sentKeys = LockIsolated<String?>(nil)
@@ -127,12 +138,41 @@ func `non-offline transitions preserve progressText and activity`(nextState: Mei
         resolvedTmuxPath: { "/opt/homebrew/bin/tmux" }
     )
 
-    await store.send(.sendSlashCommandRequested(
+    await store.send(.sendMeisterCommandRequested(
         worktreeId: "w1",
-        slashCommand: "/klause-next"
+        command: .next
     ))
     await store.finish()
 
     #expect(sentTarget.value == "klause-main-repo-alpha")
-    #expect(sentKeys.value == "/klause-next")
+    #expect(sentKeys.value == "$Klausemeister Next")
+}
+
+@Test func `sendMeisterCommandRequested renders Claude workflow command and forwards to tmux session`() async {
+    var worktree = makeWorktree(id: "w1", meisterSessionState: .idle, agent: .claude)
+    worktree.repoName = "Main Repo"
+    let sentTarget = LockIsolated<String?>(nil)
+    let sentKeys = LockIsolated<String?>(nil)
+    let store = makeStore(worktree: worktree)
+    store.dependencies.tmuxClient = TmuxClient(
+        createSession: { _, _, _ in },
+        sendKeys: { target, keys in
+            sentTarget.setValue(target)
+            sentKeys.setValue(keys)
+        },
+        hasSession: { _ in false },
+        killSession: { _ in },
+        listSessions: { [] },
+        firstWindowCommand: { _ in nil },
+        resolvedTmuxPath: { "/opt/homebrew/bin/tmux" }
+    )
+
+    await store.send(.sendMeisterCommandRequested(
+        worktreeId: "w1",
+        command: .workflow(.pull)
+    ))
+    await store.finish()
+
+    #expect(sentTarget.value == "klause-main-repo-alpha")
+    #expect(sentKeys.value == "/klause-workflow:klause-pull")
 }

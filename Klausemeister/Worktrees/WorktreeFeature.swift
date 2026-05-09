@@ -321,10 +321,10 @@ struct WorktreeFeature {
         /// to clear the activity slot once the UI ticker has hard-cut back
         /// to the static label.
         case meisterActivityExpired(worktreeId: String)
-        /// Inject `slashCommand` (e.g. `/klause-next`, `/klause-review`) into
-        /// the worktree's tmux session via `TmuxClient.sendKeys`. The meister
-        /// reads it as if the user typed it.
-        case sendSlashCommandRequested(worktreeId: String, slashCommand: String)
+        /// Inject an agent-specific command into the worktree's tmux session
+        /// via `TmuxClient.sendKeys`. The meister reads it as if the user
+        /// typed it.
+        case sendMeisterCommandRequested(worktreeId: String, command: MeisterCommand)
         /// Ask the Meister kanban to move an issue to a different state
         /// (Linear-only status change). Emitted as a delegate so the
         /// cross-feature move stays in one place.
@@ -2179,13 +2179,16 @@ struct WorktreeFeature {
                 state.worktrees[id: worktreeId]?.meisterActivityUpdatedAt = nil
                 return .none
 
-            case let .sendSlashCommandRequested(worktreeId, slashCommand):
-                // TmuxClient.sendKeys appends the `Enter` keyword itself — do
-                // not add "\r" or "\n" to `slashCommand`.
+            case let .sendMeisterCommandRequested(worktreeId, command):
+                // TmuxClient.sendKeys appends the submit key itself — do not
+                // add "\r" or "\n" to the rendered command text.
                 guard let worktree = state.worktrees[id: worktreeId] else {
                     Self.log.warning(
-                        "sendSlashCommand: worktree \(worktreeId) not found in state"
+                        "sendMeisterCommand: worktree \(worktreeId) not found in state"
                     )
+                    return .none
+                }
+                guard let commandText = worktree.agent.commandText(for: command) else {
                     return .none
                 }
                 let sessionName = WorktreeConfig.tmuxSessionName(
@@ -2193,24 +2196,24 @@ struct WorktreeFeature {
                     repoName: worktree.repoName
                 )
                 Self.log.info(
-                    "sendSlashCommand: \(slashCommand) → \(sessionName)"
+                    "sendMeisterCommand: \(commandText) → \(sessionName)"
                 )
                 return .run { [tmuxClient] send in
                     do {
-                        try await tmuxClient.sendKeys(sessionName, slashCommand)
+                        try await tmuxClient.sendKeys(sessionName, commandText)
                     } catch {
                         Self.log.error(
-                            "sendSlashCommand failed for \(sessionName): \(String(describing: error))"
+                            "sendMeisterCommand failed for \(sessionName): \(String(describing: error))"
                         )
                         await send(.delegate(.errorOccurred(
-                            message: "Failed to send \(slashCommand): \(error.localizedDescription)"
+                            message: "Failed to send \(commandText): \(error.localizedDescription)"
                         )))
                     }
                 }
 
             case let .moveIssueStatusRequested(issueId, target):
                 // Bubble up to AppFeature, which forwards to MeisterFeature
-                // to update Linear state (no slash command involved).
+                // to update Linear state (no agent command involved).
                 return .send(.delegate(.moveIssueStatusRequested(
                     issueId: issueId,
                     target: target
