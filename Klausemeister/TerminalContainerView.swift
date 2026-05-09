@@ -242,6 +242,7 @@ private struct ScheduleGanttOverlay: View {
             ScheduleGanttView(
                 schedule: schedule,
                 worktrees: worktrees,
+                descriptionsByLinearId: store.worktree.scheduleDescriptionsByLinearId,
                 isRunInFlight: store.worktree.scheduleRunInFlight.contains(scheduleId),
                 onRunTapped: { store.send(.ganttRunTapped(scheduleId: scheduleId)) },
                 onFinishTapped: { store.send(.ganttFinishTapped(scheduleId: scheduleId)) },

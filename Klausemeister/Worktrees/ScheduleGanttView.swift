@@ -12,6 +12,10 @@ struct ScheduleGanttView: View {
     /// `worktreeId` doesn't match any of these are dropped (the worktree was
     /// removed after the schedule was saved).
     let worktrees: [Worktree]
+    /// Issue descriptions keyed by `issueLinearId`, populated from the local
+    /// `imported_issues` cache when the gantt is presented. Empty values mean
+    /// no description is available; the cell's popover handles that gracefully.
+    let descriptionsByLinearId: [String: String]
     let isRunInFlight: Bool
     let onRunTapped: () -> Void
     let onFinishTapped: () -> Void
@@ -63,11 +67,13 @@ struct ScheduleGanttView: View {
                             rowIndex: rowIndex,
                             chartWidth: totalSize.width,
                             frames: frames,
+                            descriptionsByLinearId: descriptionsByLinearId,
                             selectedItemId: selectedItemId,
                             pathClosure: pathClosure,
                             onCellTapped: { itemId in
                                 selectedItemId = (selectedItemId == itemId) ? nil : itemId
-                            }
+                            },
+                            onPopoverDismiss: { selectedItemId = nil }
                         )
                     }
                     GanttConnectorOverlay(
@@ -234,9 +240,15 @@ private struct GanttRowLayer: View {
     /// band instead of collapsing to a labelWidth stub next to the worktree name.
     let chartWidth: CGFloat
     let frames: [String: CGRect]
+    /// Issue descriptions keyed by `issueLinearId`. Forwarded to each cell's
+    /// popover content.
+    let descriptionsByLinearId: [String: String]
     let selectedItemId: String?
     let pathClosure: PathClosure?
     let onCellTapped: (String) -> Void
+    /// Fired when the SwiftUI popover dismisses (Esc / outside-click). Lets
+    /// the parent clear `selectedItemId` so the path-highlight clears too.
+    let onPopoverDismiss: () -> Void
 
     @Environment(\.themeColors) private var themeColors
 
@@ -291,8 +303,63 @@ private struct GanttRowLayer: View {
                     .onTapGesture {
                         onCellTapped(item.id)
                     }
+                    .popover(
+                        isPresented: Binding(
+                            get: { isSelected },
+                            set: { newValue in if !newValue { onPopoverDismiss() } }
+                        ),
+                        arrowEdge: .top
+                    ) {
+                        GanttCellPopover(
+                            item: item,
+                            description: descriptionsByLinearId[item.issueLinearId]
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+// MARK: - Cell popover
+
+/// Popover content shown when a gantt cell is selected. Renders the ticket
+/// identifier + title as a header and the issue description (markdown) below,
+/// reusing `MarkdownTextView` for consistent theming with the inspector pane.
+private struct GanttCellPopover: View {
+    let item: ScheduleItem
+    let description: String?
+
+    @Environment(\.themeColors) private var themeColors
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                StatusPip(status: item.status, tint: item.status.tint)
+                Text(item.issueIdentifier)
+                    .font(.callout.monospaced().weight(.semibold))
+                    .foregroundStyle(item.status.tint)
+                Spacer(minLength: 8)
+            }
+            Text(item.issueTitle)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+            Divider()
+                .background(themeColors.accentColor.opacity(0.15))
+            if let description, !description.isEmpty {
+                ScrollView(.vertical) {
+                    MarkdownTextView(markdown: description)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 320)
+            } else {
+                Text("No description.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .frame(width: 420)
     }
 }
