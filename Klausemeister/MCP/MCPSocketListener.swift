@@ -349,8 +349,8 @@ actor MCPSocketListener {
         }
     }
 
-    /// Replace `targetDir` with a fresh copy of `sourceDir`, rewriting
-    /// the top-level `SKILL.md`'s `name:` frontmatter to `displayName`.
+    /// Sync `targetDir` to `sourceDir`, rewriting the top-level `SKILL.md`'s
+    /// `name:` frontmatter to `displayName`.
     private static func installCodexSkill(
         sourceDir: URL,
         targetDir: URL,
@@ -361,17 +361,29 @@ actor MCPSocketListener {
             logger.warning("bundled skill missing at \(sourceDir.path); skipped")
             return
         }
-        // Wipe the target so a removed file in the bundle doesn't
-        // linger as a stale entry in the installed copy.
-        try? fileManager.removeItem(at: targetDir)
-        // `cp -RL` instead of FileManager.copyItem so symlinks inside the
-        // skill dir (e.g. AGENTS.md → ../../CLAUDE.md) are dereferenced
-        // into real files at the destination — the flat install in
-        // ~/.codex/skills/ has no parent tree for relative symlinks to
-        // resolve against.
+        do {
+            try fileManager.createDirectory(at: targetDir, withIntermediateDirectories: true)
+        } catch {
+            logger.warning("Failed to create skill dir \(targetDir.lastPathComponent): \(error.localizedDescription)")
+            return
+        }
+
+        // Keep the target directory present while syncing. Removing it first
+        // creates a race where a Codex process starting at the same time can
+        // observe `~/.codex/skills/<skill>/SKILL.md` as missing and skip the
+        // skill for the whole session.
+        //
+        // `rsync -aL --delete` mirrors the bundled skill, removes stale files,
+        // and dereferences symlinks inside the skill dir (e.g. AGENTS.md →
+        // ../../CLAUDE.md) into real files for the flat ~/.codex/skills tree.
         let copyProcess = Process()
-        copyProcess.executableURL = URL(fileURLWithPath: "/bin/cp")
-        copyProcess.arguments = ["-RL", sourceDir.path, targetDir.path]
+        copyProcess.executableURL = URL(fileURLWithPath: "/usr/bin/rsync")
+        copyProcess.arguments = [
+            "-aL",
+            "--delete",
+            sourceDir.path + "/",
+            targetDir.path + "/"
+        ]
         do {
             try copyProcess.run()
             copyProcess.waitUntilExit()
@@ -380,7 +392,7 @@ actor MCPSocketListener {
             return
         }
         guard copyProcess.terminationStatus == 0 else {
-            logger.warning("cp -RL exited \(copyProcess.terminationStatus) for \(targetDir.lastPathComponent)")
+            logger.warning("rsync exited \(copyProcess.terminationStatus) for \(targetDir.lastPathComponent)")
             return
         }
         let skillMD = targetDir.appendingPathComponent("SKILL.md")
