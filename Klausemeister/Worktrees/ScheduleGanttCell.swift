@@ -11,7 +11,7 @@ import SwiftUI
 /// dependency paths):
 /// - `isSelected`: the cell the user clicked. Strong selection ring.
 /// - `isOnHighlightedPath`: the cell is in the selected cell's transitive
-///   blocker/dependent closure. Renders normally — the dimming on
+///   dependency closure. Renders normally — the dimming on
 ///   non-path cells does the work.
 /// - `isDimmed`: a selection exists somewhere AND this cell isn't on its
 ///   path. Renders desaturated + low-opacity so the path stands out.
