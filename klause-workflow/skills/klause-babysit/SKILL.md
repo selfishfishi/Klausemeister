@@ -9,7 +9,7 @@ Babysit a Klausemeister Testing ticket using the same workflow as the
 `/klause-babysit` command.
 
 The canonical workflow lives in this plugin's command spec at
-`../../commands/klause-babysit.md`.
+`./command.md`.
 
 Read that file now, then follow it exactly. It is the source of truth for:
 

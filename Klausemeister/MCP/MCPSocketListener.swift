@@ -264,12 +264,47 @@ actor MCPSocketListener {
             displayName: "Klausemeister Workflow"
         ),
         CodexSkillInstall(
-            source: "open-pr",
+            source: "klause-babysit",
+            targetDir: "klause-babysit",
+            displayName: "Klausemeister Babysit"
+        ),
+        CodexSkillInstall(
+            source: "klause-define",
+            targetDir: "klause-define",
+            displayName: "Klausemeister Define"
+        ),
+        CodexSkillInstall(
+            source: "klause-execute",
+            targetDir: "klause-execute",
+            displayName: "Klausemeister Execute"
+        ),
+        CodexSkillInstall(
+            source: "klause-next",
+            targetDir: "klause-next",
+            displayName: "Klausemeister Next"
+        ),
+        CodexSkillInstall(
+            source: "klause-open-pr",
             targetDir: "klause-open-pr",
             displayName: "Klausemeister Open PR"
         ),
         CodexSkillInstall(
-            source: "schedule",
+            source: "klause-pull",
+            targetDir: "klause-pull",
+            displayName: "Klausemeister Pull"
+        ),
+        CodexSkillInstall(
+            source: "klause-push",
+            targetDir: "klause-push",
+            displayName: "Klausemeister Push"
+        ),
+        CodexSkillInstall(
+            source: "klause-review",
+            targetDir: "klause-review",
+            displayName: "Klausemeister Review"
+        ),
+        CodexSkillInstall(
+            source: "klause-schedule",
             targetDir: "klause-schedule",
             displayName: "Klausemeister Schedule"
         )

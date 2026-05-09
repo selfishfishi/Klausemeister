@@ -9,7 +9,7 @@ Advance the current Klausemeister item using the same workflow as the
 `/klause-next` command.
 
 The canonical workflow lives in this plugin's command spec at
-`../../commands/klause-next.md`.
+`./command.md`.
 
 Read that file now, then follow it exactly. It is the source of truth for:
 

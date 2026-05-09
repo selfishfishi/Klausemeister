@@ -9,7 +9,7 @@ Open a pull request for current Klausemeister work using the same workflow as
 the `/klause-open-pr` command.
 
 The canonical workflow lives in this plugin's command spec at
-`../../commands/klause-open-pr.md`.
+`./command.md`.
 
 Read that file now, then follow it exactly. It is the source of truth for:
 

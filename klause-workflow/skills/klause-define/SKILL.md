@@ -9,7 +9,7 @@ Define a Klausemeister Backlog ticket using the same workflow as the
 `/klause-define` command.
 
 The canonical workflow lives in this plugin's command spec at
-`../../commands/klause-define.md`.
+`./command.md`.
 
 Read that file now, then follow it exactly. It is the source of truth for:
 
