@@ -3,6 +3,19 @@ import Foundation
 import Testing
 @testable import Klausemeister
 
+@Test func `codex spawn command uses current full auto flag and forwards mcp env`() {
+    let command = MeisterClient.codexSpawnCommand(
+        resolvedBinary: "/opt/homebrew/bin/codex",
+        worktreeId: "BA651B59-D29F-428C-BAB9-E48A3A84A3CA"
+    )
+    let expected = "/opt/homebrew/bin/codex --ask-for-approval never --sandbox workspace-write"
+        + " -c 'mcp_servers.klausemeister.env.KLAUSE_MEISTER=\"1\"'"
+        + " -c 'mcp_servers.klausemeister.env.KLAUSE_WORKTREE_ID=\"BA651B59-D29F-428C-BAB9-E48A3A84A3CA\"'"
+
+    #expect(command == expected)
+    #expect(command.contains("--full-auto") == false)
+}
+
 @Test func `ensureRunning skips respawn when session exists with non-shell foreground`() async throws {
     let hasSessionCalls = LockIsolated<[String]>([])
     let createCalls = LockIsolated<Int>(0)

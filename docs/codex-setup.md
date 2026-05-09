@@ -259,7 +259,7 @@ What landed for the multiagent project, by ticket:
 | Ticket | Touchpoint |
 |---|---|
 | KLA-211 | `Klausemeister/Worktrees/MeisterAgent.swift` (the enum); `Worktree.agent` column (migration v16). |
-| KLA-212 | `Klausemeister/Dependencies/MeisterClient.swift` — Codex binary resolver + `--full-auto` spawn. |
+| KLA-212 | `Klausemeister/Dependencies/MeisterClient.swift` — Codex binary resolver + full-auto-equivalent spawn. |
 | KLA-213 | `Klausemeister/MCP/MCPSocketListener.swift` `registerCodexMCPServer()` — `~/.codex/config.toml` `[mcp_servers.klausemeister]` upsert. |
 | KLA-214 | `Klausemeister/MCP/MCPSocketListener.swift` `registerCodexHooks()` + the canonical `[[hooks.X]]` block; shared `klause-workflow/hooks/klause-status-hook.sh` extended with the `PermissionRequest` event. |
 | KLA-215 | `klause-workflow/.codex-plugin/plugin.json`, `klause-workflow/AGENTS.md` symlink → `CLAUDE.md`, `.agents/skills` symlink, `.agents/plugins/marketplace.json`. |
