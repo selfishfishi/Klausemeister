@@ -10,8 +10,14 @@ Schedule a Linear project's tickets across available Klausemeister worktree queu
 ## Usage
 
 ```
-/schedule <project-name> [--name <schedule-name>]
+/schedule <project-name> [--name <schedule-name>] [--worktrees <names>] [--all]
 ```
+
+- `--name <schedule-name>` — override the default schedule name (`<project> · <timestamp>`).
+- `--worktrees <names>` — non-interactive subset (comma-separated worktree names, e.g. `--worktrees alpha,beta`). Skips the worktree-selection prompt.
+- `--all` — non-interactive, include every worktree in the current repo. Reverts to the pre-selection legacy behavior. Skips the prompt.
+
+If neither `--worktrees` nor `--all` is given, the skill prompts interactively (Step 1.5).
 
 ## Step 1: Gather data
 
@@ -39,9 +45,70 @@ If `listWorktrees` itself returns nothing, stop: "No worktrees found in Klauseme
 
 From the `listWorktrees` response, collect all `issueLinearId` values across all inbox, processing, and outbox items. These issues are already scheduled and should be excluded.
 
+## Step 1.5: Choose target worktrees
+
+A schedule should only touch the swimlanes the user wants it on. The user may be actively driving unrelated work in some worktrees and not want those queues clobbered. Before running the algorithm, narrow the worktree list to the user's chosen subset.
+
+### Mode resolution
+
+Pick exactly one mode based on the flags:
+
+- **`--all`** — skip this step; pass every matched worktree to the algorithm. This is the pre-selection legacy behavior.
+- **`--worktrees alpha,beta`** — non-interactive. Split the value on commas (trim whitespace). Match each entry against worktree `name` (case-sensitive). If any entry doesn't match a worktree in the matched set, **stop with an error** listing the unknown names; do not silently drop. If the resulting set is empty, also stop.
+- **Neither flag** — interactive mode. Continue below.
+
+### Interactive prompt
+
+Render the matched worktrees as a numbered checklist, with a per-row state hint:
+
+- `idle` — no `processing` item.
+- `running` — has a `processing` item; show the identifier (e.g. `processing KLA-99`).
+- `inbox: N` — current inbox count.
+
+Pre-select the **idle** worktrees (`[x]`) and leave busy ones unchecked (`[ ]`). If **every** worktree is busy, pre-select all of them instead and explain.
+
+Display format:
+
+```
+Available worktrees in <repo-name>:
+  [x] 1. alpha    idle      inbox: 0
+  [x] 2. beta     idle      inbox: 0
+  [ ] 3. gamma    running   processing KLA-99, inbox: 3
+  [x] 4. delta    idle      inbox: 1
+
+Pre-selected: idle worktrees (1, 2, 4).
+
+Which worktrees should this schedule target?
+  - "all"              include every worktree
+  - "idle"             accept the default (pre-selected set)
+  - "1,2,4"            indices (comma-separated)
+  - "alpha,beta"       names (comma-separated)
+  - "cancel"           stop, save nothing
+```
+
+Wait for an explicit response. Parsing rules:
+
+- `"all"` (case-insensitive) → every matched worktree.
+- `"idle"` (case-insensitive) → the default pre-selected set.
+- `"cancel"` (case-insensitive) → stop immediately, no MCP calls, report `Cancelled — nothing changed.`
+- Comma-separated tokens → for each token, try to parse as an integer index (1-based) into the displayed list; if that fails, match against worktree `name`. Unknown tokens → re-prompt with the unknown names called out; do not proceed.
+- Empty / whitespace-only response → re-prompt; do not save an empty schedule.
+
+After resolving the selection, **confirm** before running the algorithm:
+
+```
+Targeting 2 worktrees: alpha, beta. Generating plan...
+```
+
+### Outcome
+
+The selection result is a filtered worktrees list. Use this filtered list for **Step 2** (algorithm input) and **Step 3** (algorithm run). The previously matched but unselected worktrees are dropped entirely from the algorithm's view — no items are assigned to them, and they're not shown in the resulting plan or load distribution.
+
+The unselected worktrees retain whatever queue state they already had — this skill writes nothing to them.
+
 ## Step 2: Prepare algorithm input
 
-Build the input JSON for the scheduling script:
+Build the input JSON for the scheduling script using the **filtered worktrees list** from Step 1.5 (not the full matched set):
 
 ```json
 {
@@ -116,6 +183,8 @@ Then present the assignment plan as a table:
 >
 > **Load distribution**: alpha: 3, beta: 3
 
+The plan and load distribution only cover the **selected** worktrees from Step 1.5; unselected worktrees are not shown.
+
 If there are **unscheduled** tickets (beyond cycles), list them with reasons.
 
 If there are **external blockers** (blockers outside this project), note them.
@@ -184,3 +253,6 @@ Stop immediately. Make no MCP calls and report: `Cancelled — nothing changed.`
 - **Klausemeister MCP unavailable**: Stop with "Klausemeister MCP is not connected. Cannot query worktrees."
 - **No schedulable tickets**: Report "All tickets in project are either done or already queued."
 - **Script fails**: Report the stderr output from the Python script.
+- **Unknown worktree name in `--worktrees`**: Stop with "Unknown worktree(s): `<names>`. Available: `<list>`." Do not fall back to a partial set.
+- **Empty selection in interactive mode**: Re-prompt; do not save an empty schedule.
+- **`--worktrees` and `--all` both passed**: Stop with "Pass either `--worktrees` or `--all`, not both."
