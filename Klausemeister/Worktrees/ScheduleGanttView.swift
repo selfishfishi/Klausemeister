@@ -61,6 +61,7 @@ struct ScheduleGanttView: View {
                         GanttRowLayer(
                             row: row,
                             rowIndex: rowIndex,
+                            chartWidth: totalSize.width,
                             frames: frames,
                             selectedItemId: selectedItemId,
                             pathClosure: pathClosure,
@@ -229,6 +230,9 @@ private struct LegendEntry: View {
 private struct GanttRowLayer: View {
     let row: GanttRow
     let rowIndex: Int
+    /// Total chart content width — used so empty rows still render a full-width
+    /// band instead of collapsing to a labelWidth stub next to the worktree name.
+    let chartWidth: CGFloat
     let frames: [String: CGRect]
     let selectedItemId: String?
     let pathClosure: PathClosure?
@@ -252,7 +256,7 @@ private struct GanttRowLayer: View {
                         .frame(width: 2)
                 }
                 .frame(
-                    width: max(0, GanttLayout.rowBackgroundWidth(row: row, frames: frames)),
+                    width: max(GanttLayout.rowBackgroundWidth(row: row, frames: frames), chartWidth),
                     height: GanttLayout.cellHeight
                 )
                 .offset(x: 0, y: labelFrame.origin.y)
