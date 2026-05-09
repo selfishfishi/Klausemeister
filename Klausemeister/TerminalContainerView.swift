@@ -26,7 +26,7 @@ struct TerminalContainerView: View {
         ZStack {
             NavigationSplitView(columnVisibility: $columnVisibility) {
                 SidebarView(store: store)
-                    .navigationSplitViewColumnWidth(min: 270, ideal: 330, max: 480)
+                    .navigationSplitViewColumnWidth(min: 405, ideal: 495, max: 720)
                     .background {
                         ZStack {
                             Color(hexString: themeColors.background)
@@ -45,6 +45,7 @@ struct TerminalContainerView: View {
                 InspectorOverlay(store: store)
             }
             .navigationSplitViewStyle(.balanced)
+            .toolbar(removing: .sidebarToggle)
 
             CommandPaletteOverlay(store: store)
             WorktreeSwitcherOverlay(store: store)
@@ -134,7 +135,9 @@ private struct DetailPane: View {
             WorktreeDetailView(
                 store: store.scope(state: \.worktree, action: \.worktree),
                 surfaceStore: surfaceStore,
-                teamsByID: store.meister.teamsByID
+                teamsByID: store.meister.teamsByID,
+                isSidebarVisible: store.showSidebar,
+                onToggleSidebar: { store.send(.toggleSidebar) }
             )
         }
     }
