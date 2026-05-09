@@ -3,7 +3,7 @@
 A workflow plugin loaded by the **meister agent** (Claude Code or Codex) in every Klausemeister session. It provides:
 
 - An MCP client wired to the local Klausemeister MCP server via a stdio shim (`klause-mcp-shim`) bridging to a Unix socket hosted by Klausemeister
-- Slash commands: `/klause-next` (meta-dispatcher), `/klause-define`, `/klause-pull`, `/klause-execute`, `/klause-review`, `/klause-open-pr`, `/klause-babysit`, `/klause-push` (implemented), `/klause-verify` (placeholder)
+- Slash commands: `/klause-next` (meta-dispatcher), `/klause-define`, `/klause-pull`, `/klause-execute`, `/klause-review`, `/klause-open-pr`, `/klause-babysit`, `/klause-push` (implemented), `/prd`, `/klause-verify` (placeholder)
 - A meister-loop skill that auto-triggers when the session is a Klausemeister meister (env `KLAUSE_MEISTER=1`)
 - An `/open-pr` skill that runs the full PR lifecycle — detect format/lint tools, commit, rebase, push, create PR, poll via `/loop`, merge
 
@@ -29,11 +29,13 @@ klause-workflow/
 │   ├── klause-open-pr.md           # (In Progress|In Review) → Testing + PR (KLA-100)
 │   ├── klause-push.md              # Completed/Processing → Completed/Outbox (KLA-103)
 │   ├── klause-review.md            # In Progress → In Review + review (KLA-99)
+│   ├── prd.md                      # Interactive PRD definition workflow
 │   └── klause-verify.md            # placeholder → KLA-77
 ├── hooks/                          # Claude hooks (Codex hook install is KLA-217)
 ├── skills/                         # discovered by Claude (via plugin) and Codex (via plugin or .agents/skills/ symlink)
 │   ├── klause-workflow/SKILL.md    # meister-loop autoloader
 │   ├── open-pr/SKILL.md            # /open-pr full PR lifecycle
+│   ├── prd/SKILL.md                # /prd interactive PRD definition
 │   └── schedule/SKILL.md
 ├── CLAUDE.md                       # meister loop instructions (source of truth)
 ├── AGENTS.md                       # symlink → CLAUDE.md (Codex reads this)
@@ -82,6 +84,7 @@ Then launch Claude Code anywhere. The plugin is picked up at session start.
 mkdir -p ~/.agents/skills
 ln -s "$(pwd)/klause-workflow/skills/klause-workflow" ~/.agents/skills/klause-workflow
 ln -s "$(pwd)/klause-workflow/skills/open-pr"        ~/.agents/skills/open-pr
+ln -s "$(pwd)/klause-workflow/skills/prd"            ~/.agents/skills/prd
 ln -s "$(pwd)/klause-workflow/skills/schedule"       ~/.agents/skills/schedule
 ```
 
