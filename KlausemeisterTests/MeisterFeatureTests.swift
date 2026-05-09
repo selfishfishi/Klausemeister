@@ -70,11 +70,13 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
         $0.databaseClient.saveWorkflowStates = { _, _ in }
         $0.databaseClient.batchSaveImportedIssues = { _, _ in }
         $0.databaseClient.markOrphanedIssues = { _, _ in }
+        $0.stateMappingClient.fetchAll = { throw CancellationError() }
+        $0.stateMappingClient.seedMappings = { _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
         $0.continuousClock = testClock
     }
 
-    await store.send(.onAppear) {
+    await store.send(.refreshTapped) {
         $0.syncStatus = .syncing
     }
     await store.receive(\.delegate.syncStarted)
@@ -107,11 +109,13 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
         $0.databaseClient.saveWorkflowStates = { _, _ in }
         $0.databaseClient.batchSaveImportedIssues = { _, _ in }
         $0.databaseClient.markOrphanedIssues = { _, _ in }
+        $0.stateMappingClient.fetchAll = { throw CancellationError() }
+        $0.stateMappingClient.seedMappings = { _ in }
         $0.date = .constant(Date(timeIntervalSince1970: 0))
         $0.continuousClock = testClock
     }
 
-    await store.send(.onAppear) {
+    await store.send(.refreshTapped) {
         $0.syncStatus = .syncing
     }
     await store.receive(\.delegate.syncStarted)
@@ -147,7 +151,7 @@ private let sampleWorkflowStates: WorkflowStatesByTeam = [
         $0.date = .constant(Date(timeIntervalSince1970: 0))
     }
 
-    await store.send(.onAppear) {
+    await store.send(.refreshTapped) {
         $0.syncStatus = .syncing
     }
     await store.receive(\.delegate.syncStarted)

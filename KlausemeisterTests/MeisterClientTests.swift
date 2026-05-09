@@ -55,7 +55,7 @@ import Testing
     try await client.ensureRunning("wt-1", "/tmp/worktree", "klause-example", .claude)
 
     #expect(createCalls.value == 0)
-    #expect(sendKeysTarget.value == "=klause-example")
+    #expect(sendKeysTarget.value == "klause-example")
     #expect(sendKeysBody.value?.hasSuffix("claude") == true)
 }
 
@@ -86,7 +86,7 @@ import Testing
     #expect(sessionSeen.value == "klause-example")
     #expect(envSeen.value["KLAUSE_MEISTER"] == "1")
     #expect(envSeen.value["KLAUSE_WORKTREE_ID"] == "wt-1")
-    #expect(sendKeysTarget.value == "=klause-example")
+    #expect(sendKeysTarget.value == "klause-example")
     // The send-keys body is either an absolute claude path (probed at
     // construction time) or the bare name — either way it must end in
     // `claude`.

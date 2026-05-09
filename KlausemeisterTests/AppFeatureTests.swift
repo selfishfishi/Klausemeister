@@ -1,6 +1,7 @@
 import ComposableArchitecture
 import Dependencies
 import Foundation
+import GhosttyKit
 import Testing
 @testable import Klausemeister
 
@@ -13,7 +14,7 @@ func `themeChanged hot-reloads ghostty then pushes config to surfaces`() async t
     // (which now calls update_config under the hood) and then push the
     // new config to every live surface via applyConfigToAll.
     let events = LockIsolated<[String]>([])
-    let stubConfig = try #require(OpaquePointer(bitPattern: 0xC0FFEE))
+    let stubConfig = try #require(ghostty_config_t(bitPattern: 0xC0FFEE))
 
     let store = TestStore(initialState: AppFeature.State()) {
         AppFeature()
