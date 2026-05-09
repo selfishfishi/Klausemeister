@@ -208,4 +208,11 @@ extension ShortcutCenterFeature.State {
     var hasConflicts: Bool {
         rows.contains(where: \.hasConflict)
     }
+
+    /// `filteredRows` grouped by category, in stable category order.
+    /// Read from `ShortcutCenterView.body` on every keystroke — doing the
+    /// grouping here keeps it out of the view body (R6).
+    var filteredRowsByCategory: [AppCommand.Category: [BindingRow]] {
+        Dictionary(grouping: filteredRows, by: \.command.category)
+    }
 }

@@ -53,6 +53,11 @@ struct WorktreeClient {
     // MARK: - Queue Management
 
     var fetchQueueItems: @Sendable (_ worktreeId: String) async throws -> [WorktreeQueueItem]
+    /// Single-query fetch of every queue item across every worktree. Callers
+    /// needing a full snapshot (app launch, MCP `listWorktrees`) should use
+    /// this instead of looping `fetchQueueItems` per worktree — one read on
+    /// the shared `DatabaseQueue` instead of N.
+    var fetchAllQueueItems: @Sendable () async throws -> [WorktreeQueueItem]
     var assignIssueToWorktree: @Sendable (_ issueLinearId: String, _ worktreeId: String) async throws -> Void
     var moveToOutbox: @Sendable (_ queueItemId: String) async throws -> Void
     var removeFromQueue: @Sendable (_ queueItemId: String) async throws -> Void
@@ -229,6 +234,15 @@ extension WorktreeClient: DependencyKey {
                 try await dbQueue.read { db in
                     try WorktreeQueueItemRecord
                         .filter(Column("worktreeId") == worktreeId)
+                        .order(Column("queuePosition").asc, Column("sortOrder").asc)
+                        .fetchAll(db)
+                        .map(WorktreeQueueItem.init(from:))
+                }
+            },
+
+            fetchAllQueueItems: {
+                try await dbQueue.read { db in
+                    try WorktreeQueueItemRecord
                         .order(Column("queuePosition").asc, Column("sortOrder").asc)
                         .fetchAll(db)
                         .map(WorktreeQueueItem.init(from:))
@@ -520,6 +534,7 @@ extension WorktreeClient: DependencyKey {
         updateWorktreeOrder: unimplemented("WorktreeClient.updateWorktreeOrder"),
         ignoreWorktreePath: unimplemented("WorktreeClient.ignoreWorktreePath"),
         fetchQueueItems: unimplemented("WorktreeClient.fetchQueueItems"),
+        fetchAllQueueItems: unimplemented("WorktreeClient.fetchAllQueueItems"),
         assignIssueToWorktree: unimplemented("WorktreeClient.assignIssueToWorktree"),
         moveToOutbox: unimplemented("WorktreeClient.moveToOutbox"),
         removeFromQueue: unimplemented("WorktreeClient.removeFromQueue"),

@@ -2,6 +2,7 @@
 import Foundation
 import Logging
 import MCP
+import Synchronization
 
 /// MCP `Transport` conformance for a single Unix-domain-socket connection,
 /// backed by a raw POSIX file descriptor.
@@ -110,23 +111,7 @@ actor SocketTransport: Transport {
     }
 
     private func receiveChunk() async throws -> Data {
-        try await withCheckedThrowingContinuation { cont in
-            let source = DispatchSource.makeReadSource(fileDescriptor: socketFD, queue: .global(qos: .userInitiated))
-            source.setEventHandler {
-                var buf = [UInt8](repeating: 0, count: 65536)
-                let bytesRead = buf.withUnsafeMutableBufferPointer { ptr in
-                    Darwin.read(Int32(source.handle), ptr.baseAddress, ptr.count)
-                }
-                source.cancel()
-                if bytesRead > 0 {
-                    cont.resume(returning: Data(buf.prefix(bytesRead)))
-                } else {
-                    cont.resume(throwing: SocketTransportError.closed)
-                }
-            }
-            source.setCancelHandler {}
-            source.resume()
-        }
+        try await Self.awaitReadable(socketFD: socketFD, bufferSize: 65536)
     }
 }
 
@@ -143,12 +128,49 @@ extension SocketTransport {
     static func readHelloLine(from socketFD: Int32) async throws -> (line: Data, remainder: Data) {
         var buffer = Data()
         while true {
-            let chunk: Data = try await withCheckedThrowingContinuation { cont in
-                let source = DispatchSource.makeReadSource(fileDescriptor: socketFD, queue: .global(qos: .userInitiated))
+            let chunk = try await awaitReadable(socketFD: socketFD, bufferSize: 4096)
+            buffer.append(chunk)
+            if let nlIndex = buffer.firstIndex(of: 0x0A) {
+                let line = buffer.subdata(in: 0 ..< nlIndex)
+                let remainder = buffer.subdata(in: (nlIndex + 1) ..< buffer.endIndex)
+                return (line, remainder)
+            }
+        }
+    }
+
+    /// Waits for `socketFD` to become readable, performs a single `read()`,
+    /// and returns the bytes read.
+    ///
+    /// The read is driven by a `DispatchSource`. If the surrounding Swift
+    /// `Task` is cancelled mid-read the source is cancelled so the file
+    /// descriptor and the source object are not leaked — which would
+    /// otherwise happen on every MCP disconnect.
+    ///
+    /// A `Mutex<Bool>` guards against the three possible resume races:
+    /// 1. the event handler firing and resuming,
+    /// 2. the cancel handler resuming with `CancellationError()`, and
+    /// 3. `onCancel` calling `source.cancel()` which itself invokes the
+    ///    cancel handler.
+    /// Whichever path wins resumes the continuation exactly once.
+    static func awaitReadable(socketFD: Int32, bufferSize: Int) async throws -> Data {
+        let resumed = Mutex<Bool>(false)
+        let source = DispatchSource.makeReadSource(fileDescriptor: socketFD, queue: .global(qos: .userInitiated))
+
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Swift.Error>) in
                 source.setEventHandler {
-                    var buf = [UInt8](repeating: 0, count: 4096)
+                    var buf = [UInt8](repeating: 0, count: bufferSize)
                     let bytesRead = buf.withUnsafeMutableBufferPointer { ptr in
                         Darwin.read(Int32(source.handle), ptr.baseAddress, ptr.count)
+                    }
+                    let shouldResume = resumed.withLock { flag -> Bool in
+                        guard !flag else { return false }
+                        flag = true
+                        return true
+                    }
+                    guard shouldResume else {
+                        source.cancel()
+                        return
                     }
                     source.cancel()
                     if bytesRead > 0 {
@@ -157,15 +179,22 @@ extension SocketTransport {
                         cont.resume(throwing: SocketTransportError.closed)
                     }
                 }
-                source.setCancelHandler {}
+                source.setCancelHandler {
+                    let shouldResume = resumed.withLock { flag -> Bool in
+                        guard !flag else { return false }
+                        flag = true
+                        return true
+                    }
+                    guard shouldResume else { return }
+                    cont.resume(throwing: CancellationError())
+                }
                 source.resume()
             }
-            buffer.append(chunk)
-            if let nlIndex = buffer.firstIndex(of: 0x0A) {
-                let line = buffer.subdata(in: 0 ..< nlIndex)
-                let remainder = buffer.subdata(in: (nlIndex + 1) ..< buffer.endIndex)
-                return (line, remainder)
-            }
+        } onCancel: {
+            // Cancelling the source drains any pending event handler and
+            // fires the cancel handler on the dispatch queue, which resumes
+            // the continuation if it has not been resumed yet.
+            source.cancel()
         }
     }
 }

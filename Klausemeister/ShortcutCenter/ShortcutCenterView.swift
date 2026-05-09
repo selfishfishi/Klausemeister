@@ -44,10 +44,7 @@ struct ShortcutCenterView: View {
     // MARK: - Shortcut List
 
     private var shortcutList: some View {
-        let grouped = Dictionary(
-            grouping: store.filteredRows,
-            by: \.command.category
-        )
+        let grouped = store.filteredRowsByCategory
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(AppCommand.Category.allCases, id: \.self) { category in

@@ -6,6 +6,18 @@ extension ISO8601DateFormatter {
     nonisolated static let shared = ISO8601DateFormatter()
 }
 
+extension JSONDecoder {
+    /// Shared decoder reused across hot conversion paths (e.g. per-issue label decoding).
+    /// `JSONDecoder.decode(_:from:)` is stateless and safe for concurrent calls in Swift 5.9+.
+    nonisolated static let shared = JSONDecoder()
+}
+
+extension JSONEncoder {
+    /// Shared encoder reused for issue label serialization in hot conversion paths.
+    /// `JSONEncoder.encode(_:)` is stateless and safe for concurrent calls in Swift 5.9+.
+    nonisolated static let labelsEncoder = JSONEncoder()
+}
+
 struct TokenResponse: Equatable {
     let accessToken: String
     let refreshToken: String
