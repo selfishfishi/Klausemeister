@@ -6,6 +6,8 @@ struct WorktreeDetailView: View {
     @Bindable var store: StoreOf<WorktreeFeature>
     let surfaceStore: SurfaceStore
     var teamsByID: [String: LinearTeam] = [:]
+    var isSidebarVisible = true
+    var onToggleSidebar: () -> Void = {}
 
     @Environment(\.themeColors) private var themeColors
 
@@ -48,14 +50,23 @@ struct WorktreeDetailView: View {
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Button {
-                    store.send(.boardOverlayToggled)
-                } label: {
-                    Image(systemName: store.showBoardOverlay
-                        ? "terminal"
-                        : "list.bullet.rectangle")
+                HStack(spacing: 8) {
+                    Button {
+                        store.send(.boardOverlayToggled)
+                    } label: {
+                        Image(systemName: store.showBoardOverlay
+                            ? "terminal"
+                            : "list.bullet.rectangle")
+                    }
+                    .help(store.showBoardOverlay ? "Hide Board" : "Show Board")
+
+                    Button {
+                        onToggleSidebar()
+                    } label: {
+                        Image(systemName: "sidebar.leading")
+                    }
+                    .help(isSidebarVisible ? "Hide Sidebar" : "Show Sidebar")
                 }
-                .help(store.showBoardOverlay ? "Hide Board" : "Show Board")
             }
         }
         .tint(themeColors.accentColor)
