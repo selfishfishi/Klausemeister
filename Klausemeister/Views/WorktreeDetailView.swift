@@ -6,8 +6,6 @@ struct WorktreeDetailView: View {
     @Bindable var store: StoreOf<WorktreeFeature>
     let surfaceStore: SurfaceStore
     var teamsByID: [String: LinearTeam] = [:]
-    var isSidebarVisible = true
-    var onToggleSidebar: () -> Void = {}
 
     @Environment(\.themeColors) private var themeColors
 
@@ -60,6 +58,12 @@ struct WorktreeDetailView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 8) {
+                    if let currentTicket {
+                        CurrentTicketToolbarTitle(issue: currentTicket) {
+                            store.send(.queueRowTapped(issueId: currentTicket.id))
+                        }
+                    }
+
                     Button {
                         store.send(.boardOverlayToggled)
                     } label: {
@@ -68,17 +72,6 @@ struct WorktreeDetailView: View {
                             : "list.bullet.rectangle")
                     }
                     .help(store.showBoardOverlay ? "Hide Board" : "Show Board")
-
-                    if let currentTicket {
-                        CurrentTicketToolbarTitle(issue: currentTicket)
-                    }
-
-                    Button {
-                        onToggleSidebar()
-                    } label: {
-                        Image(systemName: "sidebar.leading")
-                    }
-                    .help(isSidebarVisible ? "Hide Sidebar" : "Show Sidebar")
                 }
             }
         }
@@ -89,18 +82,24 @@ struct WorktreeDetailView: View {
 
 private struct CurrentTicketToolbarTitle: View {
     let issue: LinearIssue
+    var onTapped: () -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
-            Text(issue.identifier)
-                .font(.system(.caption, design: .monospaced).weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(issue.title)
-                .font(.callout.weight(.medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
+        Button {
+            onTapped()
+        } label: {
+            HStack(spacing: 6) {
+                Text(issue.identifier)
+                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(issue.title)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: 520, alignment: .leading)
         }
-        .frame(maxWidth: 520, alignment: .leading)
+        .buttonStyle(.plain)
         .help("\(issue.identifier) · \(issue.title)")
     }
 }

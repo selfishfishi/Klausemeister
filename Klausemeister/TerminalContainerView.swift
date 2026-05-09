@@ -6,9 +6,12 @@ struct TerminalContainerView: View {
     let surfaceStore: SurfaceStore
 
     private enum Layout {
-        static let sidebarMinWidth: CGFloat = 480
-        static let sidebarIdealWidth: CGFloat = 560
-        static let sidebarMaxWidth: CGFloat = 760
+        static let sidebarMinWidth: CGFloat = 285
+        static let sidebarIdealWidth: CGFloat = 350
+        static let sidebarMaxWidth: CGFloat = 505
+        static let inspectorWidthFraction: CGFloat = 1.0 / 3.0
+        static let inspectorMinWidth: CGFloat = 360
+        static let inspectorMaxWidth: CGFloat = 640
     }
 
     @Environment(\.themeColors) private var themeColors
@@ -29,42 +32,47 @@ struct TerminalContainerView: View {
     }
 
     var body: some View {
-        ZStack {
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                SidebarView(store: store)
-                    .frame(
-                        minWidth: Layout.sidebarMinWidth,
-                        idealWidth: Layout.sidebarIdealWidth,
-                        maxWidth: Layout.sidebarMaxWidth
-                    )
-                    .navigationSplitViewColumnWidth(
-                        min: Layout.sidebarMinWidth,
-                        ideal: Layout.sidebarIdealWidth,
-                        max: Layout.sidebarMaxWidth
-                    )
-                    .background {
-                        ZStack {
-                            Color(hexString: themeColors.background)
-                            themeColors.accentColor.opacity(0.04)
+        GeometryReader { proxy in
+            ZStack {
+                NavigationSplitView(columnVisibility: $columnVisibility) {
+                    SidebarView(store: store)
+                        .frame(
+                            minWidth: Layout.sidebarMinWidth,
+                            idealWidth: Layout.sidebarIdealWidth,
+                            maxWidth: Layout.sidebarMaxWidth
+                        )
+                        .navigationSplitViewColumnWidth(
+                            min: Layout.sidebarMinWidth,
+                            ideal: Layout.sidebarIdealWidth,
+                            max: Layout.sidebarMaxWidth
+                        )
+                        .background {
+                            ZStack {
+                                Color(hexString: themeColors.background)
+                                themeColors.accentColor.opacity(0.04)
+                            }
+                            .ignoresSafeArea()
                         }
-                        .ignoresSafeArea()
-                    }
-                    .scrollContentBackground(.hidden)
-            } detail: {
-                DetailPane(store: store, surfaceStore: surfaceStore)
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                StatusBarView(store: store.scope(state: \.statusBar, action: \.statusBar))
-            }
-            .safeAreaInset(edge: .trailing, spacing: 0) {
-                InspectorOverlay(store: store)
-            }
-            .navigationSplitViewStyle(.balanced)
-            .toolbar(removing: .sidebarToggle)
+                        .scrollContentBackground(.hidden)
+                } detail: {
+                    DetailPane(store: store, surfaceStore: surfaceStore)
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    StatusBarView(store: store.scope(state: \.statusBar, action: \.statusBar))
+                }
+                .safeAreaInset(edge: .trailing, spacing: 0) {
+                    InspectorOverlay(
+                        store: store,
+                        width: inspectorWidth(for: proxy.size.width)
+                    )
+                }
+                .navigationSplitViewStyle(.balanced)
+                .toolbar(removing: .sidebarToggle)
 
-            CommandPaletteOverlay(store: store)
-            WorktreeSwitcherOverlay(store: store)
-            ScheduleGanttOverlay(store: store)
+                CommandPaletteOverlay(store: store)
+                WorktreeSwitcherOverlay(store: store)
+                ScheduleGanttOverlay(store: store)
+            }
         }
         // Cross-cutting animations and lifecycle modifiers stay on the
         // parent. They read specific keypaths (showInspector,
@@ -126,6 +134,13 @@ struct TerminalContainerView: View {
             TeamSettingsView(store: settingsStore)
         }
     }
+
+    private func inspectorWidth(for windowWidth: CGFloat) -> CGFloat {
+        min(
+            max(windowWidth * Layout.inspectorWidthFraction, Layout.inspectorMinWidth),
+            Layout.inspectorMaxWidth
+        )
+    }
 }
 
 // MARK: - Detail pane
@@ -150,9 +165,7 @@ private struct DetailPane: View {
             WorktreeDetailView(
                 store: store.scope(state: \.worktree, action: \.worktree),
                 surfaceStore: surfaceStore,
-                teamsByID: store.meister.teamsByID,
-                isSidebarVisible: store.showSidebar,
-                onToggleSidebar: { store.send(.toggleSidebar) }
+                teamsByID: store.meister.teamsByID
             )
         }
     }
@@ -165,6 +178,7 @@ private struct DetailPane: View {
 /// rebuild this view, not the whole window.
 private struct InspectorOverlay: View {
     let store: StoreOf<AppFeature>
+    let width: CGFloat
 
     var body: some View {
         if store.showInspector {
@@ -177,7 +191,7 @@ private struct InspectorOverlay: View {
                 },
                 onClose: { store.send(.toggleInspector) }
             )
-            .frame(width: 320)
+            .frame(width: width)
             .transition(.move(edge: .trailing).combined(with: .opacity))
         }
     }

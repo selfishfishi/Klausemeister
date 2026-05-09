@@ -199,6 +199,26 @@ private let currentWorktree = Worktree(
     }
 }
 
+@Test func `worktree queue row tap routes through root to inspector`() async {
+    let store = TestStore(initialState: AppFeature.State()) {
+        AppFeature()
+    } withDependencies: {
+        $0.linearAPIClient.fetchTicketDetail = { _ in sampleDetail }
+    }
+    store.exhaustivity = .off
+
+    await store.send(.worktree(.queueRowTapped(issueId: "abc-123")))
+    await store.receive(\.worktree.delegate.inspectorSelectionRequested)
+    await store.receive(\.inspectorSelectionRequested) {
+        $0.showInspector = true
+        $0.inspectorSelection = .ticket(id: "abc-123")
+        $0.inspectorDetail = .loading
+    }
+    await store.receive(\.inspectorDetailFetched) {
+        $0.inspectorDetail = .loaded(sampleDetail)
+    }
+}
+
 // MARK: - MeisterFeature kanbanCardTapped
 
 @Test func `kanbanCardTapped emits delegate inspectorSelectionRequested`() async {
