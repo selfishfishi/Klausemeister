@@ -20,7 +20,8 @@ struct WorktreeDetailPaneView: View {
         ZStack {
             WorktreeTerminalTabView(
                 worktree: worktree,
-                surfaceView: surfaceView
+                surfaceView: surfaceView,
+                onTicketTapped: onRowTapped
             )
             .blur(radius: showBoardOverlay ? 10 : 0)
             .opacity(showBoardOverlay ? 0.8 : 1.0)
