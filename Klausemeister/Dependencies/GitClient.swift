@@ -84,6 +84,9 @@ extension GitClient: DependencyKey {
             process.standardInput = FileHandle.nullDevice
             var env = ProcessInfo.processInfo.environment
             env["GIT_TERMINAL_PROMPT"] = "0"
+            // GUI-launched PATH omits Homebrew, breaking git's PATH-resolved subtools (e.g. git-lfs).
+            let homebrew = "/opt/homebrew/bin:/usr/local/bin"
+            env["PATH"] = env["PATH"].map { "\(homebrew):\($0)" } ?? homebrew
             process.environment = env
             let stdoutPipe = Pipe()
             let stderrPipe = Pipe()
