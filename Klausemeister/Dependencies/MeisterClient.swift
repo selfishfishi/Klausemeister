@@ -124,14 +124,21 @@ extension MeisterClient {
             guard let resolved = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
                 throw MeisterClientError.agentBinaryNotFound(.codex)
             }
-            // Single-quote each `-c` argument so the user's shell parses
-            // the embedded double-quoted TOML strings verbatim. WorktreeId
-            // is a UUID — no shell metacharacters to worry about.
-            let mcpEnvOverrides =
-                " -c 'mcp_servers.klausemeister.env.KLAUSE_MEISTER=\"1\"'"
-                    + " -c 'mcp_servers.klausemeister.env.KLAUSE_WORKTREE_ID=\"\(worktreeId)\"'"
-            return "\(resolved) --full-auto\(mcpEnvOverrides)"
+            return codexSpawnCommand(resolvedBinary: resolved, worktreeId: worktreeId)
         }
+    }
+
+    /// Build the interactive Codex launch command. This intentionally uses
+    /// Codex's current full-auto equivalent; older `--full-auto` was removed
+    /// from codex-cli 0.129.0.
+    static func codexSpawnCommand(resolvedBinary: String, worktreeId: String) -> String {
+        // Single-quote each `-c` argument so the user's shell parses the
+        // embedded double-quoted TOML strings verbatim. WorktreeId is a UUID,
+        // so no shell metacharacters are expected here.
+        let mcpEnvOverrides =
+            " -c 'mcp_servers.klausemeister.env.KLAUSE_MEISTER=\"1\"'"
+                + " -c 'mcp_servers.klausemeister.env.KLAUSE_WORKTREE_ID=\"\(worktreeId)\"'"
+        return "\(resolvedBinary) --ask-for-approval never --sandbox workspace-write\(mcpEnvOverrides)"
     }
 
     static func live(tmux: TmuxClient) -> Self {
