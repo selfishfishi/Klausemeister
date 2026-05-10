@@ -32,7 +32,13 @@ Check by calling `getProductState`:
       - Check for bugs, logic errors, convention violations
       - Report findings to the user
 
-   d. **Report completion.** Summarize the review findings. The ticket stays in **In Review** — the user makes any fixes manually, then proceeds to `/klause:open-pr`.
+   d. **Propagate cross-ticket findings.** If review uncovered concrete, actionable context for another ticket, follow the **Cross-ticket findings** procedure in `CLAUDE.md` before reporting completion:
+      - Find and update the relevant existing Linear ticket, or create a new one in the same team/project if no relevant ticket exists.
+      - Preserve the target description and add/update its `## Context From Related Tickets` section with source, finding, evidence, and recommended follow-up.
+      - Link the source ticket and target ticket with `relatedTo` unless the finding proves a true blocking dependency.
+      - Treat propagation failures as best effort: report them, then continue this command.
+
+   e. **Report completion.** Summarize the review findings and which related tickets were updated, created, or linked for cross-ticket findings, if any. The ticket stays in **In Review** — the user makes any fixes manually, then proceeds to `/klause:open-pr`.
 
 ## Error handling
 

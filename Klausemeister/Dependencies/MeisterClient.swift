@@ -139,95 +139,15 @@ extension MeisterClient {
     static func codexSpawnCommand(
         resolvedBinary: String,
         worktreeId: String,
-        workingDirectory: String
+        workingDirectory _: String
     ) -> String {
         // Single-quote each `-c` argument so the user's shell parses the
         // embedded double-quoted TOML strings verbatim. WorktreeId is a UUID,
         // so no shell metacharacters are expected here.
-        let writableRoot = codexWritableRepoRoot(for: workingDirectory)
-            .map { " --add-dir \(shellQuote($0))" } ?? ""
         let mcpEnvOverrides =
             " -c 'mcp_servers.klausemeister.env.KLAUSE_MEISTER=\"1\"'"
                 + " -c 'mcp_servers.klausemeister.env.KLAUSE_WORKTREE_ID=\"\(worktreeId)\"'"
-        return "\(shellQuote(resolvedBinary)) --ask-for-approval never --sandbox workspace-write\(writableRoot)\(mcpEnvOverrides)"
-    }
-
-    /// Codex's `workspace-write` sandbox permits the checkout path by
-    /// default, but a Git worktree stores refs, lock files, and the index
-    /// under the main repository's shared `.git/worktrees/<name>` directory.
-    /// That shared Git directory is outside the worktree checkout, so Git
-    /// commands like branch creation can fail unless the full repo root is
-    /// added as an extra writable directory.
-    static func codexWritableRepoRoot(for workingDirectory: String) -> String? {
-        let worktreeURL = URL(fileURLWithPath: workingDirectory).standardizedFileURL
-        let gitEntryURL = worktreeURL.appendingPathComponent(".git")
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: gitEntryURL.path, isDirectory: &isDirectory) else {
-            return repoRootFromWorktreesPath(worktreeURL.path)
-        }
-        if isDirectory.boolValue {
-            return worktreeURL.path
-        }
-        guard
-            let gitEntry = try? String(contentsOf: gitEntryURL, encoding: .utf8),
-            let gitDirValue = gitEntry
-            .split(separator: "\n")
-            .first(where: { $0.hasPrefix("gitdir:") })?
-            .dropFirst("gitdir:".count)
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !gitDirValue.isEmpty
-        else {
-            return repoRootFromWorktreesPath(worktreeURL.path)
-        }
-
-        let gitDirURL = absoluteURL(forGitPath: gitDirValue, relativeTo: worktreeURL)
-        if let commonDirURL = commonGitDirectory(from: gitDirURL) {
-            return repoRoot(fromCommonGitDirectory: commonDirURL)
-        }
-        return repoRootFromGitDirectory(gitDirURL.path) ?? repoRootFromWorktreesPath(worktreeURL.path)
-    }
-
-    private static func commonGitDirectory(from gitDirURL: URL) -> URL? {
-        let commonDirURL = gitDirURL.appendingPathComponent("commondir")
-        guard
-            let raw = try? String(contentsOf: commonDirURL, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !raw.isEmpty
-        else {
-            return nil
-        }
-        return absoluteURL(forGitPath: raw, relativeTo: gitDirURL)
-    }
-
-    private static func absoluteURL(forGitPath path: String, relativeTo baseURL: URL) -> URL {
-        if path.hasPrefix("/") {
-            return URL(fileURLWithPath: path).standardizedFileURL
-        }
-        return baseURL.appendingPathComponent(path).standardizedFileURL
-    }
-
-    private static func repoRoot(fromCommonGitDirectory commonGitDirURL: URL) -> String {
-        if commonGitDirURL.lastPathComponent == ".git" {
-            return commonGitDirURL.deletingLastPathComponent().path
-        }
-        return commonGitDirURL.path
-    }
-
-    private static func repoRootFromGitDirectory(_ gitDirectory: String) -> String? {
-        if let range = gitDirectory.range(of: "/.git/") {
-            return String(gitDirectory[..<range.lowerBound])
-        }
-        if gitDirectory.hasSuffix("/.git") {
-            return String(gitDirectory.dropLast("/.git".count))
-        }
-        return nil
-    }
-
-    private static func repoRootFromWorktreesPath(_ path: String) -> String? {
-        guard let range = path.range(of: "/\(WorktreeConfig.defaultBasePath)/") else {
-            return nil
-        }
-        return String(path[..<range.lowerBound])
+        return "\(shellQuote(resolvedBinary)) --ask-for-approval never --sandbox danger-full-access\(mcpEnvOverrides)"
     }
 
     private static func shellQuote(_ value: String) -> String {

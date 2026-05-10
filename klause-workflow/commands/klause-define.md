@@ -81,19 +81,29 @@ Based on the assessed tier:
 - **Standard**: explore the codebase, ask the user clarifying questions, update the description with requirements, scope, and design notes. Call `reportProgress(issueLinearId, "klause-define — <current step>")` during each sub-step.
 - **Heavy**: full exploration, multiple rounds of questions, detailed writeup. May suggest spinning out sub-tickets.
 
-### 4. Stamp the complexity label
+### 4. Propagate cross-ticket findings
+
+If definition uncovered concrete, actionable context for another ticket, follow the **Cross-ticket findings** procedure in `CLAUDE.md` before moving on:
+
+- Find and update the relevant existing Linear ticket, or create a new one in the same team/project if no relevant ticket exists.
+- Preserve the target description and add/update its `## Context From Related Tickets` section with source, finding, evidence, and recommended follow-up.
+- Link the source ticket and target ticket with `relatedTo` unless the finding proves a true blocking dependency.
+- Treat propagation failures as best effort: report them, then continue this command.
+
+### 5. Stamp the complexity label
 
 Apply the assessed complexity label to the Linear issue. Use the Linear MCP to add the label (`simple`, `medium`, or `complex`).
 
-### 5. Transition to Todo
+### 6. Transition to Todo
 
 Call `transition(command: "define")` to advance the product state from Backlog to Todo.
 
-### 6. Report completion
+### 7. Report completion
 
 Tell the user:
 - What definition tier was applied and why
 - What complexity label was stamped
+- Which related tickets were updated, created, or linked for cross-ticket findings, if any
 - That the ticket is now in Todo
 
 Example: "Assessed as **light** definition (clear intent, just needed scope bounds) and **medium** complexity (touches 3 files). Added acceptance criteria. Labeled `medium` — execute will enter plan mode. Moved to Todo."
