@@ -15,6 +15,29 @@ Check the current state by calling `getProductState`. If `state.kanban` is not `
 
 ## Behavior
 
+### 0. Session and git preflight
+
+Before defining the ticket, run two preflight checks.
+
+**A) Context hygiene recommendation.** Decide whether the current session context is useful for defining this ticket:
+
+| Recommendation | Use when | What to tell the user |
+|---|---|---|
+| `clear` | The existing conversation is unrelated, noisy, or likely to bias the definition. | "I recommend `clear` before defining this ticket; the current context is not needed." |
+| `compact` | The conversation contains relevant decisions or investigation, but it is long enough to create context bloat. | "I recommend `compact` before defining this ticket; keep the useful summary, drop the bulk." |
+| `leave as is` | The current context is short and directly relevant to the ticket. | "I recommend `leave as is`; the current context is relevant and not bloated." |
+
+If you recommend `clear` or `compact`, stop before codebase exploration and ask the user to take that action or explicitly confirm continuing with `leave as is`. Do not run context-management commands yourself.
+
+**B) Git freshness.** Make sure the worktree is based on the latest default branch before reading code:
+
+1. Run `git status --porcelain --untracked-files=no`. If there are tracked uncommitted changes, stop and report them; do not rebase over local work.
+2. Detect the default branch with `git remote show origin` and use its `HEAD branch` value. If detection fails, default to `main`.
+3. Run `git fetch origin <default-branch>`.
+4. If the current branch is the default branch, run `git pull --ff-only origin <default-branch>`. Otherwise run `git rebase origin/<default-branch>`.
+
+If fetch, pull, or rebase fails, stop and report the exact failure. If there are conflicts, list the conflicted files with `git diff --name-only --diff-filter=U` and ask the user how to proceed. Do not define from a stale or conflicted branch.
+
 ### 1. Read the ticket
 
 Fetch the Linear issue details (title, description, labels, project, `relations.blockedBy`) using the issue identifier from `getProductState`. Call `get_issue` with `includeRelations: true`.
