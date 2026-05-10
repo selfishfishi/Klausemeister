@@ -62,9 +62,18 @@ The `--force-medium` escape hatch is the only supported way to skip labeling. Do
 
 Call `reportProgress` with the routing decision so the Meister UI reflects it, e.g. `reportProgress(issueLinearId, "klause-execute — KLA-200 labeled complex → feature-dev")`.
 
-### 5. Report completion
+### 5. Propagate cross-ticket findings
 
-After execution finishes, confirm to the user that the work is done and the ticket is In Progress.
+If execution uncovered concrete, actionable context for another ticket, follow the **Cross-ticket findings** procedure in `CLAUDE.md` before reporting completion:
+
+- Find and update the relevant existing Linear ticket, or create a new one in the same team/project if no relevant ticket exists.
+- Preserve the target description and add/update its `## Context From Related Tickets` section with source, finding, evidence, and recommended follow-up.
+- Link the source ticket and target ticket with `relatedTo` unless the finding proves a true blocking dependency.
+- Treat propagation failures as best effort: report them, then continue this command.
+
+### 6. Report completion
+
+After execution finishes, confirm to the user that the work is done, the ticket is In Progress, and which related tickets were updated, created, or linked for cross-ticket findings, if any.
 
 ## Error handling
 

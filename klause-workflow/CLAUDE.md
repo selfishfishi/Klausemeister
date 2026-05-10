@@ -103,6 +103,25 @@ For states without a dedicated command — `Definition`, `Spec`, `In Progress` �
 - `Definition` or `Spec` → normal conversation or `/feature-dev`
 - `In Progress` → continue the work, then move on to review
 
+### Cross-ticket findings
+
+During `/klause-define`, `/klause-execute`, and `/klause-review`, treat useful discoveries for other tickets as workflow output, not side commentary. This matters most for spikes, audits, research, and review findings that should shape follow-up work.
+
+When you find concrete, actionable context that belongs on a different Linear ticket:
+
+1. **Find the target ticket.** Prefer an explicit ticket identifier from the source ticket, user prompt, branch, comments, Linear relations, or your finding. If no identifier is present, search Linear for an existing relevant ticket before creating anything.
+2. **Create the target ticket if needed.** If no relevant ticket exists, create a new Linear issue in the same team as the source ticket. Use the same project when the source ticket has one. The title should name the follow-up work, not the source ticket.
+3. **Update the target ticket.** Preserve the existing description. Add or update a managed `## Context From Related Tickets` section with a concise entry containing:
+   - Source: `<SOURCE-ID>` and command (`klause-define`, `klause-execute`, or `klause-review`)
+   - Finding: the actionable discovery
+   - Evidence: files, commands, errors, or investigation notes that justify it
+   - Recommended follow-up: the next concrete action
+4. **Avoid duplicates.** If the managed section already has an entry for the same source ticket and command, update that entry instead of appending a duplicate.
+5. **Link the tickets.** Link the source and target with `relatedTo`. Use `blocks` / `blockedBy` only when the finding proves a real dependency.
+6. **Report best-effort failures.** If the Linear create, update, or link step fails, tell the user what failed and continue the current workflow. Do not block the command's normal transition solely because cross-ticket propagation failed.
+
+Do not create follow-up tickets for vague observations. If the discovery is not concrete enough to become actionable work, include it only in the current command's final summary.
+
 ## 4. Skipping
 
 If the user says **"skip this"** (or similar), call `completeItem(item.id, item.linearState)` so the Linear ticket returns to its original state, then loop back to `getNextItem`. Do not guess a forward state when skipping — the point of skipping is not to make progress on this item.
