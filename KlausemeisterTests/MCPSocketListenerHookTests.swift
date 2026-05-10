@@ -2,6 +2,23 @@ import Foundation
 import Testing
 @testable import Klausemeister
 
+@Test func `codex global skill installs include PRD`() {
+    #expect(MCPSocketListener.codexSkillInstalls.contains { install in
+        install.source == "prd"
+            && install.targetDir == "klause-prd"
+            && install.displayName == "Klausemeister PRD"
+    })
+}
+
+@Test func `claude workflow plugin symlink installs under claude plugins`() {
+    let home = URL(fileURLWithPath: "/Users/example")
+
+    #expect(
+        MCPSocketListener.claudeWorkflowPluginSymlinkURL(home: home).path
+            == "/Users/example/.claude/plugins/klause-workflow"
+    )
+}
+
 @Test func `codex hook upsert removes duplicate Klausemeister hooks but preserves approvals`() {
     let hookPath = MCPSocketListener.statusHookSymlinkPath
     let existing = """
