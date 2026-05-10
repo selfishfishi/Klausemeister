@@ -15,11 +15,19 @@ Check the current state by calling `getProductState`. If `state.kanban` is not `
 
 ## Behavior
 
-### 0. Session and git preflight
+### 0. Pickup, session, and git preflight
 
-Before defining the ticket, run two preflight checks.
+Before defining the ticket, run three preflight checks.
 
-**A) Context hygiene recommendation.** Decide whether the current session context is useful for defining this ticket:
+**A) Comment pickup in Linear.** Add a Linear comment saying this worklane picked up the ticket for definition. Include the worktree/lane name if available from the product state, environment, or local repo path; otherwise use the current branch name as the best available lane identifier.
+
+Use `save_comment` on the current issue with concise text like:
+
+> Picked up by worklane `<lane-name>` for `/klause-define`.
+
+If adding the comment fails, report the failure and continue; the comment is coordination metadata and must not block definition.
+
+**B) Context hygiene recommendation.** Decide whether the current session context is useful for defining this ticket:
 
 | Recommendation | Use when | What to tell the user |
 |---|---|---|
@@ -29,7 +37,7 @@ Before defining the ticket, run two preflight checks.
 
 If you recommend `clear` or `compact`, stop before codebase exploration and ask the user to take that action or explicitly confirm continuing with `leave as is`. Do not run context-management commands yourself.
 
-**B) Git freshness.** Make sure the worktree is based on the latest default branch before reading code:
+**C) Git freshness.** Make sure the worktree is based on the latest default branch before reading code:
 
 1. Run `git status --porcelain --untracked-files=no`. If there are tracked uncommitted changes, stop and report them; do not rebase over local work.
 2. Detect the default branch with `git remote show origin` and use its `HEAD branch` value. If detection fails, default to `main`.
