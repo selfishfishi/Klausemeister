@@ -63,9 +63,11 @@ the app produces identical files:
 |---|---|---|
 | `~/.klausemeister/bin/klause-mcp-shim` | symlink → bundled `klause-mcp-shim` | The stdio bridge both Claude and Codex meisters spawn to reach Klausemeister's in-process MCP server. |
 | `~/.klausemeister/hooks/klause-status-hook.sh` | symlink → bundled `klause-status-hook.sh` | The status hook script Codex's `[[hooks.X]]` block invokes. |
+| `~/.claude/plugins/klause-workflow` | symlink → bundled `klause-workflow` plugin | Makes bundled Claude slash commands globally available on new Claude Code sessions, including `/klause-workflow:prd`. |
 | `~/.claude/.mcp.json` `mcpServers.klausemeister` | upserted JSON entry | Claude Code MCP registration (untouched on the Codex side). |
 | `~/.codex/config.toml` `[mcp_servers.klausemeister]` | upserted TOML table | Codex MCP registration. |
 | `~/.codex/config.toml` `# klausemeister-hooks-managed-block` | sentinel-fenced TOML block | The six `[[hooks.X]]` entries that drive the meister status dot on Codex. |
+| `~/.codex/skills/klause-*` | synced copy → bundled workflow skills | Makes bundled Codex skills globally available, including `$Klausemeister Next` and `$Klausemeister PRD`. |
 
 The Codex hooks block is **canonical** and rewritten verbatim on every
 launch — anything you author outside the sentinel comments is preserved.
@@ -213,6 +215,11 @@ meister's tmux pane, but the meister doesn't react.
 |---|---|
 | Claude Code | `/klause-workflow:klause-next` |
 | Codex | `$Klausemeister Next` (Codex installed-skill invocation) |
+
+For PRD drafting outside the swimlane state machine, use
+`/klause-workflow:prd` in Claude Code or `$Klausemeister PRD` in Codex
+after launching Klausemeister once so the global plugin/skill install has
+refreshed.
 
 **Fix:** confirm `worktree.agent` is `.codex` for the worktree in
 question. The dispatch is rendered centrally by

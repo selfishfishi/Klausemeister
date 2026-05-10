@@ -188,6 +188,10 @@ actor MCPSocketListener {
     ///      entries pointing every supported hook event at the status-hook
     ///      symlink. Claude's hooks remain wired via the plugin's
     ///      `hooks.json`; this is purely the Codex side.
+    ///   6. The bundled `klause-workflow` plugin is symlinked into
+    ///      `~/.claude/plugins/klause-workflow` so new Claude Code sessions
+    ///      see the bundled slash commands without relying on a stale cached
+    ///      marketplace install.
     ///
     /// The shim itself is safe to register globally — when `KLAUSE_MEISTER`
     /// is not set the shim runs an MCP-protocol stub server that
@@ -228,6 +232,7 @@ actor MCPSocketListener {
         registerClaudeMCPServer()
         registerCodexMCPServer()
         registerCodexHooks()
+        installClaudeWorkflowPluginSymlink()
         installCodexPluginMarketplace()
     }
 
@@ -251,13 +256,13 @@ actor MCPSocketListener {
     ///
     /// Target dirs are also klause-prefixed so the install never collides
     /// with any other plugin that ships an `open-pr` or `schedule` skill.
-    private struct CodexSkillInstall {
+    struct CodexSkillInstall {
         let source: String
         let targetDir: String
         let displayName: String
     }
 
-    private static let codexSkillInstalls: [CodexSkillInstall] = [
+    static let codexSkillInstalls: [CodexSkillInstall] = [
         CodexSkillInstall(
             source: "klause-workflow",
             targetDir: "klause-workflow",
@@ -307,8 +312,52 @@ actor MCPSocketListener {
             source: "klause-schedule",
             targetDir: "klause-schedule",
             displayName: "Klausemeister Schedule"
+        ),
+        CodexSkillInstall(
+            source: "prd",
+            targetDir: "klause-prd",
+            displayName: "Klausemeister PRD"
         )
     ]
+
+    static func claudeWorkflowPluginSymlinkURL(home: URL) -> URL {
+        home
+            .appendingPathComponent(".claude/plugins")
+            .appendingPathComponent("klause-workflow")
+    }
+
+    /// Make the bundled klause-workflow plugin available to every new Claude
+    /// Code session. Claude slash commands are loaded from plugins at session
+    /// start, so keeping this symlink fresh prevents old marketplace cache
+    /// installs from hiding newly bundled commands like `/prd`.
+    private static func installClaudeWorkflowPluginSymlink() {
+        guard let bundledPlugin = bundledPluginPath else {
+            logger.info("klause-workflow plugin not bundled; claude plugin symlink skipped")
+            return
+        }
+        let fileManager = FileManager.default
+        let symlinkURL = claudeWorkflowPluginSymlinkURL(home: fileManager.homeDirectoryForCurrentUser)
+        do {
+            try fileManager.createDirectory(
+                at: symlinkURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let existingIsSymlink = (try? fileManager.destinationOfSymbolicLink(
+                atPath: symlinkURL.path
+            )) != nil
+            if fileManager.fileExists(atPath: symlinkURL.path), !existingIsSymlink {
+                logger.warning("~/.claude/plugins/klause-workflow exists and is not a symlink; skipped")
+                return
+            }
+            try? fileManager.removeItem(at: symlinkURL)
+            try fileManager.createSymbolicLink(
+                at: symlinkURL,
+                withDestinationURL: URL(fileURLWithPath: bundledPlugin)
+            )
+        } catch {
+            logger.warning("Failed to create Claude plugin symlink: \(error.localizedDescription)")
+        }
+    }
 
     /// Make the klause-workflow plugin's skills available to every Codex
     /// session — including plain `codex` invocations the user runs

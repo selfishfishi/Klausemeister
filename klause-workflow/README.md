@@ -74,6 +74,11 @@ ln -s "$(pwd)/klause-workflow" ~/.claude/plugins/klause-workflow
 
 Then launch Claude Code anywhere. The plugin is picked up at session start.
 
+**Klausemeister app install:** Launching the app also refreshes
+`~/.claude/plugins/klause-workflow` to point at the bundled plugin, so
+new Claude Code sessions can use slash commands globally, including
+`/klause-workflow:prd`.
+
 **Via marketplace:** Already wired — the repo-root `.claude-plugin/marketplace.json` registers `klause-workflow`. Open a Claude Code session in the repo and the plugin loads automatically.
 
 ### Codex
@@ -89,6 +94,11 @@ ln -s "$(pwd)/klause-workflow/skills/schedule"       ~/.agents/skills/schedule
 ```
 
 Codex picks them up automatically (no restart needed for skill discovery).
+
+**Klausemeister app install:** Launching the app syncs the bundled
+Klausemeister workflow skills into `~/.codex/skills/`, so new Codex
+sessions can use `$Klausemeister Next`, `$Klausemeister PRD`, and the
+other Klausemeister skills globally.
 
 **Via marketplace:** The repo-root `.agents/plugins/marketplace.json` registers `klause-workflow` for Codex. Open a Codex session in the repo and the plugin is available for install.
 
