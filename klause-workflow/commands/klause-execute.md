@@ -18,7 +18,17 @@ Check by calling `getProductState`:
 
 ## Behavior
 
-### 1. Check blockers
+### 1. Comment pickup in Linear
+
+Add a Linear comment saying this worklane picked up the ticket for execution. Include the worktree/lane name if available from the product state, environment, or local repo path; otherwise use the current branch name as the best available lane identifier.
+
+Use `save_comment` on the current issue with concise text like:
+
+> Picked up by worklane `<lane-name>` for `/klause-execute`.
+
+If adding the comment fails, report the failure and continue; the comment is coordination metadata and must not block execution.
+
+### 2. Check blockers
 
 Call Linear's `get_issue` with `id: <identifier>` and `includeRelations: true`. Inspect `relations.blockedBy`:
 
@@ -30,13 +40,13 @@ Call Linear's `get_issue` with `id: <identifier>` and `includeRelations: true`. 
 
 This complements the same check in `/klause-pull` — it catches tickets that slipped into Processing before a blocker was added, or tickets in `In Review` picked up mid-loop.
 
-### 2. Transition to In Progress
+### 3. Transition to In Progress
 
 Call `reportProgress(issueLinearId, "klause-execute — transitioning to In Progress")`.
 
 Call `transition(command: "execute")`. This validates the state machine and updates the Linear issue status.
 
-### 3. Read the complexity label
+### 4. Read the complexity label
 
 Call `reportActivity("klause-execute — reading complexity label")`. Fetch the Linear issue and check its labels for a complexity label (`simple`, `medium`, or `complex`). These are stamped by `/klause-define`.
 
@@ -50,19 +60,19 @@ Then stop. Do not transition, do not begin work.
 
 The `--force-medium` escape hatch is the only supported way to skip labeling. Do not silently default.
 
-### 4. Execute based on complexity
+### 5. Execute based on complexity
 
 | Label | Strategy |
 |---|---|
 | `simple` | **Direct execution.** Just do the work — read the ticket, make the changes, commit. No planning phase, no architecture design. Announce: "Simple complexity — executing directly." |
 | `medium` | **Plan then execute.** Enter plan mode to design the approach, then implement. Announce: "Medium complexity — planning first." |
 | `complex` | **Full guided development.** Invoke `/feature-dev:feature-dev` with the ticket identifier. This handles codebase exploration, clarifying questions, architecture design, implementation, and quality review. Announce: "Complex — running feature-dev." Throughout, narrate densely via `reportActivity` — e.g. `"feature-dev — exploring similar features"`, `"feature-dev — drafting architecture"`, `"feature-dev — implementing state layer"`. |
-| *(no label)* | **Refuse.** See step 2. Do not default. |
+| *(no label)* | **Refuse.** See step 4. Do not default. |
 | `--force-medium` flag | **Plan then execute** (same as `medium`). Announce: "Labeling bypassed via --force-medium — planning first." |
 
 Call `reportProgress` with the routing decision so the Meister UI reflects it, e.g. `reportProgress(issueLinearId, "klause-execute — KLA-200 labeled complex → feature-dev")`.
 
-### 5. Propagate cross-ticket findings
+### 6. Propagate cross-ticket findings
 
 If execution uncovered concrete, actionable context for another ticket, follow the **Cross-ticket findings** procedure in `CLAUDE.md` before reporting completion:
 
@@ -71,12 +81,12 @@ If execution uncovered concrete, actionable context for another ticket, follow t
 - Link the source ticket and target ticket with `relatedTo` unless the finding proves a true blocking dependency.
 - Treat propagation failures as best effort: report them, then continue this command.
 
-### 6. Report completion
+### 7. Report completion
 
 After execution finishes, confirm to the user that the work is done, the ticket is In Progress, and which related tickets were updated, created, or linked for cross-ticket findings, if any.
 
 ## Error handling
 
-- If the blocker check refuses execution — see step 1. Ticket state unchanged.
+- If the blocker check refuses execution — see step 2. Ticket state unchanged.
 - If `transition("execute")` fails — report the error. The message includes valid commands for the current state.
 - If `/feature-dev:feature-dev` is not available (for complex tickets) — fall back to plan-then-execute and tell the user.
